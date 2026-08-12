@@ -8175,17 +8175,6 @@ function submitQuiz() {
           subject: q.subject
         });
       }
-    }
-
-    if (isCorrect) {
-      correctCount++;
-      earnedScore += q.points;
-    } else {
-      wrongCount++;
-    }
-  });
-
-
     } else if (q.type === 'essay') {
       const et = (document.getElementById('essay-'+q.id)||{}).value||'';
       const kws = q.keywords||[];
@@ -8203,7 +8192,17 @@ function submitQuiz() {
       er.innerHTML=`<div style="border-left:3px solid ${lc};padding:12px;margin-top:12px;background:rgba(102,126,234,0.04);border-radius:0 8px 8px 0"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-size:1.2rem;font-weight:bold;color:${lc}">${Math.round(q.points*es/100)}分</span><span style="background:${lc};color:#fff;padding:2px 8px;border-radius:10px;font-size:0.75rem">${lt}</span><span style="color:var(--text-secondary);font-size:0.8rem">关键词${matched.length}/${kws.length}</span></div><div style="font-size:0.84rem;color:var(--text-secondary);line-height:1.7"><p>✅ 命中:${matched.join('、')||'无'}</p><p>💡 补充:${kws.filter(k=>!et.includes(k)).join('、')||'无'}</p><details style="margin-top:8px"><summary style="cursor:pointer;color:var(--primary)">📖 参考答案</summary><div style="margin-top:8px;padding:10px;background:#f8f9ff;border-radius:6px;font-size:0.82rem;line-height:1.8;white-space:pre-wrap">${q.referenceAnswer||''}</div></details></div></div>`;}
       if(es<60){AppState.errorBook.push({question:q.text.substring(0,80)+'...',yourAnswer:et.substring(0,100),correctAnswer:'得分率'+es+'%',explanation:'参考:'+(q.referenceAnswer||'').substring(0,150),knowledgePoint:q.knowledgePoint||'未知',subject:q.subject});}
       else{if(!AppState.knowledgeStats)AppState.knowledgeStats={};const kp=q.knowledgePoint||'未知';if(!AppState.knowledgeStats[kp])AppState.knowledgeStats[kp]={correct:0,total:0,subject:q.subject};AppState.knowledgeStats[kp].correct++;AppState.knowledgeStats[kp].total++;}
+    }
 
+    if (q.type !== 'essay') {
+    if (isCorrect) {
+      correctCount++;
+      earnedScore += q.points;
+    } else {
+      wrongCount++;
+    }
+    }
+  });
   // Display score card with actual points
   const scoreCard = document.getElementById('scoreCard');
   const pct = totalScore > 0 ? Math.round((earnedScore / totalScore) * 100) : 0;
