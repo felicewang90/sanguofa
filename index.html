@@ -8613,6 +8613,12 @@ function toggleTeacherMode() {
 }
 
 
+// 兼容旧调用：自动找到内嵌面板容器
+function renderTeacherPanel() {
+  var panel = document.getElementById('teacherPanelInline');
+  if (panel) renderTeacherPanelTo(panel);
+}
+
 // 教师面板渲染到指定容器（用于个人空间内嵌）
 function renderTeacherPanelTo(container) {
   if (!window._teacherSubTab) window._teacherSubTab = 'students';
@@ -8633,9 +8639,6 @@ function renderTeacherPanelTo(container) {
 function switchTeacherSubTab(tab) {
   window._teacherSubTab = tab;
   renderTeacherPanel();
-  // 同时更新内嵌面板
-  var inlinePanel = document.getElementById('teacherPanelInline');
-  if (inlinePanel) renderTeacherPanelTo(inlinePanel);
 }
 
 function renderTeacherStudentsTab(container, subTabsHtml) {
