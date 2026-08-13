@@ -6073,88 +6073,6 @@ function renderProfile() {
     + '<div style="max-height:400px;overflow-y:auto">' + errorsHtml + '</div>'
     + '</div>'
     + '</div>'
-    
-    // Teacher: class management panel
-    + (function() {
-      if (role !== 'teacher') return '';
-      var allStudents = getAllStudentsData();
-      var realStudents = allStudents.filter(function(s) { return s.role !== 'teacher'; });
-      var tTotal = realStudents.length;
-      var tAvg = tTotal > 0 ? Math.round(realStudents.reduce(function(s, st) { return s + st.avgScore; }, 0) / tTotal) : 0;
-      var tRate = tTotal > 0 ? Math.round(realStudents.filter(function(s) { return s.completedCases >= 3; }).length / tTotal * 100) : 0;
-      var tLast = '-';
-      if (realStudents.length > 0) {
-        var latest = realStudents.reduce(function(a, b) { return (a.lastActive > b.lastActive) ? a : b; });
-        try { tLast = new Date(latest.lastActive).toLocaleDateString('zh-CN'); } catch(e) {}
-      }
-      var tRows = realStudents.map(function(st, idx) {
-        var lastStr = '-';
-        try { lastStr = new Date(st.lastActive).toLocaleDateString('zh-CN'); } catch(e) {}
-        var caseDetailsHtml = '';
-        (FIXED_CASES || []).forEach(function(c) {
-          var sc = st.caseScores && st.caseScores[c.name];
-          var scoreText = sc ? sc.score + '分' : '未完成';
-          var color = sc ? (sc.score >= 80 ? 'var(--success)' : sc.score >= 60 ? 'var(--accent)' : '#e74c3c') : 'var(--text-light)';
-          caseDetailsHtml += '<div style="padding:8px 12px;background:#fff;border-radius:8px;border:1px solid var(--border);font-size:0.78rem">' +
-            '<div style="color:var(--text-secondary);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + c.name + '">' + c.name + '</div>' +
-            '<div style="font-weight:700;color:' + color + '">' + scoreText + '</div></div>';
-        });
-        return '<tr onclick="toggleStudentDetail(' + idx + ')" style="cursor:pointer">' +
-          '<td><strong>' + st.studentId + '</strong></td>' +
-          '<td>' + st.name + '</td>' +
-          '<td>' + st.completedCases + ' / ' + (st.totalCases || 12) + '</td>' +
-          '<td>' + st.avgScore + '分</td>' +
-          '<td><div class="teacher-bar"><div class="teacher-bar-fill" style="width:' + st.progress + '%"></div></div></td>' +
-          '<td>' + lastStr + '</td>' +
-          '</tr>' +
-          '<tr id="studentDetail_' + idx + '" style="display:none">' +
-          '<td colspan="6" style="background:#f8f9fc;padding:16px">' +
-            '<div style="font-size:0.82rem;color:var(--text-secondary)">案例成绩详情：</div>' +
-            '<div style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">' +
-              caseDetailsHtml +
-            '</div>' +
-          '</td></tr>';
-      }).join('');
-      var caseStatsHtml = '';
-      if (typeof FIXED_CASES !== 'undefined' && FIXED_CASES.length > 0) {
-        caseStatsHtml = [0,1,2,3,4].map(function(i) {
-          var c = FIXED_CASES[i];
-          if (!c) return '';
-          var count = realStudents.filter(function(s) { return s.completedCases > i; }).length;
-          var pct = tTotal > 0 ? Math.round(count / tTotal * 100) : 0;
-          return '<div style="text-align:center;padding:12px;background:var(--bg-main);border-radius:var(--radius-sm)">' +
-            '<div style="font-size:0.72rem;color:var(--text-secondary);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + c.name + '">' + c.name + '</div>' +
-            '<div style="font-size:1.3rem;font-weight:800;color:var(--primary)">' + pct + '%</div>' +
-            '<div class="teacher-bar" style="margin-top:6px"><div class="teacher-bar-fill" style="width:' + pct + '%"></div></div></div>';
-        }).join('');
-      }
-      return '<div style="margin-top:32px;border-top:2px solid var(--primary);padding-top:32px">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">' +
-          '<h2 style="font-size:1.3rem;font-weight:700;color:var(--primary);margin:0">' + '📊 班级管理' + '</h2>' +
-          '<div style="display:flex;gap:10px">' +
-            '<button class="teacher-export-btn" style="background:var(--primary);color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.85rem" onclick="generateDemoStudentData()">🎲 模拟数据</button>' +
-            '<button class="teacher-export-btn" style="background:#fff;border:1px solid var(--border);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.85rem" onclick="exportTeacherCSV()"> 导出CSV</button>' +
-          '</div>' +
-        '</div>' +
-        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px">' +
-          '<div class="teacher-stat-card"><div class="ts-num">' + tTotal + '</div><div class="ts-label">学生总数</div></div>' +
-          '<div class="teacher-stat-card"><div class="ts-num">' + tAvg + '</div><div class="ts-label">平均分</div></div>' +
-          '<div class="teacher-stat-card"><div class="ts-num">' + tRate + '%</div><div class="ts-label">完成率(>=3案例)</div></div>' +
-          '<div class="teacher-stat-card"><div class="ts-num">' + tLast + '</div><div class="ts-label">最近活跃</div></div>' +
-        '</div>' +
-        (tRows ? '<div class="teacher-table-wrap"><table class="teacher-table">' +
-          '<thead><tr><th>学号</th><th>姓名</th><th>完成案例</th><th>平均分</th><th>学习进度</th><th>最近活跃</th></tr></thead>' +
-          '<tbody>' + tRows + '</tbody></table></div>' : '<div style="text-align:center;color:var(--text-secondary);padding:40px 0">暂无学生数据，点击"模拟数据"生成演示数据</div>') +
-        (caseStatsHtml ? '<div style="background:var(--bg-card);border-radius:var(--radius-md);padding:20px;box-shadow:var(--shadow-sm);margin-top:24px">' +
-          '<h4 style="margin-bottom:12px;color:var(--primary)">📈 班级统计概览</h4>' +
-          '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px">' + caseStatsHtml + '</div></div>' : '') +
-        '</div>';
-    })()
-    
-    // Export button
-    + '<div style="text-align:center;padding:16px 0">'
-    + '<button onclick="exportProfileReport()" style="background:linear-gradient(135deg,var(--primary),#2d4a8a);color:#fff;border:none;padding:14px 40px;border-radius:10px;font-size:0.95rem;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(26,42,94,0.2);transition:all 0.2s">导出学习报告</button>'
-    + '</div>'
     + '</div>';
 }
 
@@ -6315,6 +6233,12 @@ function showPage(page) {
   
   if (page === 'profile') {
     renderProfile();
+    // 教师同时显示教师面板
+    if (AppState.currentUser && AppState.currentUser.role === 'teacher') {
+      var teacherView = document.getElementById('page-teacher');
+      if (teacherView) teacherView.classList.add('active');
+      renderTeacherPanel();
+    }
   }
   
   // 教师面板切换时渲染素材管理
@@ -8760,7 +8684,7 @@ function renderTeacherStudentsTab(container, subTabsHtml) {
       subTabsHtml +
       '<div style="display:flex;gap:10px">' +
         '<button class="teacher-export-btn" style="background:var(--primary)" onclick="generateDemoStudentData()">🎲 模拟数据</button>' +
-        '<button class="teacher-export-btn" onclick="exportTeacherCSV()">📥 导出CSV报告</button>' +
+        '<button class="teacher-export-btn" style="background:#f0f0f0;color:var(--text-primary);border:1px solid var(--border);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.85rem" onclick="exportTeacherCSV()">📥 导出CSV报告</button>' +
       '</div>' +
     '</div>' +
     '<div class="teacher-stats-grid">' +
