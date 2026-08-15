@@ -3827,6 +3827,179 @@ mark.kb-highlight {
   border-color: #e74c3c;
   color: #e74c3c;
 }
+
+/* ========== 收藏夹样式 ========== */
+.fav-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  color: #bbb;
+  line-height: 1;
+}
+.fav-btn:hover {
+  background: rgba(201,168,76,0.1);
+  transform: scale(1.15);
+}
+.fav-btn.active {
+  color: #c9a84c;
+}
+.fav-btn:not(.active) {
+  color: #bbb;
+}
+.favorites-section {
+  margin-bottom: 24px;
+}
+.fav-filter-bar {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px;
+  flex-wrap: wrap;
+}
+.fav-filter-btn {
+  padding: 5px 14px;
+  border: 1px solid rgba(0,0,0,0.1);
+  background: #fff;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.fav-filter-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.fav-filter-btn:hover:not(.active) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.fav-card {
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.fav-card:hover {
+  background: rgba(0,0,0,0.02);
+}
+.fav-card-icon {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.fav-card-body {
+  flex: 1;
+  min-width: 0;
+}
+.fav-card-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fav-card-summary {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.fav-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+.fav-card-tag {
+  background: rgba(26,42,94,0.06);
+  color: var(--primary);
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+.fav-card-remove {
+  background: none;
+  border: none;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.fav-card-remove:hover {
+  color: #e74c3c;
+  background: rgba(231,76,60,0.08);
+}
+.fav-badge-count {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+.fav-qa-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  color: #bbb;
+  margin-left: 6px;
+}
+.fav-qa-btn:hover {
+  background: rgba(201,168,76,0.1);
+}
+.fav-qa-btn.active {
+  color: #c9a84c;
+}
+.fav-auto-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: var(--success);
+  margin-top: 8px;
+  font-weight: 500;
+}
+
+@media (max-width: 768px) {
+  .fav-card {
+    padding: 12px 16px;
+  }
+  .fav-filter-bar {
+    padding: 10px 16px;
+  }
+  .fav-card-title {
+    font-size: 0.85rem;
+  }
+}
 </style>
   <style>
     /* 内联关键样式确保加载体验 */
@@ -6002,6 +6175,9 @@ function renderProfile() {
   // Read error book
   var errors = AppState.errorBook || [];
   
+  // Read favorites count
+  var favCount = getFavorites().length;
+  
   // Build records HTML
   var recordsHtml = '';
   if (records.length === 0) {
@@ -6043,7 +6219,7 @@ function renderProfile() {
     + '</div>'
     
     // Stats cards
-    + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px">'
+    + '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px">'
     + '<div style="background:linear-gradient(135deg,rgba(26,42,94,0.06),rgba(26,42,94,0.02));border:1px solid rgba(26,42,94,0.1);border-radius:14px;padding:20px 16px;text-align:center">'
     + '<div style="font-size:1.8rem;font-weight:800;color:var(--primary);line-height:1.2">' + knowledgePoints + '</div>'
     + '<div style="font-size:0.78rem;color:var(--text-secondary);margin-top:6px;font-weight:500">已学习知识点</div></div>'
@@ -6056,7 +6232,13 @@ function renderProfile() {
     + '<div style="background:linear-gradient(135deg,rgba(23,162,184,0.06),rgba(23,162,184,0.02));border:1px solid rgba(23,162,184,0.12);border-radius:14px;padding:20px 16px;text-align:center">'
     + '<div style="font-size:1.8rem;font-weight:800;color:var(--info);line-height:1.2">' + studyHours + 'h</div>'
     + '<div style="font-size:0.78rem;color:var(--text-secondary);margin-top:6px;font-weight:500">累计学习时长</div></div>'
+    + '<div style="background:linear-gradient(135deg,rgba(201,168,76,0.08),rgba(201,168,76,0.04));border:1px solid rgba(201,168,76,0.15);border-radius:14px;padding:20px 16px;text-align:center">'
+    + '<div style="font-size:1.8rem;font-weight:800;color:var(--accent);line-height:1.2">' + favCount + '</div>'
+    + '<div style="font-size:0.78rem;color:var(--text-secondary);margin-top:6px;font-weight:500">📌 我的收藏</div></div>'
     + '</div>'
+    
+    // Favorites section
+    + '<div id="profileFavoritesContainer"></div>'
     
     // Two columns: records + error book
     + (role !== 'teacher' ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px">'
@@ -6075,6 +6257,12 @@ function renderProfile() {
     + '</div>'
     + '</div>' : '')
     + '</div>';
+  
+  // Render favorites section
+  var favContainer = document.getElementById('profileFavoritesContainer');
+  if (favContainer) {
+    renderFavoritesTab(favContainer);
+  }
 }
 
 function exportProfileReport() {
@@ -7422,18 +7610,114 @@ function switchSimMode(mode, tabEl) {
 }
 
 function renderCaseListNew() {
-  return FIXED_CASES.map(c => `
-    <div class="case-card" id="caseCard-${c.id}" onclick="selectCaseNew('${c.id}')">
-      <span class="case-tag ${c.tag}">${c.tagText}</span>
-      <div class="case-name">${c.name}</div>
-      <div class="case-brief">${c.brief}</div>
-      <div class="case-meta">
-        <span>📊 ${c.difficulty}</span>
-        <span>⏱️ ${c.duration}</span>
-      </div>
-      ${getCaseProgressBadge(c.id)}
-    </div>
-  `).join('');
+  return FIXED_CASES.map(function(c) {
+    var favId = 'case-' + c.id;
+    var isFav = isFavorited(favId);
+    var favClass = isFav ? 'fav-btn active' : 'fav-btn';
+    var favIcon = isFav ? '★' : '☆';
+    return '<div class="case-card" id="caseCard-' + c.id + '" onclick="selectCaseNew(\'' + c.id + '\')" style="position:relative">'
+      + '<button class="' + favClass + '" style="position:absolute;top:8px;right:8px;z-index:2" onclick="event.stopPropagation();toggleCaseFav(\'' + c.id + '\',this)" title="收藏此案例">' + favIcon + '</button>'
+      + '<span class="case-tag ' + c.tag + '">' + c.tagText + '</span>'
+      + '<div class="case-name">' + c.name + '</div>'
+      + '<div class="case-brief">' + c.brief + '</div>'
+      + '<div class="case-meta">'
+      + '<span>📊 ' + c.difficulty + '</span>'
+      + '<span>⏱️ ' + c.duration + '</span>'
+      + '</div>'
+      + getCaseProgressBadge(c.id)
+      + '</div>';
+  }).join('');
+}
+
+function toggleCaseFav(caseId, btn) {
+  var caseData = FIXED_CASES.find(function(c) { return c.id === caseId; });
+  if (!caseData) return;
+  toggleFavorite({
+    type: 'case',
+    sourceId: caseId,
+    title: caseData.name,
+    summary: caseData.brief,
+    icon: '⚖️',
+    category: caseData.tagText
+  });
+  var favId = 'case-' + caseId;
+  var nowFav = isFavorited(favId);
+  if (btn) {
+    btn.className = nowFav ? 'fav-btn active' : 'fav-btn';
+    btn.textContent = nowFav ? '★' : '☆';
+  }
+}
+
+function toggleDocFav(docId, btn) {
+  var doc = null;
+  for (var i = 0; i < MockData.ideologyDocs.length; i++) {
+    if (MockData.ideologyDocs[i].id === docId) { doc = MockData.ideologyDocs[i]; break; }
+  }
+  if (!doc) return;
+  toggleFavorite({
+    type: 'doc',
+    sourceId: docId,
+    title: doc.title,
+    summary: doc.summary,
+    icon: doc.icon,
+    category: doc.category
+  });
+  var favId = 'doc-' + docId;
+  var nowFav = isFavorited(favId);
+  if (btn) {
+    btn.className = nowFav ? 'fav-btn active' : 'fav-btn';
+    btn.textContent = nowFav ? '★' : '☆';
+  }
+}
+
+function toggleNewsFav(newsId, btn) {
+  var news = null;
+  for (var i = 0; i < MockData.zhijianNews.length; i++) {
+    if (MockData.zhijianNews[i].id === newsId) { news = MockData.zhijianNews[i]; break; }
+  }
+  if (!news) return;
+  var newsCategory = (news.teachingNote && news.teachingNote.knowledgeTags && news.teachingNote.knowledgeTags.length > 0) ? news.teachingNote.knowledgeTags[0] : '涉外法治';
+  toggleFavorite({
+    type: 'news',
+    sourceId: newsId,
+    title: news.title,
+    summary: news.summary,
+    icon: '📰',
+    category: newsCategory
+  });
+  var favId = 'news-' + newsId;
+  var nowFav = isFavorited(favId);
+  if (btn) {
+    btn.className = nowFav ? 'fav-btn active' : 'fav-btn';
+    btn.textContent = nowFav ? '★' : '☆';
+  }
+}
+
+function toggleQAFav(btn) {
+  var q = btn.getAttribute('data-q') || '';
+  var a = btn.getAttribute('data-a') || '';
+  var sourceId = 'qa-' + Date.now();
+  var title = q.length > 50 ? q.substring(0, 50) + '...' : q;
+  var summary = a.length > 100 ? a.substring(0, 100) + '...' : a;
+  var favId = 'qa-' + sourceId;
+  
+  if (isFavorited(favId)) {
+    removeFavorite(favId);
+    btn.className = 'fav-qa-btn';
+    btn.innerHTML = '<span>☆</span> 收藏';
+  } else {
+    saveFavorite({
+      type: 'qa',
+      sourceId: sourceId,
+      title: '问答: ' + title,
+      summary: summary,
+      icon: '💬',
+      category: '智能答疑',
+      extra: { question: q, answer: a }
+    });
+    btn.className = 'fav-qa-btn active';
+    btn.innerHTML = '<span>★</span> 已收藏';
+  }
 }
 
 function getCaseProgressBadge(caseId) {
@@ -8419,6 +8703,16 @@ function generateDynamicCase() {
     sourceChunks: results.map(r => r.chunk)
   };
   
+  // Auto-save to favorites
+  saveFavorite({
+    type: 'case',
+    sourceId: dynamicCase.id,
+    title: dynamicCase.name,
+    summary: dynamicCase.brief,
+    icon: '⚖️',
+    category: subject
+  });
+  
   // Show the generated case in result area
   const resultDiv = document.getElementById('dynamicCaseResult');
   resultDiv.innerHTML = `
@@ -8427,7 +8721,8 @@ function generateDynamicCase() {
       <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:8px">
         📊 学科：${subject} · 检索到 ${results.length} 个相关知识块 · 提取 ${foundKeywords.length} 个关键词
       </div>
-      <button class="sim-next-btn" style="font-size:0.82rem;padding:8px 20px" onclick='startDynamicCase(${JSON.stringify(dynamicCase).replace(/'/g, "&#39;")})'>🚀 开始实训</button>
+      <div class="fav-auto-tip">⭐ 已自动收藏到个人空间</div>
+      <button class="sim-next-btn" style="font-size:0.82rem;padding:8px 20px;margin-top:8px" onclick='startDynamicCase(${JSON.stringify(dynamicCase).replace(/'/g, "&#39;")})'>🚀 开始实训</button>
     </div>
   `;
 }
@@ -9675,46 +9970,52 @@ function switchAssessTab(tab, btn) {
 // === 涉外法治资鉴馆模块 ===
 function renderIdeologyModule() {
   const container = document.getElementById('page-ideology');
-  const docsHtml = MockData.ideologyDocs.map(doc => `
-    <div class="ideology-card" onclick="openDocModal('${doc.id}')">
-      <div class="card-icon-sm">${doc.icon}</div>
-      <h4>${doc.title}</h4>
-      <p>${doc.summary}</p>
-      <div class="card-footer">
-        <span>${doc.date} · ${doc.category}</span>
-        <span class="read-more">阅读全文 →</span>
-      </div>
-    </div>
-  `).join('');
+  const docsHtml = MockData.ideologyDocs.map(function(doc) {
+    var docFavId = 'doc-' + doc.id;
+    var docIsFav = isFavorited(docFavId);
+    var docFavClass = docIsFav ? 'fav-btn active' : 'fav-btn';
+    var docFavIcon = docIsFav ? '★' : '☆';
+    return '<div class="ideology-card" onclick="openDocModal(\'' + doc.id + '\')">'
+      + '<div class="card-icon-sm">' + doc.icon + '</div>'
+      + '<h4>' + doc.title + '</h4>'
+      + '<p>' + doc.summary + '</p>'
+      + '<div class="card-footer" style="display:flex;align-items:center;justify-content:space-between">'
+      + '<span>' + doc.date + ' · ' + doc.category + '</span>'
+      + '<button class="' + docFavClass + '" onclick="event.stopPropagation();toggleDocFav(\'' + doc.id + '\',this)" title="收藏此文件">' + docFavIcon + '</button>'
+      + '</div>'
+      + '</div>';
+  }).join('');
 
-  const newsHtml = MockData.zhijianNews.map(news => `
-    <div class="news-card ${news.sourceClass}" onclick="toggleNewsNote('${news.id}')">
-      <div class="news-card-header">
-        <h4>${news.title}</h4>
-        <span class="source-badge ${news.sourceClass}">${news.source}</span>
-      </div>
-      <p class="news-card-summary">${news.summary}</p>
-      <div class="news-card-footer">
-        <span> ${news.date}</span>
-        <div style="display:flex;align-items:center;gap:10px">
-          ${news.sourceURL ? '<a href="' + news.sourceURL + '" target="_blank" rel="noopener" class="source-link" onclick="event.stopPropagation()">阅读原文 →</a>' : ''}
-          <span class="expand-icon"><span class="expand-arrow">▼</span> 教学解读</span>
-        </div>
-      </div>
-      <div class="teaching-note" id="note-${news.id}">
-        <div class="teaching-note-title">📖 教学解读</div>
-        <div class="teaching-note-body">
-          <div class="knowledge-tags">
-            ${news.teachingNote.knowledgeTags.map(tag => `<span class="knowledge-tag">${tag}</span>`).join('')}
-          </div>
-          <div class="teaching-suggestion">
-            <strong>课堂教学建议：</strong>${news.teachingNote.suggestion}
-          </div>
-          <div class="kb-link-hint">📚 ${news.teachingNote.kbHint}</div>
-        </div>
-      </div>
-    </div>
-  `).join('');
+  const newsHtml = MockData.zhijianNews.map(function(news) {
+    var newsFavId = 'news-' + news.id;
+    var newsIsFav = isFavorited(newsFavId);
+    var newsFavClass = newsIsFav ? 'fav-btn active' : 'fav-btn';
+    var newsFavIcon = newsIsFav ? '★' : '☆';
+    var newsCategory = (news.teachingNote && news.teachingNote.knowledgeTags && news.teachingNote.knowledgeTags.length > 0) ? news.teachingNote.knowledgeTags[0] : '涉外法治';
+    return '<div class="news-card ' + news.sourceClass + '" onclick="toggleNewsNote(\'' + news.id + '\')">'
+      + '<div class="news-card-header">'
+      + '<h4>' + news.title + '</h4>'
+      + '<span class="source-badge ' + news.sourceClass + '">' + news.source + '</span>'
+      + '</div>'
+      + '<p class="news-card-summary">' + news.summary + '</p>'
+      + '<div class="news-card-footer">'
+      + '<span>' + news.date + '</span>'
+      + '<div style="display:flex;align-items:center;gap:10px">'
+      + (news.sourceURL ? '<a href="' + news.sourceURL + '" target="_blank" rel="noopener" class="source-link" onclick="event.stopPropagation()">阅读原文 →</a>' : '')
+      + '<button class="' + newsFavClass + '" onclick="event.stopPropagation();toggleNewsFav(\'' + news.id + '\',this)" title="收藏此动态">' + newsFavIcon + '</button>'
+      + '<span class="expand-icon"><span class="expand-arrow">▼</span> 教学解读</span>'
+      + '</div>'
+      + '</div>'
+      + '<div class="teaching-note" id="note-' + news.id + '">'
+      + '<div class="teaching-note-title">📖 教学解读</div>'
+      + '<div class="teaching-note-body">'
+      + '<div class="knowledge-tags">'
+      + news.teachingNote.knowledgeTags.map(function(tag) { return '<span class="knowledge-tag">' + tag + '</span>'; }).join('')
+      + '</div>'
+      + '<div class="teaching-suggestion"><strong>课堂教学建议：</strong>' + news.teachingNote.suggestion + '</div>'
+      + '<div class="kb-link-hint">📚 ' + news.teachingNote.kbHint + '</div>'
+      + '</div></div></div>';
+  }).join('');
   
   container.innerHTML = `
     <div class="ideology-layout">
@@ -10070,7 +10371,7 @@ async function generateResponseWithAI(query) {
             <div style="font-size:0.88rem;line-height:1.7;color:var(--text-primary)">${formattedAnswer}</div>
             ${sourceHtml}
           </div>
-          <div class="chat-time">${time}</div>
+          <div class="chat-time" style="display:flex;align-items:center">${time}<button class="fav-qa-btn" onclick="toggleQAFav(this)" data-q="${escapeHtml(query)}" data-a="${escapeHtml(aiAnswer.substring(0,200))}"><span>☆</span> 收藏</button></div>
         </div>
       </div>
     `;
@@ -10432,7 +10733,7 @@ function generateResponse(query) {
             💡 点击「查看全文」展开完整内容 · 检索算法：BM25 (k1=1.5, b=0.75)${mode === 'cross' ? ' · 已自动扩展关联关键词' : ''}
           </div>
         </div>
-        <div class="chat-time">${time}</div>
+        <div class="chat-time" style="display:flex;align-items:center">${time}<button class="fav-qa-btn" onclick="toggleQAFav(this)" data-q="${escapeHtml(query)}" data-a="${escapeHtml(filteredResults.length > 0 ? filteredResults[0].chunk.x.substring(0,200) : '知识库检索结果')}"><span>☆</span> 收藏</button></div>
       </div>
     </div>
   `;
@@ -11729,6 +12030,214 @@ function hexToRgb(hex) {
   const g = parseInt(hex.slice(3,5), 16);
   const b = parseInt(hex.slice(5,7), 16);
   return `${r},${g},${b}`;
+}
+
+// ========== 收藏夹功能 ==========
+function getFavorites() {
+  var user = AppState.currentUser;
+  if (!user) return [];
+  var studentId = user.studentId || '';
+  try {
+    var raw = localStorage.getItem('sanguofa_student_' + studentId + '_favorites');
+    return raw ? JSON.parse(raw) : [];
+  } catch(e) {
+    return [];
+  }
+}
+
+function saveFavorite(item) {
+  var user = AppState.currentUser;
+  if (!user) return;
+  var studentId = user.studentId || '';
+  var favs = getFavorites();
+  var favId = item.type + '-' + item.sourceId;
+  var exists = favs.some(function(f) { return f.favId === favId; });
+  if (!exists) {
+    var newItem = {
+      favId: favId,
+      type: item.type,
+      sourceId: item.sourceId,
+      title: item.title,
+      summary: item.summary || '',
+      icon: item.icon || '📌',
+      category: item.category || '',
+      timestamp: Date.now(),
+      extra: item.extra || null
+    };
+    favs.push(newItem);
+    localStorage.setItem('sanguofa_student_' + studentId + '_favorites', JSON.stringify(favs));
+  }
+}
+
+function removeFavorite(favId) {
+  var user = AppState.currentUser;
+  if (!user) return;
+  var studentId = user.studentId || '';
+  var favs = getFavorites();
+  favs = favs.filter(function(f) { return f.favId !== favId; });
+  localStorage.setItem('sanguofa_student_' + studentId + '_favorites', JSON.stringify(favs));
+}
+
+function isFavorited(favId) {
+  var favs = getFavorites();
+  return favs.some(function(f) { return f.favId === favId; });
+}
+
+function toggleFavorite(item) {
+  var favId = item.type + '-' + item.sourceId;
+  if (isFavorited(favId)) {
+    removeFavorite(favId);
+  } else {
+    saveFavorite(item);
+  }
+}
+
+function getFavIcon(type) {
+  var icons = {
+    'case': '⚖️',
+    'doc': '📄',
+    'news': '📰',
+    'qa': '💬'
+  };
+  return icons[type] || '📌';
+}
+
+function getFavTypeLabel(type) {
+  var labels = {
+    'case': '案例',
+    'doc': '文件',
+    'news': '动态',
+    'qa': '问答'
+  };
+  return labels[type] || '其他';
+}
+
+function renderFavoritesTab(container) {
+  var favs = getFavorites();
+  var currentFilter = container.getAttribute('data-fav-filter') || 'all';
+  
+  var filtered = favs;
+  if (currentFilter !== 'all') {
+    filtered = favs.filter(function(f) { return f.type === currentFilter; });
+  }
+  
+  filtered = filtered.sort(function(a, b) { return b.timestamp - a.timestamp; });
+  
+  var html = '<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:14px;overflow:hidden" class="favorites-section">';
+  html += '<div style="padding:16px 20px;border-bottom:1px solid rgba(0,0,0,0.06);font-weight:700;font-size:1rem;color:var(--primary);display:flex;align-items:center;justify-content:space-between">';
+  html += '<span>📌 我的收藏夹<span class="fav-badge-count">' + favs.length + '</span></span>';
+  html += '</div>';
+  
+  // Filter bar
+  html += '<div class="fav-filter-bar">';
+  var filters = [
+    {key: 'all', label: '全部'},
+    {key: 'case', label: '案例'},
+    {key: 'doc', label: '文件'},
+    {key: 'news', label: '动态'},
+    {key: 'qa', label: '问答'}
+  ];
+  for (var i = 0; i < filters.length; i++) {
+    var f = filters[i];
+    var activeClass = currentFilter === f.key ? ' active' : '';
+    html += '<button class="fav-filter-btn' + activeClass + '" onclick="filterFavorites(\'' + f.key + '\')">' + f.label + '</button>';
+  }
+  html += '</div>';
+  
+  // List
+  if (filtered.length === 0) {
+    html += '<div style="text-align:center;color:var(--text-secondary);padding:40px 0;font-size:0.9rem">暂无收藏内容，在学习过程中点击⭐即可收藏</div>';
+  } else {
+    html += '<div style="max-height:500px;overflow-y:auto">';
+    for (var j = 0; j < filtered.length; j++) {
+      var item = filtered[j];
+      var timeStr = new Date(item.timestamp).toLocaleString('zh-CN', {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'});
+      html += '<div class="fav-card" onclick="openFavoriteItem(\'' + item.favId + '\')">';
+      html += '<div class="fav-card-icon">' + item.icon + '</div>';
+      html += '<div class="fav-card-body">';
+      html += '<div class="fav-card-title">' + (item.title || '未命名') + '</div>';
+      if (item.summary) {
+        html += '<div class="fav-card-summary">' + item.summary + '</div>';
+      }
+      html += '<div class="fav-card-meta">';
+      html += '<span class="fav-card-tag">' + getFavTypeLabel(item.type) + '</span>';
+      if (item.category) {
+        html += '<span class="fav-card-tag">' + item.category + '</span>';
+      }
+      html += '<span>' + timeStr + '</span>';
+      html += '</div></div>';
+      html += '<button class="fav-card-remove" onclick="event.stopPropagation();removeFavoriteFromList(\'' + item.favId + '\')" title="取消收藏">✕</button>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function filterFavorites(filterKey) {
+  var section = document.querySelector('.favorites-section');
+  if (section) {
+    section.setAttribute('data-fav-filter', filterKey);
+    renderFavoritesTab(section.parentElement);
+  }
+}
+
+function removeFavoriteFromList(favId) {
+  removeFavorite(favId);
+  var section = document.querySelector('.favorites-section');
+  if (section) {
+    renderFavoritesTab(section.parentElement);
+  }
+}
+
+function openFavoriteItem(favId) {
+  var favs = getFavorites();
+  var item = null;
+  for (var i = 0; i < favs.length; i++) {
+    if (favs[i].favId === favId) {
+      item = favs[i];
+      break;
+    }
+  }
+  if (!item) return;
+  
+  if (item.type === 'case') {
+    showPage('case');
+    setTimeout(function() {
+      if (typeof selectCaseNew === 'function') {
+        selectCaseNew(item.sourceId);
+      }
+    }, 100);
+  } else if (item.type === 'doc') {
+    showPage('ideology');
+    setTimeout(function() {
+      if (typeof openDocModal === 'function') {
+        openDocModal(item.sourceId);
+      }
+    }, 100);
+  } else if (item.type === 'news') {
+    showPage('ideology');
+    setTimeout(function() {
+      switchZhijianTab('news');
+      var noteEl = document.getElementById('note-' + item.sourceId);
+      if (noteEl) {
+        noteEl.style.display = 'block';
+        noteEl.scrollIntoView({behavior: 'smooth', block: 'center'});
+      }
+    }, 100);
+  } else if (item.type === 'qa') {
+    showPage('qa');
+    if (item.extra && item.extra.question) {
+      setTimeout(function() {
+        var input = document.getElementById('qaInput');
+        if (input) {
+          input.value = item.extra.question;
+        }
+      }, 100);
+    }
+  }
 }
 
 </script>
