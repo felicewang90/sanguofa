@@ -4479,7 +4479,8 @@ button:active:not(:disabled),
     KB_CHUNKS = JSON.parse(new TextDecoder().decode(result));
     console.log("知识库加载成功，共", KB_CHUNKS.length, "个知识块");
   }
-  initKBChunks();
+  const _kbReady = initKBChunks();
+  _kbReady.catch(e => console.error("KB init failed:", e));
 
 
 // ========================================
@@ -4533,6 +4534,7 @@ const BM25 = (function() {
   
   function init() {
     if (docLens.length > 0) return; // 已初始化
+    if (!KB_CHUNKS || KB_CHUNKS.length === 0) return; // 知识库未加载完成
     let totalLen = 0;
     docLens = KB_CHUNKS.map(chunk => {
       const tokens = tokenize(chunk.t + ' ' + chunk.x);
@@ -4553,6 +4555,10 @@ const BM25 = (function() {
   
   function search(query, topN) {
     init();
+    if (!KB_CHUNKS || KB_CHUNKS.length === 0) {
+      console.warn("BM25.search: KB_CHUNKS not ready, returning empty results");
+      return [];
+    }
     topN = topN || 5;
     const queryTokens = tokenize(query);
     if (queryTokens.length === 0) return [];
@@ -7004,9 +7010,9 @@ function sendQuestion() {
     setTimeout(() => {
       removeTypingIndicator();
       if (typeof DoubaoConfig !== 'undefined' && DoubaoConfig.isEnabled()) {
-        generateResponseWithAI(text);
+        generateResponseWithAI(text).catch(e => { console.error('generateResponseWithAI error:', e); generateResponse(text).catch(e2 => console.error('generateResponse error:', e2)); });
       } else {
-        generateResponse(text);
+        generateResponse(text).catch(e => console.error('generateResponse error:', e));
       }
     }, 1500);
   }, 300);
@@ -8597,12 +8603,15 @@ function renderStage7_Trial(cd) {
 }
 
 // Stage search function
-function doStageSearch() {
+async function doStageSearch() {
   const input = document.getElementById('stageSearchInput');
   const results = document.getElementById('stageSearchResults');
   if (!input || !results) return;
   const query = input.value.trim();
   if (!query) { results.innerHTML = '<p style="color:var(--text-secondary);font-size:0.82rem">请输入检索关键词</p>'; return; }
+  
+  // Wait for knowledge base to load
+  if (typeof _kbReady !== 'undefined') { try { await _kbReady; } catch(e) { console.warn('KB load error:', e); } }
   
   const searchResults = BM25.search(query, 5);
   if (searchResults.length === 0) {
@@ -8616,7 +8625,7 @@ function doStageSearch() {
         ${i+1}. ${(r.chunk && r.chunk.t) || "未知标题"} <span class="arrow">▶</span>
       </div>
       <div class="collapsible-body">
-        <div class="law-text">${cleanMarkdown(r.content || r.text || '').substring(0, 500)}</div>
+        <div class="law-text">${cleanMarkdown((r.chunk && r.chunk.x) || '').substring(0, 500)}</div>
       </div>
     </div>
   `).join('');
@@ -8769,11 +8778,14 @@ function generateCaseFacts(query, subject, results, foundKeywords) {
   return facts;
 }
 
-function generateDynamicCase() {
+async function generateDynamicCase() {
   const input = document.getElementById('dynamicCaseInput');
   if (!input) return;
   const query = input.value.trim();
   if (!query) { showToast('请输入案例方向'); return; }
+  
+  // Wait for knowledge base to load
+  if (typeof _kbReady !== 'undefined') { try { await _kbReady; } catch(e) { console.warn('KB load error:', e); } }
   
   // Search KB_CHUNKS
   const results = BM25.search(query, 8);
@@ -10436,6 +10448,9 @@ async function generateResponseWithAI(query) {
   const chat = document.getElementById('qaChat');
   const time = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
   
+  // Wait for knowledge base to load
+  if (typeof _kbReady !== 'undefined') { try { await _kbReady; } catch(e) { console.warn('KB load error:', e); } }
+  
   // Step 1: Do local BM25 search first
   let effectiveQuery = query;
   const mode = AppState.searchMode || 'normal';
@@ -10576,7 +10591,10 @@ async function generateResponseWithAI(query) {
   if (lastMsg) lastMsg.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function generateResponse(query) {
+async function generateResponse(query) {
+  // Wait for knowledge base to load
+  if (typeof _kbReady !== 'undefined') { try { await _kbReady; } catch(e) { console.warn('KB load error:', e); } }
+  
   // === 功能5: 搜索模式处理 ===
   let effectiveQuery = query;
   const mode = AppState.searchMode || 'normal';
