@@ -4477,6 +4477,7 @@ button:active:not(:disabled),
     const result = new Uint8Array(total);
     let off = 0; for (const c of chunks) { result.set(c, off); off += c.length; }
     KB_CHUNKS = JSON.parse(new TextDecoder().decode(result));
+    console.log("知识库加载成功，共", KB_CHUNKS.length, "个知识块");
   }
   initKBChunks();
 
