@@ -4478,8 +4478,6 @@ button:active:not(:disabled),
     let off = 0; for (const c of chunks) { result.set(c, off); off += c.length; }
     KB_CHUNKS = JSON.parse(new TextDecoder().decode(result));
     console.log("知识库加载成功，共", KB_CHUNKS.length, "个知识块");
-    console.log("[KB Debug] KB_CHUNKS type:", typeof KB_CHUNKS, "length:", KB_CHUNKS.length);
-    console.log("[KB Debug] Sample chunk:", JSON.stringify(KB_CHUNKS[0]).substring(0, 200));
   }
   const _kbReady = initKBChunks();
   _kbReady.catch(e => console.error("KB init failed:", e));
@@ -4535,11 +4533,8 @@ const BM25 = (function() {
   }
   
   function init() {
-    if (!KB_CHUNKS || KB_CHUNKS.length === 0) {
-      console.warn("BM25.init: KB not ready, KB_CHUNKS=", KB_CHUNKS ? KB_CHUNKS.length : 'null');
-      return;
-    }
-    if (docLens.length > 0 && docLens.length === KB_CHUNKS.length) return; // 已初始化且数量匹配
+    if (docLens.length > 0) return; // 已初始化
+    if (!KB_CHUNKS || KB_CHUNKS.length === 0) return; // 知识库未加载完成
     let totalLen = 0;
     docLens = KB_CHUNKS.map(chunk => {
       const tokens = tokenize(chunk.t + ' ' + chunk.x);
@@ -4613,23 +4608,10 @@ const BM25 = (function() {
     
     // 按分数排序，取topN
     scores.sort((a, b) => b.score - a.score);
-    let results = scores.slice(0, topN).map(s => ({
+    return scores.slice(0, topN).map(s => ({
       chunk: KB_CHUNKS[s.index],
       score: s.score
     }));
-    
-    // Fallback: if BM25 returns no results, do simple text matching
-    if (results.length === 0) {
-      const qLower = query.toLowerCase();
-      for (let i = 0; i < KB_CHUNKS.length && results.length < topN; i++) {
-        const text = (KB_CHUNKS[i].t + ' ' + KB_CHUNKS[i].x).toLowerCase();
-        if (text.includes(qLower)) {
-          results.push({ chunk: KB_CHUNKS[i], score: 0.1 });
-        }
-      }
-    }
-    
-    return results;
   }
   
   return {
@@ -8106,14 +8088,11 @@ function renderStep2_Issues(cd) {
   `;
 }
 
-async function searchKBInSim() {
+function searchKBInSim() {
   const input = document.getElementById('simKbSearchInput');
   if (!input) return;
   const query = input.value.trim();
   if (!query) return;
-  
-  // Wait for knowledge base to load
-  if (typeof _kbReady !== 'undefined') { try { await _kbReady; } catch(e) { console.warn('KB load error:', e); } }
   
   const results = BM25.search(query, 5);
   const resultsDiv = document.getElementById('simKbResults');
