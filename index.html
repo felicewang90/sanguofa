@@ -8612,7 +8612,7 @@ function doStageSearch() {
   results.innerHTML = searchResults.map((r, i) => `
     <div class="collapsible-section">
       <div class="collapsible-header" onclick="toggleCollapsible(this)">
-        ${i+1}. ${r.title || r.source} <span class="arrow">▶</span>
+        ${i+1}. ${(r.chunk && r.chunk.t) || "未知标题"} <span class="arrow">▶</span>
       </div>
       <div class="collapsible-body">
         <div class="law-text">${cleanMarkdown(r.content || r.text || '').substring(0, 500)}</div>
