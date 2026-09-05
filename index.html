@@ -4606,6 +4606,14 @@ const BM25 = (function() {
   const B = 0.75;
   let avgdl = 0;
   let docLens = [];
+  let _docTokensCache = null; // 缓存每篇文档的分词结果，避免每次搜索重复分词
+
+  function getDocTokens() {
+    // KB 数量变化时缓存自动失效
+    if (_docTokensCache && _docTokensCache.length === KB_CHUNKS.length) return _docTokensCache;
+    _docTokensCache = KB_CHUNKS.map(chunk => tokenize(chunk.t + ' ' + chunk.x));
+    return _docTokensCache;
+  }
   
   /**
    * 中文双字bigram分词 + 英文单词分词
@@ -4653,13 +4661,9 @@ const BM25 = (function() {
       return;
     }
     if (docLens.length > 0 && docLens.length === KB_CHUNKS.length) return; // 已初始化且数量匹配
+    const tokens = getDocTokens();
     let totalLen = 0;
-    docLens = KB_CHUNKS.map(chunk => {
-      const tokens = tokenize(chunk.t + ' ' + chunk.x);
-      const len = tokens.length;
-      totalLen += len;
-      return len;
-    });
+    docLens = tokens.map(toks => { totalLen += toks.length; return toks.length; });
     avgdl = totalLen / KB_CHUNKS.length || 1;
   }
   
@@ -4685,23 +4689,23 @@ const BM25 = (function() {
     const qTf = getTermFreq(queryTokens);
     const qTerms = Object.keys(qTf);
     
-    // 构建文档频率 (遍历query中的每个词，统计在多少文档中出现)
+    // 构建文档频率 (遍历query中的每个词，统计在多少文档中出现) —— 使用分词缓存
+    const allDocTokens = getDocTokens();
     const df = {};
     for (const qt of qTerms) {
       let count = 0;
       for (let i = 0; i < KB_CHUNKS.length; i++) {
-        const docTokens = tokenize(KB_CHUNKS[i].t + ' ' + KB_CHUNKS[i].x);
-        if (docTokens.indexOf(qt) !== -1) count++;
+        if (allDocTokens[i].indexOf(qt) !== -1) count++;
       }
       df[qt] = count;
     }
     
-    // 计算每个文档的BM25分数
+    // 计算每个文档的BM25分数 —— 复用缓存分词与df
     const scores = [];
     const N = KB_CHUNKS.length;
     
     for (let i = 0; i < N; i++) {
-      const docTokens = tokenize(KB_CHUNKS[i].t + ' ' + KB_CHUNKS[i].x);
+      const docTokens = allDocTokens[i];
       const docTf = getTermFreq(docTokens);
       const dl = docLens[i];
       let score = 0;
@@ -7134,19 +7138,18 @@ function sendQuestion() {
   
   // 记录问答历史（稍后在回复生成后记录完整对话）
   AppState._lastQAQuestion = text;
-  
-  // 模拟系统回复（如果配置了豆包AI则使用增强模式）
+
+  const aiEnabled = typeof DoubaoConfig !== 'undefined' && DoubaoConfig.isEnabled();
+  // 立即显示"正在思考"动画，缩短人为等待（AI流式首字很快，本地检索几乎即时）
+  showTypingIndicator();
   setTimeout(() => {
-    showTypingIndicator();
-    setTimeout(() => {
-      removeTypingIndicator();
-      if (typeof DoubaoConfig !== 'undefined' && DoubaoConfig.isEnabled()) {
-        generateResponseWithAI(text).catch(e => { console.error('generateResponseWithAI error:', e); generateResponse(text).catch(e2 => console.error('generateResponse error:', e2)); });
-      } else {
-        generateResponse(text).catch(e => console.error('generateResponse error:', e));
-      }
-    }, 1500);
-  }, 300);
+    removeTypingIndicator();
+    if (aiEnabled) {
+      generateResponseWithAI(text).catch(e => { console.error('generateResponseWithAI error:', e); generateResponse(text).catch(e2 => console.error('generateResponse error:', e2)); });
+    } else {
+      generateResponse(text).catch(e => console.error('generateResponse error:', e));
+    }
+  }, aiEnabled ? 200 : 500);
 }
 
 function addUserMessage(text) {
@@ -7888,6 +7891,104 @@ ${kbContext}
 
 // 初始化AI增强状态图标
 setTimeout(() => updateDoubaoStatusIcon(), 1000);
+
+// 豆包API流式调用：边生成边返回，首字延迟大幅降低
+// onDelta(partialText) 每收到新内容回调；返回完整文本，失败返回 null
+async function callDoubaoAPIStream(userQuestion, kbContext, onDelta) {
+  const apiKey = DoubaoConfig.getApiKey();
+  const endpoint = DoubaoConfig.getEndpoint();
+  if (!apiKey || !endpoint) return null;
+
+  const systemPrompt = `你是一个专业的三国法（国际公法、国际私法、国际经济法）教学助手。请基于以下知识库内容为同学解答问题。
+
+要求：
+1. 优先使用知识库中的内容回答，确保准确性
+2. 回答要条理清晰，使用分点或分段结构
+3. 引用具体法条、条约或案例时要准确标注来源
+4. 如果知识库内容不足以完整回答，可以适当补充通用法律知识，但要明确区分哪些来自知识库、哪些是补充内容
+5. 注意体现中国立场和视角
+6. 语言要专业但易懂，适合法学本科/研究生水平
+7. 回答控制在600字以内，重点突出
+
+以下是知识库中检索到的相关内容：
+---
+${kbContext}
+---`;
+
+  const controller = new AbortController();
+  let timeoutId;
+  const resetTimeout = () => {
+    clearTimeout(timeoutId);
+    // 每个数据块20秒不返回才判定超时（流式场景用空闲超时而非总时长）
+    timeoutId = setTimeout(() => controller.abort(), 20000);
+  };
+  resetTimeout();
+
+  try {
+    const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + apiKey
+      },
+      body: JSON.stringify({
+        model: endpoint,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userQuestion }
+        ],
+        temperature: 0.3,
+        max_tokens: 1500,
+        stream: true
+      }),
+      signal: controller.signal
+    });
+
+    if (!response.ok || !response.body) {
+      console.warn('豆包流式API调用失败:', response.status);
+      try { console.warn(await response.text()); } catch(e) {}
+      return null;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let fullText = '';
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      resetTimeout();
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // 最后一行可能不完整，留到下一轮
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data:')) continue;
+        const dataStr = trimmed.slice(5).trim();
+        if (dataStr === '[DONE]') continue;
+        try {
+          const json = JSON.parse(dataStr);
+          const delta = json.choices && json.choices[0] && json.choices[0].delta;
+          if (delta && delta.content) {
+            fullText += delta.content;
+            if (onDelta) onDelta(fullText);
+          }
+        } catch(e) { /* 忽略不完整/心跳行 */ }
+      }
+    }
+    clearTimeout(timeoutId);
+    return fullText.trim() || null;
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e.name === 'AbortError') {
+      console.warn('豆包流式API超时(空闲20s)');
+    } else {
+      console.warn('豆包流式API调用异常:', e);
+    }
+    return null;
+  }
+}
 
 
 function renderCaseModule() {
@@ -10657,7 +10758,7 @@ async function generateResponseWithAI(query) {
       filteredResults = catResults.concat(otherResults).slice(0, 5);
     }
   }
-  filteredResults = filteredResults.slice(0, 8);
+  filteredResults = filteredResults.slice(0, 5);
   
   // Step 2: Build KB context
   let kbContext = '';
@@ -10668,7 +10769,7 @@ async function generateResponseWithAI(query) {
       const title = chunk.t || '未知标题';
       const file = chunk.f || '';
       const cat = chunk.c || '';
-      const text = (chunk.x || '').substring(0, 800);
+      const text = (chunk.x || '').substring(0, 500);
       kbContext += `\n【来源${i+1}】${cat} > ${file} - ${title}\n${text}\n`;
       sourceRefs.push({ title: title, file: file, category: cat });
     }
@@ -10694,38 +10795,13 @@ async function generateResponseWithAI(query) {
   const lastEl = chat.lastElementChild;
   if (lastEl) lastEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
   
-  // Step 4: Call Doubao API
-  const aiAnswer = await callDoubaoAPI(query, kbContext);
-  
-  // Step 5: Remove searching message and show result
+  // Step 4: 把"检索中"气泡替换为流式回答气泡，边生成边显示
   const searchingEl = document.getElementById('aiSearchingMsg');
   if (searchingEl) searchingEl.remove();
-  
-  if (aiAnswer) {
-    // Build source references HTML
-    let sourceHtml = '';
-    if (sourceRefs.length > 0) {
-      const uniqueRefs = [];
-      const seen = new Set();
-      for (const ref of sourceRefs) {
-        const key = ref.file;
-        if (!seen.has(key)) {
-          seen.add(key);
-          uniqueRefs.push(ref);
-        }
-      }
-      sourceHtml = `
-        <div style="margin-top:12px;padding-top:10px;border-top:1px solid #f0f0f0">
-          <span style="font-size:0.72rem;color:#999;font-weight:600">📚 知识库参考来源：</span>
-          <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px">
-            ${uniqueRefs.slice(0, 5).map(r => `<span style="font-size:0.7rem;padding:2px 8px;background:#f8f7f4;border-radius:4px;color:#666;border:1px solid #eee">${escapeHtml(r.file)}</span>`).join('')}
-          </div>
-        </div>
-      `;
-    }
-    
-    // Format AI answer - convert markdown-like formatting to HTML
-    let formattedAnswer = escapeHtml(aiAnswer)
+
+  // markdown-like 格式化
+  function formatMd(text) {
+    return escapeHtml(text)
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/\n### (.+)/g, '<h5 style="margin:10px 0 4px 0;color:var(--primary);font-size:0.88rem">$1</h5>')
       .replace(/\n## (.+)/g, '<h4 style="margin:12px 0 6px 0;color:var(--primary);font-size:0.92rem">$1</h4>')
@@ -10733,33 +10809,95 @@ async function generateResponseWithAI(query) {
       .replace(/\n\d+\. (.+)/g, '<div style="margin:2px 0 2px 12px;font-size:0.85rem">$1</div>')
       .replace(/\n\n/g, '<br><br>')
       .replace(/\n/g, '<br>');
-    
-    const msgHtml = `
-      <div class="chat-message system">
-        <div class="chat-avatar">AI</div>
-        <div>
-          <div class="chat-bubble">
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-              <span style="font-size:0.7rem;padding:2px 8px;background:linear-gradient(135deg,#c9a84c,#b08d3a);color:white;border-radius:4px;font-weight:600">🤖 AI增强回答</span>
-              <span style="font-size:0.68rem;color:#999">基于知识库 + 豆包大模型</span>
-            </div>
-            <div style="font-size:0.88rem;line-height:1.7;color:var(--text-primary)">${formattedAnswer}</div>
-            ${sourceHtml}
-          </div>
-          <div class="chat-time" style="display:flex;align-items:center">${time}<button class="fav-qa-btn" onclick="toggleQAFav(this)" data-q="${escapeHtml(query)}" data-a="${escapeHtml(aiAnswer.substring(0,200))}"><span>☆</span> 收藏</button></div>
+  }
+
+  // 参考来源 HTML
+  function buildSourceHtml() {
+    if (sourceRefs.length === 0) return '';
+    const uniqueRefs = [];
+    const seen = new Set();
+    for (const ref of sourceRefs) {
+      if (!seen.has(ref.file)) { seen.add(ref.file); uniqueRefs.push(ref); }
+    }
+    return `
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid #f0f0f0">
+        <span style="font-size:0.72rem;color:#999;font-weight:600">📚 知识库参考来源：</span>
+        <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px">
+          ${uniqueRefs.slice(0, 5).map(r => `<span style="font-size:0.7rem;padding:2px 8px;background:#f8f7f4;border-radius:4px;color:#666;border:1px solid #eee">${escapeHtml(r.file)}</span>`).join('')}
         </div>
       </div>
     `;
-    chat.insertAdjacentHTML('beforeend', msgHtml);
+  }
+
+  const bubbleId = 'aiStreamAnswer';
+  chat.insertAdjacentHTML('beforeend', `
+    <div class="chat-message system">
+      <div class="chat-avatar">AI</div>
+      <div>
+        <div class="chat-bubble">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+            <span style="font-size:0.7rem;padding:2px 8px;background:linear-gradient(135deg,#c9a84c,#b08d3a);color:white;border-radius:4px;font-weight:600">🤖 AI增强回答</span>
+            <span style="font-size:0.68rem;color:#999" id="aiStreamHint">基于知识库 + 豆包大模型 · 正在生成...</span>
+          </div>
+          <div id="${bubbleId}" style="font-size:0.88rem;line-height:1.7;color:var(--text-primary)"></div>
+        </div>
+        <div class="chat-time">${time}</div>
+      </div>
+    </div>
+  `);
+  const answerDiv = document.getElementById(bubbleId);
+  let renderPending = false;
+  let latestText = '';
+  let lastScroll = 0;
+  function scheduleRender() {
+    if (renderPending) return;
+    renderPending = true;
+    // 节流：约每80ms刷新一次，避免频繁DOM操作卡顿
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        renderPending = false;
+        if (!answerDiv) return;
+        answerDiv.innerHTML = formatMd(latestText) + '<span class="typing-indicator" style="display:inline-flex;margin-left:2px;vertical-align:middle"><span></span><span></span><span></span></span>';
+        const now = Date.now();
+        if (now - lastScroll > 300) {
+          lastScroll = now;
+          answerDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
+      }, 80);
+    });
+  }
+
+  // Step 5: 流式调用豆包API
+  const aiAnswer = await callDoubaoAPIStream(query, kbContext, (partial) => {
+    latestText = partial;
+    scheduleRender();
+  });
+
+  if (aiAnswer) {
+    // 最终渲染（去掉打字光标），追加来源和收藏按钮
+    const hint = document.getElementById('aiStreamHint');
+    if (hint) hint.textContent = '基于知识库 + 豆包大模型';
+    if (answerDiv) {
+      answerDiv.innerHTML = formatMd(aiAnswer) + buildSourceHtml();
+    }
+    // 追加收藏按钮到时间行
+    const timeRow = answerDiv ? answerDiv.closest('.chat-bubble').nextElementSibling : null;
+    if (timeRow) {
+      timeRow.style.display = 'flex';
+      timeRow.style.alignItems = 'center';
+      timeRow.insertAdjacentHTML('beforeend',
+        `<button class="fav-qa-btn" onclick="toggleQAFav(this)" data-q="${escapeHtml(query)}" data-a="${escapeHtml(aiAnswer.substring(0,200))}"><span>☆</span> 收藏</button>`);
+    }
   } else {
-    // API call failed, fall back to local search results
+    // API调用失败，移除流式气泡，回退到本地知识库检索结果
+    if (answerDiv) { const msg = answerDiv.closest('.chat-message'); if (msg) msg.remove(); }
     generateResponse(query);
     return;
   }
-  
+
   // Reset search mode
   if (mode !== 'normal') AppState.searchMode = 'normal';
-  
+
   // Scroll to bottom
   const allMsgs = chat.querySelectorAll('.chat-message');
   const lastMsg = allMsgs[allMsgs.length - 1];
