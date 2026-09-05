@@ -4475,32 +4475,46 @@ button:active:not(:disabled),
     ];
     const ts = Date.now();
 
-    function loadFile(fileObj) {
+    function loadFile(fileObj, maxRetries) {
+      maxRetries = maxRetries || 2;
       return new Promise((resolve, reject) => {
-        let settled = false;
-        const timeout = setTimeout(() => {
-          if (!settled) { settled = true; reject(new Error(fileObj.name + ' timeout(60s)')); }
-        }, 60000);
-        const s = document.createElement('script');
-        s.src = fileObj.name + '?v=' + ts;
-        s.onload = () => {
-          if (settled) return;
-          clearTimeout(timeout);
-          settled = true;
-          if (typeof window[fileObj.var] !== 'undefined') {
-            console.log('[KB] Loaded ' + fileObj.name + ', chunks: ' + window[fileObj.var].length);
-            resolve({file: fileObj.name, chunks: window[fileObj.var]});
-          } else {
-            reject(new Error(fileObj.var + ' not defined'));
+        let attempt = 0;
+        function tryLoad() {
+          attempt++;
+          let settled = false;
+          const timeout = setTimeout(() => {
+            if (!settled) { settled = true; retryOrReject(); }
+          }, 20000);
+          const s = document.createElement('script');
+          s.src = fileObj.name + '?v=' + ts + '&r=' + attempt;
+          s.onload = () => {
+            if (settled) return;
+            clearTimeout(timeout);
+            settled = true;
+            if (typeof window[fileObj.var] !== 'undefined') {
+              console.log('[KB] Loaded ' + fileObj.name + ' (attempt ' + attempt + '), chunks: ' + window[fileObj.var].length);
+              resolve({file: fileObj.name, chunks: window[fileObj.var]});
+            } else {
+              retryOrReject();
+            }
+          };
+          s.onerror = () => {
+            if (settled) return;
+            clearTimeout(timeout);
+            settled = true;
+            retryOrReject();
+          };
+          function retryOrReject() {
+            if (attempt < maxRetries) {
+              console.log('[KB] Retrying ' + fileObj.name + ' (attempt ' + attempt + '/' + maxRetries + ')');
+              setTimeout(tryLoad, 500);
+            } else {
+              reject(new Error(fileObj.name + ' failed after ' + maxRetries + ' attempts'));
+            }
           }
-        };
-        s.onerror = () => {
-          if (settled) return;
-          clearTimeout(timeout);
-          settled = true;
-          reject(new Error(fileObj.name + ' load failed'));
-        };
-        document.head.appendChild(s);
+          document.head.appendChild(s);
+        }
+        tryLoad();
       });
     }
 
