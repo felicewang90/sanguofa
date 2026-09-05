@@ -8905,18 +8905,50 @@ async function generateDynamicCase() {
   const query = input.value.trim();
   if (!query) { showToast('请输入案例方向'); return; }
   
-  // Wait for knowledge base to load
-  if (typeof _kbReady !== 'undefined') { try { await _kbReady; } catch(e) { console.warn('KB load error:', e); } }
+  // Show loading state immediately
+  const resultDiv = document.getElementById('dynamicCaseResult');
+  if (resultDiv) {
+    resultDiv.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary)"><div class="loading-spinner" style="display:inline-block;width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite"></div><p style="margin-top:8px">正在加载知识库并生成案例...</p></div>';
+  }
+  
+  // Wait for knowledge base to load with timeout
+  if (typeof _kbReady !== 'undefined') {
+    try {
+      await Promise.race([
+        _kbReady,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('知识库加载超时(15s)')), 15000))
+      ]);
+    } catch(e) {
+      console.warn('KB load error or timeout:', e);
+      // Continue anyway - BM25 will handle empty KB
+    }
+  }
+  
+  // Check if KB is available
+  if (!KB_CHUNKS || KB_CHUNKS.length === 0) {
+    if (resultDiv) {
+      resultDiv.innerHTML = `
+        <div style="padding:20px;text-align:center;color:var(--danger)">
+          <div style="font-size:2rem;margin-bottom:8px">⚠️</div>
+          <p>知识库加载失败，请刷新页面重试</p>
+          <button onclick="location.reload()" style="margin-top:12px;padding:8px 20px;background:var(--primary);color:white;border:none;border-radius:var(--radius-sm);cursor:pointer">🔄 刷新页面</button>
+        </div>`;
+    }
+    return;
+  }
   
   // Search KB_CHUNKS
   const results = BM25.search(query, 8);
   
   if (results.length === 0) {
-    document.getElementById('dynamicCaseResult').innerHTML = `
-      <div style="padding:20px;text-align:center;color:var(--warning)">
-        <div style="font-size:2rem;margin-bottom:8px">📭</div>
-        <p>当前知识库暂未覆盖该领域，请尝试其他关键词</p>
-      </div>`;
+    if (resultDiv) {
+      resultDiv.innerHTML = `
+        <div style="padding:20px;text-align:center;color:var(--warning)">
+          <div style="font-size:2rem;margin-bottom:8px">📭</div>
+          <p>当前知识库暂未覆盖该领域，请尝试其他关键词</p>
+          <div style="margin-top:8px;font-size:0.78rem;color:var(--text-tertiary)">可尝试：涉外婚姻、海洋法争端、投资仲裁、国际货物买卖</div>
+        </div>`;
+    }
     return;
   }
   
