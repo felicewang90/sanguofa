@@ -11526,7 +11526,26 @@ function exportChatHistory() {
   }
   
   setTimeout(function() {
-  var history = AppState.chatHistory || [];
+  // 优先从聊天界面 DOM 抓取消息（最可靠，覆盖所有渲染路径），兜底用 AppState.chatHistory
+  var history = [];
+  var qaChat = document.getElementById('qaChat');
+  if (qaChat) {
+    var msgEls = qaChat.querySelectorAll('.chat-message');
+    msgEls.forEach(function(el) {
+      var bubble = el.querySelector('.chat-bubble');
+      var timeEl = el.querySelector('.chat-time');
+      if (!bubble) return;
+      var isUser = el.classList.contains('user');
+      // 用 innerText 取可读文本，去掉收藏按钮等无关内容
+      var content = bubble.innerText || bubble.textContent || '';
+      content = content.replace(/\n{3,}/g, '\n\n').trim();
+      var time = timeEl ? (timeEl.innerText || timeEl.textContent || '').replace(/[☆⭐]\s*收藏/g, '').trim() : '';
+      if (content) history.push({ role: isUser ? 'user' : 'system', content: content, time: time });
+    });
+  }
+  if (history.length === 0 && AppState.chatHistory && AppState.chatHistory.length > 0) {
+    history = AppState.chatHistory;
+  }
   if (history.length === 0) {
     if (btn) { btn.innerHTML = origText; btn.disabled = false; btn.style.opacity = '1'; }
     alert('暂无对话记录可导出！');
