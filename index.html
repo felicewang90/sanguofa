@@ -4455,9 +4455,20 @@ button:active:not(:disabled),
       return Promise.resolve();
     }
     return new Promise((resolve, reject) => {
+      let settled = false;
+      const timeoutId = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          reject(new Error('知识库加载超时(15s)，请刷新页面重试'));
+        }
+      }, 15000);
+
       const s = document.createElement('script');
-      s.src = 'kb-data-raw.js';
+      s.src = 'kb-data-raw.js?v=' + Date.now();
       s.onload = () => {
+        if (settled) return;
+        clearTimeout(timeoutId);
+        settled = true;
         if (typeof KB_CHUNKS_RAW !== 'undefined') {
           KB_CHUNKS = KB_CHUNKS_RAW;
           console.log("[KB] Loaded kb-data-raw.js, chunks:", KB_CHUNKS.length);
@@ -4466,12 +4477,27 @@ button:active:not(:disabled),
           reject(new Error('KB_CHUNKS_RAW not defined after load'));
         }
       };
-      s.onerror = () => reject(new Error('kb-data-raw.js load failed'));
+      s.onerror = () => {
+        if (settled) return;
+        clearTimeout(timeoutId);
+        settled = true;
+        reject(new Error('kb-data-raw.js load failed'));
+      };
       document.head.appendChild(s);
     });
   }
   const _kbReady = loadKBData();
-  _kbReady.catch(e => console.error("KB init failed:", e));
+  _kbReady.then(() => {
+    console.log("知识库加载成功，共", KB_CHUNKS ? KB_CHUNKS.length : 'pending', "个知识块");
+  }).catch(e => {
+    console.error("KB init failed:", e);
+    const banner = document.createElement('div');
+    banner.id = 'kb-error-banner';
+    banner.style.cssText = 'position:fixed;top:64px;left:0;right:0;z-index:9999;background:#dc3545;color:white;text-align:center;padding:10px;font-size:0.85rem;cursor:pointer';
+    banner.innerHTML = '⚠️ 知识库加载失败，智能问答/案例生成/法律检索功能不可用。<b>点击刷新页面重试</b>';
+    banner.onclick = () => location.reload();
+    document.body.appendChild(banner);
+  });
   console.log("知识库加载成功，共", KB_CHUNKS ? KB_CHUNKS.length : 'pending', "个知识块");
 
 
@@ -7722,6 +7748,9 @@ async function callDoubaoAPI(userQuestion, kbContext) {
 ${kbContext}
 ---`;
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+
   try {
     const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
       method: 'POST',
@@ -7737,9 +7766,11 @@ ${kbContext}
         ],
         temperature: 0.3,
         max_tokens: 2000
-      })
+      }),
+      signal: controller.signal
     });
-    
+    clearTimeout(timeoutId);
+
     if (response.ok) {
       const data = await response.json();
       return data.choices[0].message.content;
@@ -7748,7 +7779,12 @@ ${kbContext}
       return null;
     }
   } catch (e) {
-    console.warn('豆包API调用异常:', e);
+    clearTimeout(timeoutId);
+    if (e.name === 'AbortError') {
+      console.warn('豆包API调用超时(30s)');
+    } else {
+      console.warn('豆包API调用异常:', e);
+    }
     return null;
   }
 }
