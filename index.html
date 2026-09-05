@@ -4446,46 +4446,121 @@ button:active:not(:disabled),
   
   <script>
 
-  // Knowledge base: raw JSON, no compression/decompression needed
+  // Knowledge base: split into 6 files, loaded in parallel
   let KB_CHUNKS = null;
   function loadKBData() {
+    // Backwards compat: if single file already loaded
     if (typeof KB_CHUNKS_RAW !== 'undefined' && KB_CHUNKS_RAW) {
       KB_CHUNKS = KB_CHUNKS_RAW;
       console.log("[KB] Direct load from KB_CHUNKS_RAW, chunks:", KB_CHUNKS.length);
       return Promise.resolve();
     }
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const timeoutId = setTimeout(() => {
-        if (!settled) {
-          settled = true;
-          reject(new Error('知识库加载超时(15s)，请刷新页面重试'));
-        }
-      }, 15000);
+    // Check if split files are already loaded
+    const splitVars = ['KB_CHUNKS_PUB1','KB_CHUNKS_PUB2','KB_CHUNKS_PRIV','KB_CHUNKS_ECON1','KB_CHUNKS_ECON2','KB_CHUNKS_POLITICS'];
+    const alreadyLoaded = splitVars.filter(v => typeof window[v] !== 'undefined' && window[v]);
+    if (alreadyLoaded.length === splitVars.length) {
+      KB_CHUNKS = [];
+      splitVars.forEach(v => { KB_CHUNKS = KB_CHUNKS.concat(window[v]); });
+      console.log("[KB] All split files already loaded, chunks:", KB_CHUNKS.length);
+      return Promise.resolve();
+    }
 
-      const s = document.createElement('script');
-      s.src = 'kb-data-raw.js?v=' + Date.now();
-      s.onload = () => {
-        if (settled) return;
-        clearTimeout(timeoutId);
-        settled = true;
-        if (typeof KB_CHUNKS_RAW !== 'undefined') {
-          KB_CHUNKS = KB_CHUNKS_RAW;
-          console.log("[KB] Loaded kb-data-raw.js, chunks:", KB_CHUNKS.length);
-          resolve();
-        } else {
-          reject(new Error('KB_CHUNKS_RAW not defined after load'));
-        }
-      };
-      s.onerror = () => {
-        if (settled) return;
-        clearTimeout(timeoutId);
-        settled = true;
-        reject(new Error('kb-data-raw.js load failed'));
-      };
-      document.head.appendChild(s);
+    const files = [
+      {name: 'kb-pub1.js', var: 'KB_CHUNKS_PUB1'},
+      {name: 'kb-pub2.js', var: 'KB_CHUNKS_PUB2'},
+      {name: 'kb-priv.js', var: 'KB_CHUNKS_PRIV'},
+      {name: 'kb-econ1.js', var: 'KB_CHUNKS_ECON1'},
+      {name: 'kb-econ2.js', var: 'KB_CHUNKS_ECON2'},
+      {name: 'kb-politics.js', var: 'KB_CHUNKS_POLITICS'}
+    ];
+    const ts = Date.now();
+
+    function loadFile(fileObj) {
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        const timeout = setTimeout(() => {
+          if (!settled) { settled = true; reject(new Error(fileObj.name + ' timeout(60s)')); }
+        }, 60000);
+        const s = document.createElement('script');
+        s.src = fileObj.name + '?v=' + ts;
+        s.onload = () => {
+          if (settled) return;
+          clearTimeout(timeout);
+          settled = true;
+          if (typeof window[fileObj.var] !== 'undefined') {
+            console.log('[KB] Loaded ' + fileObj.name + ', chunks: ' + window[fileObj.var].length);
+            resolve({file: fileObj.name, chunks: window[fileObj.var]});
+          } else {
+            reject(new Error(fileObj.var + ' not defined'));
+          }
+        };
+        s.onerror = () => {
+          if (settled) return;
+          clearTimeout(timeout);
+          settled = true;
+          reject(new Error(fileObj.name + ' load failed'));
+        };
+        document.head.appendChild(s);
+      });
+    }
+
+    return Promise.allSettled(files.map(loadFile)).then(results => {
+      const success = [];
+      const failed = [];
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled') success.push(r.value);
+        else failed.push(files[i].name);
+      });
+
+      if (success.length === 0) {
+        // All failed - try fallback to original single file
+        console.warn('[KB] All split files failed, trying kb-data-raw.js fallback...');
+        return new Promise((resolve, reject) => {
+          let settled = false;
+          const timeout = setTimeout(() => {
+            if (!settled) { settled = true; reject(new Error('kb-data-raw.js fallback timeout(60s)')); }
+          }, 60000);
+          const s = document.createElement('script');
+          s.src = 'kb-data-raw.js?v=' + Date.now();
+          s.onload = () => {
+            if (settled) return;
+            clearTimeout(timeout); settled = true;
+            if (typeof KB_CHUNKS_RAW !== 'undefined') {
+              KB_CHUNKS = KB_CHUNKS_RAW;
+              console.log('[KB] Fallback loaded, chunks:', KB_CHUNKS.length);
+              resolve();
+            } else { reject(new Error('Fallback: KB_CHUNKS_RAW not defined')); }
+          };
+          s.onerror = () => {
+            if (settled) return;
+            clearTimeout(timeout); settled = true;
+            reject(new Error('kb-data-raw.js fallback failed'));
+          };
+          document.head.appendChild(s);
+        });
+      }
+
+      // Merge successful chunks
+      KB_CHUNKS = [];
+      success.forEach(s => { KB_CHUNKS = KB_CHUNKS.concat(s.chunks); });
+      console.log('[KB] Loaded ' + success.length + '/' + files.length + ' files, ' + KB_CHUNKS.length + ' chunks');
+
+      if (failed.length > 0) {
+        // Partial success - show warning
+        const catNames = {'kb-pub1.js':'国际公法(上)', 'kb-pub2.js':'国际公法(下)', 'kb-priv.js':'国际私法', 'kb-econ1.js':'国际经济法(上)', 'kb-econ2.js':'国际经济法(下)', 'kb-politics.js':'涉外法治思政'};
+        const failedNames = failed.map(f => catNames[f] || f).join('、');
+        setTimeout(() => {
+          const banner = document.createElement('div');
+          banner.id = 'kb-partial-banner';
+          banner.style.cssText = 'position:fixed;top:64px;left:0;right:0;z-index:9999;background:#f0ad4e;color:white;text-align:center;padding:10px;font-size:0.85rem;cursor:pointer';
+          banner.innerHTML = '⚠️ 部分知识库未加载：<b>' + failedNames + '</b>，其他功能正常。<b>点击刷新重试</b>';
+          banner.onclick = () => location.reload();
+          document.body.appendChild(banner);
+        }, 100);
+      }
     });
   }
+
   const _kbReady = loadKBData();
   _kbReady.then(() => {
     console.log("知识库加载成功，共", KB_CHUNKS ? KB_CHUNKS.length : 'pending', "个知识块");
@@ -4498,7 +4573,6 @@ button:active:not(:disabled),
     banner.onclick = () => location.reload();
     document.body.appendChild(banner);
   });
-  console.log("知识库加载成功，共", KB_CHUNKS ? KB_CHUNKS.length : 'pending', "个知识块");
 
 
 // ========================================
