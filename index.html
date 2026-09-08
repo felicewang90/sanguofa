@@ -7747,14 +7747,20 @@ const FIXED_CASES = [
 const DoubaoConfig = {
   getApiKey() { return localStorage.getItem('doubao_api_key') || ''; },
   getEndpoint() { return localStorage.getItem('doubao_endpoint_id') || ''; },
-  isEnabled() { return !!(this.getApiKey() && this.getEndpoint()); },
+  isConfigured() { return !!(this.getApiKey() && this.getEndpoint()); },
+  // isEnabled = 已保存配置 且 未被手动断开
+  isEnabled() { return this.isConfigured() && localStorage.getItem('doubao_disabled') !== '1'; },
   save(apiKey, endpoint) {
     localStorage.setItem('doubao_api_key', apiKey);
     localStorage.setItem('doubao_endpoint_id', endpoint);
+    localStorage.removeItem('doubao_disabled'); // 保存即视为启用
   },
+  disable() { localStorage.setItem('doubao_disabled', '1'); },   // 断开但保留Key
+  enable() { localStorage.removeItem('doubao_disabled'); },        // 一键重连
   clear() {
     localStorage.removeItem('doubao_api_key');
     localStorage.removeItem('doubao_endpoint_id');
+    localStorage.removeItem('doubao_disabled');
   }
 };
 
@@ -7764,31 +7770,64 @@ function showDoubaoSettings() {
   document.getElementById('doubaoApiKeyInput').value = DoubaoConfig.getApiKey();
   document.getElementById('doubaoEndpointInput').value = DoubaoConfig.getEndpoint();
   document.getElementById('doubaoTestResult').style.display = 'none';
-  const clearBtn = document.getElementById('clearDoubaoBtn');
-  if (clearBtn) clearBtn.style.display = DoubaoConfig.isEnabled() ? 'inline-block' : 'none';
+  updateDoubaoToggleBtn();
 }
 
-function clearDoubaoSettings() {
-  DoubaoConfig.clear();
-  document.getElementById('doubaoApiKeyInput').value = '';
-  document.getElementById('doubaoEndpointInput').value = '';
-  const clearBtn = document.getElementById('clearDoubaoBtn');
-  if (clearBtn) clearBtn.style.display = 'none';
+// 根据当前状态刷新"断开/重连"按钮
+function updateDoubaoToggleBtn() {
+  const btn = document.getElementById('doubaoToggleBtn');
+  if (!btn) return;
+  if (!DoubaoConfig.isConfigured()) { btn.style.display = 'none'; return; }
+  btn.style.display = 'inline-block';
+  if (DoubaoConfig.isEnabled()) {
+    btn.textContent = '⏸ 断开AI增强（Key已保存，可一键恢复）';
+    btn.style.cssText = 'padding:8px 16px;border:1px solid #ff7875;background:white;color:#ff4d4f;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:auto';
+    btn.onmouseover = function() { this.style.background = '#fff1f0'; };
+    btn.onmouseout = function() { this.style.background = 'white'; };
+    btn.onclick = disconnectDoubao;
+  } else {
+    btn.textContent = '▶ 重新连接AI增强';
+    btn.style.cssText = 'padding:8px 16px;border:none;background:linear-gradient(135deg,#52c41a,#389e0d);color:white;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:auto';
+    btn.onmouseover = function() { this.style.opacity = '0.9'; };
+    btn.onmouseout = function() { this.style.opacity = '1'; };
+    btn.onclick = reconnectDoubao;
+  }
+}
+
+function _doubaoChatNotice(text, color, bg) {
+  const chat = document.getElementById('qaChat');
+  if (!chat) return;
+  const notif = document.createElement('div');
+  notif.style.cssText = 'text-align:center;padding:8px;font-size:0.78rem;color:' + color + ';background:' + bg + ';border-radius:8px;margin:8px 16px';
+  notif.textContent = text;
+  chat.appendChild(notif);
+  setTimeout(() => notif.remove(), 4500);
+}
+
+function disconnectDoubao() {
+  DoubaoConfig.disable();
   updateDoubaoStatusIcon();
+  updateDoubaoToggleBtn();
+  const resultDiv = document.getElementById('doubaoTestResult');
+  if (resultDiv) {
+    resultDiv.style.display = 'block';
+    resultDiv.style.color = '#b08d3a';
+    resultDiv.textContent = '⏸ 已断开AI增强，切换为纯知识库检索（本地秒回）。Key和接入点ID已保存在本浏览器，点「重新连接」即可恢复，无需重填。';
+  }
+  _doubaoChatNotice('⚡ 已切换为纯知识库检索模式，回答本地即时生成', '#b08d3a', '#faf7ee');
+}
+
+function reconnectDoubao() {
+  DoubaoConfig.enable();
+  updateDoubaoStatusIcon();
+  updateDoubaoToggleBtn();
   const resultDiv = document.getElementById('doubaoTestResult');
   if (resultDiv) {
     resultDiv.style.display = 'block';
     resultDiv.style.color = '#52c41a';
-    resultDiv.textContent = '✅ 已断开AI增强，智能问答已切换为纯知识库检索模式（本地秒回）';
+    resultDiv.textContent = '✅ AI增强已重新连接，后续回答将由豆包大模型结合知识库生成';
   }
-  const chat = document.getElementById('qaChat');
-  if (chat) {
-    const notif = document.createElement('div');
-    notif.style.cssText = 'text-align:center;padding:8px;font-size:0.78rem;color:#b08d3a;background:#faf7ee;border-radius:8px;margin:8px 16px';
-    notif.textContent = '⚡ 已切换为纯知识库检索模式，回答本地即时生成';
-    chat.appendChild(notif);
-    setTimeout(() => notif.remove(), 4000);
-  }
+  _doubaoChatNotice('🤖 AI增强已恢复', '#52c41a', '#f6ffed');
 }
 
 function closeDoubaoSettings() {
@@ -7804,6 +7843,7 @@ function saveDoubaoSettings() {
   }
   DoubaoConfig.save(apiKey, endpoint);
   updateDoubaoStatusIcon();
+  updateDoubaoToggleBtn();
   closeDoubaoSettings();
   // Show brief success notification
   const chat = document.getElementById('qaChat');
@@ -13968,13 +14008,12 @@ function renderDebateStudentRecords(container) {
     
     <div style="margin-bottom:20px;padding:12px;background:#f8f7f4;border-radius:8px;border:1px solid #eee">
       <p style="font-size:0.75rem;color:#666;margin:0;line-height:1.6">
-        💡 <strong>工作原理：</strong>系统先从知识库检索相关内容，再将检索结果作为上下文发送给豆包AI，生成更准确、更有条理的回答。未配置时仍可使用纯知识库检索。
+        💡 <strong>工作原理：</strong>系统先从知识库检索相关内容，再将检索结果作为上下文发送给豆包AI，生成更准确、更有条理的回答。<strong>断开AI增强不会删除已保存的Key</strong>，可随时一键重连；未配置或断开时使用纯知识库检索（本地秒回）。
       </p>
     </div>
     
     <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;flex-wrap:wrap">
-      <button onclick="clearDoubaoSettings()" id="clearDoubaoBtn" style="display:none;padding:8px 16px;border:1px solid #ff7875;background:white;color:#ff4d4f;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:auto"
-        onmouseover="this.style.background='#fff1f0'" onmouseout="this.style.background='white'">🗑 清除配置（断开AI）</button>
+      <button id="doubaoToggleBtn" style="display:none;padding:8px 16px;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:auto"></button>
       <button onclick="testDoubaoConnection()" id="testDoubaoBtn" style="padding:8px 16px;border:1px solid #c9a84c;background:white;color:#c9a84c;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;transition:all 0.2s">测试连接</button>
       <button onclick="saveDoubaoSettings()" style="padding:8px 20px;border:none;background:linear-gradient(135deg,#c9a84c,#b08d3a);color:white;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;transition:all 0.2s">保存配置</button>
     </div>
