@@ -4447,6 +4447,7 @@ button:active:not(:disabled),
   <script>
 
   // Knowledge base: split into 6 files, loaded in parallel
+  var KB_VERSION = '20260908a'; // 固定版本：URL稳定可被浏览器强缓存；更新知识库后改此号
   let KB_CHUNKS = null;
   function loadKBData() {
     // Backwards compat: if single file already loaded
@@ -4473,7 +4474,6 @@ button:active:not(:disabled),
       {name: 'kb-econ2.js', var: 'KB_CHUNKS_ECON2'},
       {name: 'kb-politics.js', var: 'KB_CHUNKS_POLITICS'}
     ];
-    const ts = Date.now();
 
     function loadFile(fileObj, maxRetries) {
       maxRetries = maxRetries || 2;
@@ -4484,9 +4484,9 @@ button:active:not(:disabled),
           let settled = false;
           const timeout = setTimeout(() => {
             if (!settled) { settled = true; retryOrReject(); }
-          }, 20000);
+          }, 45000);
           const s = document.createElement('script');
-          s.src = fileObj.name + '?v=' + ts + '&r=' + attempt;
+          s.src = fileObj.name + '?v=' + KB_VERSION + '&r=' + attempt;
           s.onload = () => {
             if (settled) return;
             clearTimeout(timeout);
@@ -4526,61 +4526,59 @@ button:active:not(:disabled),
         else failed.push(files[i].name);
       });
 
-      if (success.length === 0) {
-        // All failed - try fallback to original single file
-        console.warn('[KB] All split files failed, trying kb-data-raw.js fallback...');
-        return new Promise((resolve, reject) => {
-          let settled = false;
-          const timeout = setTimeout(() => {
-            if (!settled) { settled = true; reject(new Error('kb-data-raw.js fallback timeout(60s)')); }
-          }, 60000);
-          const s = document.createElement('script');
-          s.src = 'kb-data-raw.js?v=' + Date.now();
-          s.onload = () => {
-            if (settled) return;
-            clearTimeout(timeout); settled = true;
-            if (typeof KB_CHUNKS_RAW !== 'undefined') {
-              KB_CHUNKS = KB_CHUNKS_RAW;
-              console.log('[KB] Fallback loaded, chunks:', KB_CHUNKS.length);
-              resolve();
-            } else { reject(new Error('Fallback: KB_CHUNKS_RAW not defined')); }
-          };
-          s.onerror = () => {
-            if (settled) return;
-            clearTimeout(timeout); settled = true;
-            reject(new Error('kb-data-raw.js fallback failed'));
-          };
-          document.head.appendChild(s);
+      // 全量备份加载器（带3次重试，30s超时），成功resolve(true)
+      function _loadRawFallback() {
+        return new Promise((resolve) => {
+          let attempt = 0;
+          function tryLoad() {
+            attempt++;
+            let done = false;
+            const timer = setTimeout(() => { if (!done) { done = true; retry(); } }, 30000);
+            const s = document.createElement('script');
+            s.src = 'kb-data-raw.js?v=' + KB_VERSION + '&r=' + attempt;
+            s.onload = () => {
+              if (done) return;
+              clearTimeout(timer); done = true;
+              if (typeof KB_CHUNKS_RAW !== 'undefined' && Array.isArray(KB_CHUNKS_RAW) && KB_CHUNKS_RAW.length > 0) {
+                resolve(true);
+              } else { retry(); }
+            };
+            s.onerror = () => { if (!done) { clearTimeout(timer); done = true; retry(); } };
+            function retry() {
+              if (attempt < 3) { console.warn('[KB] 全量备份第' + attempt + '次失败，重试...'); setTimeout(tryLoad, 800); }
+              else { console.error('[KB] 全量备份3次均失败'); resolve(false); }
+            }
+            document.head.appendChild(s);
+          }
+          tryLoad();
         });
       }
 
-      // Merge successful chunks
+      if (success.length === 0) {
+        // 全部分片失败 → 必须等到全量兜底就绪
+        console.warn('[KB] All split files failed, trying kb-data-raw.js fallback...');
+        return _loadRawFallback().then(ok => {
+          if (ok) { KB_CHUNKS = KB_CHUNKS_RAW; console.log('[KB] Fallback loaded, chunks:', KB_CHUNKS.length); }
+          else { KB_CHUNKS = []; throw new Error('All KB files failed (split + fallback)'); }
+        });
+      }
+
+      // 先合并已成功的分片，保证尽快可用
       KB_CHUNKS = [];
       success.forEach(s => { KB_CHUNKS = KB_CHUNKS.concat(s.chunks); });
-      console.log('[KB] Loaded ' + success.length + '/' + files.length + ' files, ' + KB_CHUNKS.length + ' chunks');
+      console.log('[KB] Loaded ' + success.length + '/' + files.length + ' split files, ' + KB_CHUNKS.length + ' chunks');
 
       if (failed.length > 0) {
-        // Partial success - 静默降级：尝试从全量备份文件补充缺失分类，不再弹窗打扰用户
-        const catMap = {'kb-pub1.js':'国际公法', 'kb-pub2.js':'国际公法', 'kb-priv.js':'国际私法', 'kb-econ1.js':'国际经济法', 'kb-econ2.js':'国际经济法', 'kb-politics.js':'涉外法治思政'};
-        const missingCats = failed.map(f => catMap[f]).filter(Boolean);
-        console.warn('[KB] 部分分片加载失败，尝试全量备份补充:', failed.join(','));
-        try {
-          const s = document.createElement('script');
-          s.src = 'kb-data-raw.js?v=' + Date.now();
-          s.onload = () => {
-            if (typeof KB_CHUNKS_RAW !== 'undefined' && Array.isArray(KB_CHUNKS_RAW)) {
-              const have = new Set(KB_CHUNKS.map(c => (c.t||'') + '|' + (c.x||'').substring(0, 80)));
-              let added = 0;
-              KB_CHUNKS_RAW.forEach(c => {
-                if (missingCats.indexOf(c.c) >= 0 && !have.has((c.t||'') + '|' + (c.x||'').substring(0, 80))) {
-                  KB_CHUNKS.push(c); added++;
-                }
-              });
-              console.log('[KB] 全量备份补充完成，新增', added, '个知识块');
-            }
-          };
-          document.head.appendChild(s);
-        } catch(e) { console.warn('[KB] 全量备份补充失败:', e); }
+        // 部分分片失败 → 同步等待全量备份补齐（全量与分片内容一致，直接覆盖最稳妥）
+        console.warn('[KB] 部分分片加载失败(' + failed.join(',') + ')，等待全量备份补齐...');
+        return _loadRawFallback().then(ok => {
+          if (ok) {
+            KB_CHUNKS = KB_CHUNKS_RAW;
+            console.log('[KB] 全量备份补齐完成，chunks:', KB_CHUNKS.length);
+          } else {
+            console.warn('[KB] 全量备份失败，暂用已加载的', KB_CHUNKS.length, '个知识块');
+          }
+        });
       }
     });
   }
@@ -8510,7 +8508,7 @@ async function searchKBInSim() {
   if (!query) return;
   
   // Wait for knowledge base to load
-  if (typeof _kbReady !== 'undefined') { try { await _kbWait(10000); } catch(e) { console.warn('KB load timeout:', e); } }
+  if (typeof _kbReady !== 'undefined') { try { await _kbWait(45000); } catch(e) { console.warn('KB load timeout:', e); } }
   
   const results = BM25.search(query, 5);
   const resultsDiv = document.getElementById('simKbResults');
@@ -9029,7 +9027,7 @@ async function doStageSearch() {
   if (!query) { results.innerHTML = '<p style="color:var(--text-secondary);font-size:0.82rem">请输入检索关键词</p>'; return; }
   
   // Wait for knowledge base to load
-  if (typeof _kbReady !== 'undefined') { try { await _kbWait(10000); } catch(e) { console.warn('KB load timeout:', e); } }
+  if (typeof _kbReady !== 'undefined') { try { await _kbWait(45000); } catch(e) { console.warn('KB load timeout:', e); } }
   
   const searchResults = BM25.search(query, 5);
   if (searchResults.length === 0) {
@@ -10898,7 +10896,7 @@ async function generateResponseWithAI(query) {
   const time = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
   
   // Wait for knowledge base to load
-  if (typeof _kbReady !== 'undefined') { try { await _kbWait(10000); } catch(e) { console.warn('KB load timeout:', e); } }
+  if (typeof _kbReady !== 'undefined') { try { await _kbWait(45000); } catch(e) { console.warn('KB load timeout:', e); } }
   
   // Step 1: Do local BM25 search first
   let effectiveQuery = query;
@@ -11134,7 +11132,7 @@ async function generateResponseWithAI(query) {
 
 async function generateResponse(query) {
   // Wait for knowledge base to load
-  if (typeof _kbReady !== 'undefined') { try { await _kbWait(10000); } catch(e) { console.warn('KB load timeout:', e); } }
+  if (typeof _kbReady !== 'undefined') { try { await _kbWait(45000); } catch(e) { console.warn('KB load timeout:', e); } }
   
   // === 功能5: 搜索模式处理 ===
   let effectiveQuery = query;
@@ -11238,15 +11236,21 @@ async function generateResponse(query) {
   filteredResults = filteredResults.slice(0, 5);
 
   if (filteredResults.length === 0) {
-    const responseData = {
+    const kbReady = (typeof KB_CHUNKS !== 'undefined' && KB_CHUNKS && KB_CHUNKS.length > 50);
+    const responseData = kbReady ? {
       title: '🔍 未找到匹配结果',
       content: '未在知识库中检索到与您查询直接相关的内容。您可以尝试：',
       lawArticle: '• 使用更简短的核心关键词进行检索\n• 尝试不同的表述方式\n• 从左侧分类导航中浏览相关章节',
       relatedLinks: [],
       stance: ''
+    } : {
+      title: '⏳ 知识库仍在加载中',
+      content: '知识数据包较大、网络较慢时首次加载需要一些时间。请稍候 10-30 秒后重新发送同一问题；若长时间如此请刷新页面。',
+      lawArticle: '• 请稍等片刻后再次发送该问题\n• 或刷新页面（Ctrl+F5 / 手机端重新打开）\n• 加载完成后所有法条、判例、章节均可正常检索',
+      relatedLinks: [],
+      stance: ''
     };
     addQAResponse(responseData);
-    // 重置搜索模式
     if (mode !== 'normal') AppState.searchMode = 'normal';
     return;
   }
