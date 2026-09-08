@@ -4560,17 +4560,27 @@ button:active:not(:disabled),
       console.log('[KB] Loaded ' + success.length + '/' + files.length + ' files, ' + KB_CHUNKS.length + ' chunks');
 
       if (failed.length > 0) {
-        // Partial success - show warning
-        const catNames = {'kb-pub1.js':'国际公法(上)', 'kb-pub2.js':'国际公法(下)', 'kb-priv.js':'国际私法', 'kb-econ1.js':'国际经济法(上)', 'kb-econ2.js':'国际经济法(下)', 'kb-politics.js':'涉外法治思政'};
-        const failedNames = failed.map(f => catNames[f] || f).join('、');
-        setTimeout(() => {
-          const banner = document.createElement('div');
-          banner.id = 'kb-partial-banner';
-          banner.style.cssText = 'position:fixed;top:64px;left:0;right:0;z-index:9999;background:#f0ad4e;color:white;text-align:center;padding:10px;font-size:0.85rem;cursor:pointer';
-          banner.innerHTML = '⚠️ 部分知识库未加载：<b>' + failedNames + '</b>，其他功能正常。<b>点击刷新重试</b>';
-          banner.onclick = () => location.reload();
-          document.body.appendChild(banner);
-        }, 100);
+        // Partial success - 静默降级：尝试从全量备份文件补充缺失分类，不再弹窗打扰用户
+        const catMap = {'kb-pub1.js':'国际公法', 'kb-pub2.js':'国际公法', 'kb-priv.js':'国际私法', 'kb-econ1.js':'国际经济法', 'kb-econ2.js':'国际经济法', 'kb-politics.js':'涉外法治思政'};
+        const missingCats = failed.map(f => catMap[f]).filter(Boolean);
+        console.warn('[KB] 部分分片加载失败，尝试全量备份补充:', failed.join(','));
+        try {
+          const s = document.createElement('script');
+          s.src = 'kb-data-raw.js?v=' + Date.now();
+          s.onload = () => {
+            if (typeof KB_CHUNKS_RAW !== 'undefined' && Array.isArray(KB_CHUNKS_RAW)) {
+              const have = new Set(KB_CHUNKS.map(c => (c.t||'') + '|' + (c.x||'').substring(0, 80)));
+              let added = 0;
+              KB_CHUNKS_RAW.forEach(c => {
+                if (missingCats.indexOf(c.c) >= 0 && !have.has((c.t||'') + '|' + (c.x||'').substring(0, 80))) {
+                  KB_CHUNKS.push(c); added++;
+                }
+              });
+              console.log('[KB] 全量备份补充完成，新增', added, '个知识块');
+            }
+          };
+          document.head.appendChild(s);
+        } catch(e) { console.warn('[KB] 全量备份补充失败:', e); }
       }
     });
   }
@@ -10873,7 +10883,7 @@ async function generateResponseWithAI(query) {
   
   // Step 3: Show initial "searching" message
   const searchingHtml = `
-    <div class="chat-message system" id="aiSearchingMsg">
+    <div class="chat-message system" id="aiSearchingMsg${Date.now()}">
       <div class="chat-avatar">AI</div>
       <div>
         <div class="chat-bubble">
@@ -10886,11 +10896,10 @@ async function generateResponseWithAI(query) {
     </div>
   `;
   chat.insertAdjacentHTML('beforeend', searchingHtml);
-  const lastEl = chat.lastElementChild;
-  if (lastEl) lastEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const searchingEl = chat.lastElementChild;
+  if (searchingEl) searchingEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
   
   // Step 4: 把"检索中"气泡替换为流式回答气泡，边生成边显示
-  const searchingEl = document.getElementById('aiSearchingMsg');
   if (searchingEl) searchingEl.remove();
 
   // markdown-like 格式化
@@ -10923,7 +10932,9 @@ async function generateResponseWithAI(query) {
     `;
   }
 
-  const bubbleId = 'aiStreamAnswer';
+  const streamSeq = Date.now();
+  const bubbleId = 'aiStreamAnswer' + streamSeq;
+  const hintId = 'aiStreamHint' + streamSeq;
   chat.insertAdjacentHTML('beforeend', `
     <div class="chat-message system">
       <div class="chat-avatar">AI</div>
@@ -10931,7 +10942,7 @@ async function generateResponseWithAI(query) {
         <div class="chat-bubble">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
             <span style="font-size:0.7rem;padding:2px 8px;background:linear-gradient(135deg,#c9a84c,#b08d3a);color:white;border-radius:4px;font-weight:600">🤖 AI增强回答</span>
-            <span style="font-size:0.68rem;color:#999" id="aiStreamHint">基于知识库 + 豆包大模型 · 正在生成...</span>
+            <span style="font-size:0.68rem;color:#999" id="${hintId}">基于知识库 + 豆包大模型 · 正在生成...</span>
           </div>
           <div id="${bubbleId}" style="font-size:0.88rem;line-height:1.7;color:var(--text-primary)"></div>
         </div>
@@ -10943,6 +10954,7 @@ async function generateResponseWithAI(query) {
   let renderPending = false;
   let latestText = '';
   let lastScroll = 0;
+  let streamFinished = false;
   function scheduleRender() {
     if (renderPending) return;
     renderPending = true;
@@ -10950,7 +10962,7 @@ async function generateResponseWithAI(query) {
     requestAnimationFrame(() => {
       setTimeout(() => {
         renderPending = false;
-        if (!answerDiv) return;
+        if (!answerDiv || streamFinished) return;
         answerDiv.innerHTML = formatMd(latestText) + '<span class="typing-indicator" style="display:inline-flex;margin-left:2px;vertical-align:middle"><span></span><span></span><span></span></span>';
         const now = Date.now();
         if (now - lastScroll > 300) {
@@ -10968,11 +10980,53 @@ async function generateResponseWithAI(query) {
   });
 
   if (aiAnswer) {
+    // 流结束：置标志，防止排队中的节流渲染把"跳动圆点"写回来
+    streamFinished = true;
     // 最终渲染（去掉打字光标），追加来源和收藏按钮
-    const hint = document.getElementById('aiStreamHint');
+    const hint = document.getElementById(hintId);
     if (hint) hint.textContent = '基于知识库 + 豆包大模型';
+
+    // 从原始回答文本中提取"追问建议"（在formatMd转义前提取，保证可靠）
+    let answerBody = aiAnswer;
+    const followUpSuggestions = [];
+    const fuMatch = aiAnswer.match(/🔍[\s\S]*?追问建议[：:]([\s\S]*)$/);
+    if (fuMatch) {
+      answerBody = aiAnswer.substring(0, fuMatch.index);
+      fuMatch[1].split('\n').forEach(function(line) {
+        const m = line.match(/^\s*[-•·*]\s*(.+?)\s*$/);
+        if (m && m[1].length >= 6 && m[1].length <= 80) followUpSuggestions.push(m[1].replace(/\*\*/g, '').trim());
+      });
+    }
+
     if (answerDiv) {
-      answerDiv.innerHTML = formatMd(aiAnswer) + buildSourceHtml();
+      answerDiv.innerHTML = formatMd(answerBody) + buildSourceHtml();
+
+      // 追问建议 → 可点击按钮
+      if (followUpSuggestions.length > 0) {
+        const btnContainer = document.createElement('div');
+        btnContainer.className = 'follow-up-suggestions';
+        btnContainer.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px dashed #e8e2d4';
+        const title = document.createElement('div');
+        title.textContent = '💡 继续探究（点击追问）：';
+        title.style.cssText = 'font-size:0.78rem;color:var(--accent);font-weight:600;margin-bottom:6px';
+        btnContainer.appendChild(title);
+        const btnWrap = document.createElement('div');
+        btnWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px';
+        followUpSuggestions.slice(0, 3).forEach(function(text) {
+          const btn = document.createElement('button');
+          btn.textContent = text;
+          btn.style.cssText = 'font-size:0.78rem;padding:4px 12px;border:1px solid rgba(201,168,76,0.3);border-radius:16px;background:rgba(201,168,76,0.08);color:var(--accent);cursor:pointer;transition:all 0.2s;text-align:left';
+          btn.onmouseover = function() { this.style.background = 'rgba(201,168,76,0.2)'; };
+          btn.onmouseout = function() { this.style.background = 'rgba(201,168,76,0.08)'; };
+          btn.onclick = function() {
+            const inp = document.getElementById('qaInput');
+            if (inp) { inp.value = text; sendQuestion(); }
+          };
+          btnWrap.appendChild(btn);
+        });
+        btnContainer.appendChild(btnWrap);
+        answerDiv.appendChild(btnContainer);
+      }
 
       // 维护对话历史（导师模式需要上下文连续）
       if (typeof AppState !== 'undefined') {
@@ -10984,44 +11038,15 @@ async function generateResponseWithAI(query) {
         }
       }
     }
-    // 追加收藏按钮到时间行
-    const timeRow = answerDiv ? answerDiv.closest('.chat-bubble').nextElementSibling : null;
+    // 追加收藏按钮到时间行（用当前卡片的DOM范围查找，不会误挂到旧卡片）
+    const thisMsg = answerDiv ? answerDiv.closest('.chat-message') : null;
+    const timeRow = thisMsg ? thisMsg.querySelector('.chat-time') : null;
     if (timeRow) {
       timeRow.style.display = 'flex';
       timeRow.style.alignItems = 'center';
       timeRow.insertAdjacentHTML('beforeend',
         `<button class="fav-qa-btn" onclick="toggleQAFav(this)" data-q="${escapeHtml(query)}" data-a="${escapeHtml(aiAnswer.substring(0,200))}"><span>☆</span> 收藏</button>`);
     }
-
-    // 将追问建议转换为可点击按钮
-    (function() {
-      const html = answerDiv.innerHTML;
-      const followUpMatch = html.match(/🔍\s*\*\*追问建议[：:]\*\*([\s\S]*?)(?=<div class="chat-time"|<button|$)/);
-      if (followUpMatch) {
-        const suggestions = followUpMatch[1].match(/- (.+?)(?=<br|$)/g);
-        if (suggestions && suggestions.length > 0) {
-          const btnContainer = document.createElement('div');
-          btnContainer.className = 'follow-up-suggestions';
-          btnContainer.style.cssText = 'margin-top:10px;padding:8px 0;display:flex;flex-wrap:wrap;gap:6px';
-          suggestions.forEach(function(s) {
-            const text = s.replace(/^- /, '').replace(/<[^>]+>/g, '').trim();
-            if (text) {
-              const btn = document.createElement('button');
-              btn.textContent = text;
-              btn.style.cssText = 'font-size:0.78rem;padding:4px 12px;border:1px solid rgba(201,168,76,0.3);border-radius:16px;background:rgba(201,168,76,0.08);color:var(--accent);cursor:pointer;transition:all 0.2s';
-              btn.onmouseover = function() { this.style.background = 'rgba(201,168,76,0.2)'; };
-              btn.onmouseout = function() { this.style.background = 'rgba(201,168,76,0.08)'; };
-              btn.onclick = function() {
-                document.getElementById('qaInput').value = text;
-                sendQuestion();
-              };
-              btnContainer.appendChild(btn);
-            }
-          });
-          answerDiv.appendChild(btnContainer);
-        }
-      }
-    })();
   } else {
     // API调用失败，移除流式气泡，回退到本地知识库检索结果
     if (answerDiv) { const msg = answerDiv.closest('.chat-message'); if (msg) msg.remove(); }
