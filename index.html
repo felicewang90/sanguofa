@@ -6213,6 +6213,8 @@ const AppState = {
   currentQuestions: [],
   errorBook: [],
   chatHistory: [],
+  conversationHistory: [], // 导师模式对话历史
+  tutorMode: false, // 导师模式开关
   progressStep: 1,
   isTeacherMode: false,
   simStep: 0,
@@ -7009,6 +7011,9 @@ function renderQAModule() {
             <button class="quick-action-btn" onclick="askSuggestion('CISG')">📦 贸易法</button>
             <button class="quick-action-btn" onclick="askSuggestion('冲突法')">⚖️ 冲突法</button>
           </div>
+          <button class="ai-enhance-btn" id="tutorModeBtn" onclick="toggleTutorMode(this)" title="开启后AI将引导思考而非直接给答案" style="background:transparent;border:1px solid rgba(201,168,76,0.3);border-radius:8px;padding:4px 10px;font-size:0.75rem;color:var(--text-secondary);cursor:pointer;margin-left:8px;white-space:nowrap;transition:var(--transition)">
+            🎓 导师模式
+          </button>
           <button class="ai-enhance-btn" onclick="exportChatHistory()" title="导出对话记录" style="position:relative;background:none;border:1px solid rgba(23,162,184,0.3);border-radius:8px;padding:4px 10px;font-size:0.75rem;color:var(--info);cursor:pointer;margin-left:8px;white-space:nowrap;transition:var(--transition)" onmouseover="this.style.background='rgba(23,162,184,0.08)'" onmouseout="this.style.background='none'">
             📥 导出对话
           </button>
@@ -7039,6 +7044,7 @@ function renderQAModule() {
           <div class="qa-input-tips">
             <span>💡 支持法条原文检索、判例查询、跨部门法联动分析</span>
             <span class="input-tip-btn" onclick="clearChat()">清空对话</span>
+            <span id="tutorModeHint" style="display:none;color:var(--accent);font-size:0.75rem">🎓 导师模式已开启：AI将引导你思考，而非直接给答案</span>
           </div>
         </div>
       </div>
@@ -7253,6 +7259,9 @@ function removeTypingIndicator() {
 
 
 function clearChat() {
+  if (typeof AppState !== 'undefined') {
+    AppState.conversationHistory = [];
+  }
   const chat = document.getElementById('qaChat');
   chat.innerHTML = `
     <div class="welcome-chat" id="qaWelcome">
@@ -7273,6 +7282,9 @@ function clearChat() {
 // === 固定案例数据（带评分关键词）===
 const FIXED_CASES = [
   {
+  if (typeof AppState !== 'undefined') {
+    AppState.conversationHistory = [];
+  }
     id: 'fc-1',
     name: '南海仲裁案模拟法庭',
     tag: 'pub', tagText: '国际公法',
@@ -7833,22 +7845,75 @@ async function callDoubaoAPI(userQuestion, kbContext) {
   const endpoint = DoubaoConfig.getEndpoint();
   if (!apiKey || !endpoint) return null;
   
-  const systemPrompt = `你是一个专业的三国法（国际公法、国际私法、国际经济法）教学助手。请基于以下知识库内容为同学解答问题。
-
-要求：
-1. 优先使用知识库中的内容回答，确保准确性
-2. 回答要条理清晰，使用分点或分段结构
-3. 引用具体法条、条约或案例时要准确标注来源
-4. 如果知识库内容不足以完整回答，可以适当补充通用法律知识，但要明确区分哪些来自知识库、哪些是补充内容
-5. 注意体现中国立场和视角
-6. 语言要专业但不易懂，适合法学本科/研究生水平
-
-以下是知识库中检索到的相关内容：
----
-${kbContext}
----`;
+  // 动态构建 system prompt
+  const tutorMode = typeof AppState !== 'undefined' && AppState.tutorMode;
+  const qaMode = (typeof AppState !== 'undefined' && AppState.qaMode) || 'intro';
+  const qaModeConfig = typeof QA_MODES !== 'undefined' ? QA_MODES[qaMode] : null;
+  const roleStyle = qaModeConfig ? qaModeConfig.style : '';
+  
+  let systemPrompt = `你是一个专业的三国法（国际公法、国际私法、国际经济法）教学助手。请基于以下知识库内容为同学解答问题。
+  
+  要求：
+  1. 优先使用知识库中的内容回答，确保准确性
+  2. 回答要条理清晰，使用分点或分段结构
+  3. 引用具体法条、条约或案例时要准确标注来源
+  4. 如果知识库内容不足以完整回答，可以适当补充通用法律知识，但要明确区分
+  5. 注意体现中国立场和视角
+  6. 语言要专业但易懂，适合法学本科/研究生水平
+  7. 回答控制在600字以内，重点突出`;
+  
+  if (roleStyle) {
+    systemPrompt += `\n8. 当前角色风格：${roleStyle}`;
+  }
+  
+  if (tutorMode) {
+    systemPrompt += `
+  
+  【重要：导师模式】
+  你正在以苏格拉底式导师的方式与学生互动。请严格遵守以下规则：
+  - 不要直接给出完整答案，而是通过提问引导学生自己思考
+  - 先给出问题的分析框架或关键概念，然后抛出1-2个引导性问题
+  - 如果学生追问，给出更多线索但仍保留核心答案让学生自己推理
+  - 当学生给出了正确的分析思路时，给予肯定并进一步深化
+  - 每次回答末尾必须包含一个【💡 思考引导】区块，格式如下：
+    💡 **思考引导：** [一个与当前问题相关的启发性问题，引导学生深入思考或联系其他知识点]
+  - 在回答最后，添加【🔍 追问建议】区块，提供2-3个可以进一步追问的方向，格式：
+    🔍 **追问建议：**
+    - [方向1]
+    - [方向2]
+    - [方向3]`;
+  } else {
+    systemPrompt += `
+  
+  每次回答末尾，请添加一个【🔍 追问建议】区块，提供2-3个可以进一步追问的方向，帮助学生拓展思考，格式：
+  🔍 **追问建议：**
+  - [方向1]
+  - [方向2]
+  - [方向3]`;
+  }
+  
+  systemPrompt += `
+  
+  以下是知识库中检索到的相关内容：
+  ---
+  ${kbContext}
+  ---`;
 
   const controller = new AbortController();
+  // 构建消息列表，包含对话历史
+  const messages = [{ role: 'system', content: systemPrompt }];
+  
+  // 添加历史对话（最近5轮）
+  if (typeof AppState !== 'undefined' && AppState.conversationHistory && AppState.conversationHistory.length > 0) {
+    const recentHistory = AppState.conversationHistory.slice(-10); // 5轮=10条消息
+    for (const msg of recentHistory) {
+      messages.push(msg);
+    }
+  }
+  
+  // 添加当前用户问题
+  messages.push({ role: 'user', content: userQuestion });
+
   const timeoutId = setTimeout(() => controller.abort(), 30000);
 
   try {
@@ -7860,10 +7925,7 @@ ${kbContext}
       },
       body: JSON.stringify({
         model: endpoint,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userQuestion }
-        ],
+        messages: messages,
         temperature: 0.3,
         max_tokens: 2000
       }),
@@ -7899,21 +7961,59 @@ async function callDoubaoAPIStream(userQuestion, kbContext, onDelta) {
   const endpoint = DoubaoConfig.getEndpoint();
   if (!apiKey || !endpoint) return null;
 
-  const systemPrompt = `你是一个专业的三国法（国际公法、国际私法、国际经济法）教学助手。请基于以下知识库内容为同学解答问题。
-
-要求：
-1. 优先使用知识库中的内容回答，确保准确性
-2. 回答要条理清晰，使用分点或分段结构
-3. 引用具体法条、条约或案例时要准确标注来源
-4. 如果知识库内容不足以完整回答，可以适当补充通用法律知识，但要明确区分哪些来自知识库、哪些是补充内容
-5. 注意体现中国立场和视角
-6. 语言要专业但易懂，适合法学本科/研究生水平
-7. 回答控制在600字以内，重点突出
-
-以下是知识库中检索到的相关内容：
----
-${kbContext}
----`;
+  // 动态构建 system prompt
+  const tutorMode = typeof AppState !== 'undefined' && AppState.tutorMode;
+  const qaMode = (typeof AppState !== 'undefined' && AppState.qaMode) || 'intro';
+  const qaModeConfig = typeof QA_MODES !== 'undefined' ? QA_MODES[qaMode] : null;
+  const roleStyle = qaModeConfig ? qaModeConfig.style : '';
+  
+  let systemPrompt = `你是一个专业的三国法（国际公法、国际私法、国际经济法）教学助手。请基于以下知识库内容为同学解答问题。
+  
+  要求：
+  1. 优先使用知识库中的内容回答，确保准确性
+  2. 回答要条理清晰，使用分点或分段结构
+  3. 引用具体法条、条约或案例时要准确标注来源
+  4. 如果知识库内容不足以完整回答，可以适当补充通用法律知识，但要明确区分
+  5. 注意体现中国立场和视角
+  6. 语言要专业但易懂，适合法学本科/研究生水平
+  7. 回答控制在600字以内，重点突出`;
+  
+  if (roleStyle) {
+    systemPrompt += `\n8. 当前角色风格：${roleStyle}`;
+  }
+  
+  if (tutorMode) {
+    systemPrompt += `
+  
+  【重要：导师模式】
+  你正在以苏格拉底式导师的方式与学生互动。请严格遵守以下规则：
+  - 不要直接给出完整答案，而是通过提问引导学生自己思考
+  - 先给出问题的分析框架或关键概念，然后抛出1-2个引导性问题
+  - 如果学生追问，给出更多线索但仍保留核心答案让学生自己推理
+  - 当学生给出了正确的分析思路时，给予肯定并进一步深化
+  - 每次回答末尾必须包含一个【💡 思考引导】区块，格式如下：
+    💡 **思考引导：** [一个与当前问题相关的启发性问题，引导学生深入思考或联系其他知识点]
+  - 在回答最后，添加【🔍 追问建议】区块，提供2-3个可以进一步追问的方向，格式：
+    🔍 **追问建议：**
+    - [方向1]
+    - [方向2]
+    - [方向3]`;
+  } else {
+    systemPrompt += `
+  
+  每次回答末尾，请添加一个【🔍 追问建议】区块，提供2-3个可以进一步追问的方向，帮助学生拓展思考，格式：
+  🔍 **追问建议：**
+  - [方向1]
+  - [方向2]
+  - [方向3]`;
+  }
+  
+  systemPrompt += `
+  
+  以下是知识库中检索到的相关内容：
+  ---
+  ${kbContext}
+  ---`;
 
   const controller = new AbortController();
   let timeoutId;
@@ -7922,6 +8022,20 @@ ${kbContext}
     // 每个数据块20秒不返回才判定超时（流式场景用空闲超时而非总时长）
     timeoutId = setTimeout(() => controller.abort(), 20000);
   };
+  // 构建消息列表，包含对话历史
+  const messages = [{ role: 'system', content: systemPrompt }];
+  
+  // 添加历史对话（最近5轮）
+  if (typeof AppState !== 'undefined' && AppState.conversationHistory && AppState.conversationHistory.length > 0) {
+    const recentHistory = AppState.conversationHistory.slice(-10); // 5轮=10条消息
+    for (const msg of recentHistory) {
+      messages.push(msg);
+    }
+  }
+  
+  // 添加当前用户问题
+  messages.push({ role: 'user', content: userQuestion });
+
   resetTimeout();
 
   try {
@@ -7933,10 +8047,7 @@ ${kbContext}
       },
       body: JSON.stringify({
         model: endpoint,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userQuestion }
-        ],
+        messages: messages,
         temperature: 0.3,
         max_tokens: 1500,
         stream: true
@@ -10879,6 +10990,17 @@ async function generateResponseWithAI(query) {
     if (hint) hint.textContent = '基于知识库 + 豆包大模型';
     if (answerDiv) {
       answerDiv.innerHTML = formatMd(aiAnswer) + buildSourceHtml();
+
+      // 维护对话历史（导师模式需要上下文连续）
+      if (typeof AppState !== 'undefined') {
+        if (!AppState.conversationHistory) AppState.conversationHistory = [];
+        AppState.conversationHistory.push({ role: 'user', content: query });
+        AppState.conversationHistory.push({ role: 'assistant', content: aiAnswer });
+        // 只保留最近10轮（20条消息）
+        if (AppState.conversationHistory.length > 20) {
+          AppState.conversationHistory = AppState.conversationHistory.slice(-20);
+        }
+      }
     }
     // 追加收藏按钮到时间行
     const timeRow = answerDiv ? answerDiv.closest('.chat-bubble').nextElementSibling : null;
@@ -10888,7 +11010,7 @@ async function generateResponseWithAI(query) {
       timeRow.insertAdjacentHTML('beforeend',
         `<button class="fav-qa-btn" onclick="toggleQAFav(this)" data-q="${escapeHtml(query)}" data-a="${escapeHtml(aiAnswer.substring(0,200))}"><span>☆</span> 收藏</button>`);
     }
-  } else {
+  // 将追问建议转换为可点击按钮  setTimeout(() => {    const followUpDiv = answerDiv.querySelector('.follow-up-suggestions');    if (!followUpDiv) {      // 尝试从文本中解析追问建议      const html = answerDiv.innerHTML;      const followUpMatch = html.match(/🔍\s*\*\*追问建议[：:]\*\*([\s\S]*?)(?=<div class="chat-time"|<button|$)/);      if (followUpMatch) {        // 提取建议项并创建按钮        const suggestions = followUpMatch[1].match(/- (.+?)(?=<br|$)/g);        if (suggestions && suggestions.length > 0) {          const btnContainer = document.createElement('div');          btnContainer.className = 'follow-up-suggestions';          btnContainer.style.cssText = 'margin-top:10px;padding:8px 0;display:flex;flex-wrap:wrap;gap:6px';          suggestions.forEach(s => {            const text = s.replace(/^- /, '').replace(/<[^>]+>/g, '').trim();            if (text) {              const btn = document.createElement('button');              btn.textContent = text;              btn.style.cssText = 'font-size:0.78rem;padding:4px 12px;border:1px solid rgba(201,168,76,0.3);border-radius:16px;background:rgba(201,168,76,0.08);color:var(--accent);cursor:pointer;transition:all 0.2s';              btn.onmouseover = function() { this.style.background = 'rgba(201,168,76,0.2)'; };              btn.onmouseout = function() { this.style.background = 'rgba(201,168,76,0.08)'; };              btn.onclick = function() {                document.getElementById('qaInput').value = text;                sendQuestion();              };              btnContainer.appendChild(btn);            }          });          answerDiv.appendChild(btnContainer);        }      }    }  }, 200);  } else {
     // API调用失败，移除流式气泡，回退到本地知识库检索结果
     if (answerDiv) { const msg = answerDiv.closest('.chat-message'); if (msg) msg.remove(); }
     generateResponse(query);
@@ -11879,6 +12001,7 @@ function setQAMode(mode, btn) {
     b.style.color = 'var(--text-secondary)';
     b.classList.remove('active');
   });
+
   if (btn) {
     btn.style.background = QA_MODES[AppState.qaMode].color;
     btn.style.color = '#fff';
@@ -11886,6 +12009,29 @@ function setQAMode(mode, btn) {
   }
   const ctx = document.getElementById('qaContext');
   if (ctx) ctx.textContent = QA_MODES[AppState.qaMode].label;
+}
+function toggleTutorMode(btn) {
+  AppState.tutorMode = !AppState.tutorMode;
+  if (btn) {
+    if (AppState.tutorMode) {
+      btn.style.background = 'linear-gradient(135deg, #c9a84c, #b08d3a)';
+      btn.style.color = '#fff';
+      btn.style.borderColor = '#c9a84c';
+      btn.innerHTML = '🎓 导师模式 <span style="font-size:0.65rem">ON</span>';
+    } else {
+      btn.style.background = 'transparent';
+      btn.style.color = 'var(--text-secondary)';
+      btn.style.borderColor = 'rgba(201,168,76,0.3)';
+      btn.innerHTML = '🎓 导师模式';
+    }
+  }
+  const hint = document.getElementById('tutorModeHint');
+  if (hint) hint.style.display = AppState.tutorMode ? 'block' : 'none';
+  
+  // 清空对话历史（切换模式时重置上下文）
+  if (typeof AppState !== 'undefined') {
+    AppState.conversationHistory = [];
+  }
 }
 
 // === 分层题库 ===
