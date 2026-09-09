@@ -4369,6 +4369,7 @@ button:active:not(:disabled),
 }
 
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
     
@@ -4445,6 +4446,207 @@ button:active:not(:disabled),
   
   
   <script>
+
+// ============================================================
+// Supabase 云端数据同步模块
+// ============================================================
+var _sbClient = null;
+var _sbConfigured = false;
+
+function _sbInit() {
+  try {
+    var url = localStorage.getItem('supabase_url') || '';
+    var key = localStorage.getItem('supabase_anon_key') || '';
+    if (!url || !key) { _sbConfigured = false; return; }
+    if (typeof supabase !== 'undefined' && supabase.createClient) {
+      _sbClient = supabase.createClient(url, key);
+      _sbConfigured = true;
+      console.log('[Supabase] Client initialized');
+      _sbFlushQueue();
+    } else {
+      console.warn('[Supabase] SDK not loaded yet');
+      _sbConfigured = false;
+    }
+  } catch(e) {
+    console.warn('[Supabase] Init error:', e);
+    _sbConfigured = false;
+  }
+}
+
+async function _sbTrackEvent(eventType, module, payload) {
+  if (!_sbConfigured || !_sbClient) return;
+  try {
+    var user = AppState.currentUser;
+    var studentId = user ? user.studentId : '';
+    if (!studentId) return;
+    
+    // Insert event
+    var eventRow = {
+      student_id: studentId,
+      event_type: eventType,
+      module: module,
+      payload: payload,
+      created_at: new Date().toISOString()
+    };
+    var _r1 = _sbClient.from('events').insert(eventRow);
+    if (_r1 && _r1.then) await _r1;
+    
+    // Upsert students table
+    var studentRow = {
+      student_id: studentId,
+      name: user ? user.name : '',
+      role: user ? user.role : 'student',
+      last_login_at: new Date().toISOString()
+    };
+    var _r2 = _sbClient.from('students').upsert(studentRow, { onConflict: 'student_id' });
+    if (_r2 && _r2.then) await _r2;
+  } catch(e) {
+    console.warn('[Supabase] Track event error:', e);
+    _sbQueueEvent(eventType, module, payload);
+  }
+}
+
+function _sbQueueEvent(eventType, module, payload) {
+  try {
+    var queue = [];
+    var raw = localStorage.getItem('supabase_event_queue');
+    if (raw) queue = JSON.parse(raw);
+    var user = AppState.currentUser;
+    queue.push({
+      student_id: user ? user.studentId : '',
+      event_type: eventType,
+      module: module,
+      payload: payload,
+      created_at: new Date().toISOString()
+    });
+    // Keep queue reasonable size
+    if (queue.length > 500) queue = queue.slice(-500);
+    localStorage.setItem('supabase_event_queue', JSON.stringify(queue));
+  } catch(e) {}
+}
+
+async function _sbFlushQueue() {
+  if (!_sbConfigured || !_sbClient) return;
+  try {
+    var raw = localStorage.getItem('supabase_event_queue');
+    if (!raw) return;
+    var queue = JSON.parse(raw);
+    if (!queue || queue.length === 0) return;
+    
+    var _res = _sbClient.from('events').insert(queue);
+    if (_res && _res.then) {
+      var result = await _res;
+      if (result && !result.error) {
+        localStorage.removeItem('supabase_event_queue');
+        console.log('[Supabase] Flushed ' + queue.length + ' queued events');
+      }
+    }
+  } catch(e) {
+    console.warn('[Supabase] Flush queue error:', e);
+  }
+}
+
+async function _sbTestConnection() {
+  if (!_sbClient) return { ok: false, error: '客户端未初始化' };
+  try {
+    var _res = _sbClient.from('students').select('count', { count: 'exact', head: true });
+    if (_res && _res.then) {
+      var result = await _res;
+      if (result && !result.error) return { ok: true };
+      return { ok: false, error: result.error.message || '连接失败' };
+    }
+    return { ok: false, error: 'SDK未就绪' };
+  } catch(e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+// Save Supabase config
+function saveSupabaseConfig() {
+  var url = document.getElementById('sbUrlInput').value.trim();
+  var key = document.getElementById('sbKeyInput').value.trim();
+  if (!url || !key) {
+    alert('请填写 Supabase URL 和 Anon Key');
+    return;
+  }
+  localStorage.setItem('supabase_url', url);
+  localStorage.setItem('supabase_anon_key', key);
+  _sbInit();
+  var resultEl = document.getElementById('sbTestResult');
+  if (resultEl) {
+    resultEl.style.display = 'block';
+    resultEl.style.color = '#52c41a';
+    resultEl.textContent = '✅ 配置已保存，正在初始化...';
+  }
+  if (typeof closeSupabaseSettings === 'function') closeSupabaseSettings();
+}
+
+async function testSupabaseConnection() {
+  var url = document.getElementById('sbUrlInput').value.trim();
+  var key = document.getElementById('sbKeyInput').value.trim();
+  var resultEl = document.getElementById('sbTestResult');
+  if (!resultEl) return;
+  resultEl.style.display = 'block';
+  if (!url || !key) {
+    resultEl.style.color = '#ff4d4f';
+    resultEl.textContent = '❌ 请先填写 URL 和 Key';
+    return;
+  }
+  resultEl.style.color = '#999';
+  resultEl.textContent = '⏳ 正在测试连接...';
+  try {
+    // Test with fetch directly
+    var testUrl = url.replace(/\/+$/, '') + '/rest/v1/students?select=count&limit=1';
+    var resp = await fetch(testUrl, {
+      headers: { 'apikey': key, 'Authorization': 'Bearer ' + key }
+    });
+    if (resp.ok) {
+      resultEl.style.color = '#52c41a';
+      resultEl.textContent = '✅ 连接成功！请保存配置。';
+    } else {
+      var text = await resp.text();
+      resultEl.style.color = '#ff4d4f';
+      resultEl.textContent = '❌ 连接失败 (HTTP ' + resp.status + '): ' + text.substring(0, 200);
+    }
+  } catch(e) {
+    resultEl.style.color = '#ff4d4f';
+    resultEl.textContent = '❌ 网络错误: ' + e.message;
+  }
+}
+
+function clearSupabaseConfig() {
+  if (!confirm('确定要清除 Supabase 配置吗？离线队列中的事件将被保留。')) return;
+  localStorage.removeItem('supabase_url');
+  localStorage.removeItem('supabase_anon_key');
+  _sbClient = null;
+  _sbConfigured = false;
+  var resultEl = document.getElementById('sbTestResult');
+  if (resultEl) {
+    resultEl.style.display = 'block';
+    resultEl.style.color = '#b08d3a';
+    resultEl.textContent = '⏸ 配置已清除';
+  }
+}
+
+function showSupabaseSettings() {
+  var modal = document.getElementById('supabaseSettingsModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  var urlInput = document.getElementById('sbUrlInput');
+  var keyInput = document.getElementById('sbKeyInput');
+  if (urlInput) urlInput.value = localStorage.getItem('supabase_url') || '';
+  if (keyInput) keyInput.value = localStorage.getItem('supabase_anon_key') || '';
+  var resultEl = document.getElementById('sbTestResult');
+  if (resultEl) resultEl.style.display = 'none';
+}
+
+function closeSupabaseSettings() {
+  var modal = document.getElementById('supabaseSettingsModal');
+  if (modal) modal.style.display = 'none';
+}
+
+// ============================================================
+
 
   // Knowledge base: split into 6 files, loaded in parallel
   var KB_VERSION = '20260908a'; // 固定版本：URL稳定可被浏览器强缓存；更新知识库后改此号
@@ -6437,6 +6639,7 @@ function handleLogin(e) {
   localStorage.setItem('sanguofa_student_registry', JSON.stringify(registry));
   
   // Close login modal
+  _sbTrackEvent('login', '系统', { name: name, role: role });
   closeLoginModal();
   startApp();
   return false;
@@ -7025,7 +7228,7 @@ function renderQAModule() {
           <button class="ai-enhance-btn" onclick="exportChatHistory()" title="导出对话记录" style="position:relative;background:none;border:1px solid rgba(23,162,184,0.3);border-radius:8px;padding:4px 10px;font-size:0.75rem;color:var(--info);cursor:pointer;margin-left:8px;white-space:nowrap;transition:var(--transition)" onmouseover="this.style.background='rgba(23,162,184,0.08)'" onmouseout="this.style.background='none'">
             📥 导出对话
           </button>
-          <button class="ai-enhance-btn" onclick="showDoubaoSettings()" title="AI增强设置" style="position:relative;background:none;border:1px solid rgba(201,168,76,0.3);border-radius:8px;padding:4px 10px;font-size:0.75rem;color:var(--accent);cursor:pointer;margin-left:8px;white-space:nowrap;transition:var(--transition)" onmouseover="this.style.background='rgba(201,168,76,0.08)'" onmouseout="this.style.background='none'">
+          <button class="ai-enhance-btn" onclick="showSupabaseSettings()" title="云端设置" style="position:relative;background:none;border:1px solid rgba(100,149,237,0.4);border-radius:8px;padding:4px 10px;font-size:0.75rem;color:#6495ED;cursor:pointer;margin-left:4px;white-space:nowrap;transition:var(--transition)" onmouseover="this.style.background='rgba(100,149,237,0.08)'" onmouseout="this.style.background='none'">☁️ 云端</button><button class="ai-enhance-btn" onclick="showDoubaoSettings()" title="AI增强设置" style="position:relative;background:none;border:1px solid rgba(201,168,76,0.3);border-radius:8px;padding:4px 10px;font-size:0.75rem;color:var(--accent);cursor:pointer;margin-left:4px;white-space:nowrap;transition:var(--transition)" onmouseover="this.style.background='rgba(201,168,76,0.08)'" onmouseout="this.style.background='none'">
             <span id="doubaoStatusIcon">🤖</span> AI增强
           </button>
         </div>
@@ -9465,6 +9668,193 @@ function saveCaseProgress(caseId, score) {
     
     // CloudSync push
     CloudSync.push('progress', { caseId: caseId, score: score, timestamp: now });
+    _sbTrackEvent('ai_grading', '模拟实训', { caseId: caseId, score: score, details: AppState.simScore });
+  }
+}
+
+// === Supabase Teacher Cloud Data Loading ===
+async function _sbLoadTeacherCloudData(container, subTabsHtml, localStudents) {
+  // Show local data first, then enhance with cloud data
+  _renderTeacherStudentsTabContent(container, subTabsHtml, localStudents, null);
+  
+  // Load cloud events in background
+  try {
+    var _res = _sbClient.from('events').select('*').order('created_at', { ascending: false }).limit(2000);
+    var result = await _res;
+    if (result && result.data) {
+      _renderTeacherStudentsTabContent(container, subTabsHtml, localStudents, result.data);
+    }
+  } catch(e) {
+    console.warn('[Supabase] Load teacher data error:', e);
+  }
+}
+
+function _renderTeacherStudentsTabContent(container, subTabsHtml, students, cloudEvents) {
+  var totalStudents = students.length;
+  var avgScore = totalStudents > 0 ? Math.round(students.reduce(function(s, st) { return s + st.avgScore; }, 0) / totalStudents) : 0;
+  var completedRate = totalStudents > 0 ? Math.round(students.filter(function(s) { return s.completedCases >= 3; }).length / totalStudents * 100) : 0;
+  var totalCases = FIXED_CASES.length;
+  
+  var lastActive = '-';
+  if (students.length > 0) {
+    var latest = students.reduce(function(a, b) { return (a.lastActive > b.lastActive) ? a : b; });
+    try { lastActive = new Date(latest.lastActive).toLocaleDateString('zh-CN'); } catch(e) {}
+  }
+  
+  // Build cloud events summary per student
+  var cloudSummary = {};
+  if (cloudEvents && cloudEvents.length > 0) {
+    cloudEvents.forEach(function(ev) {
+      var sid = ev.student_id;
+      if (!cloudSummary[sid]) cloudSummary[sid] = { qa: [], grading: [], errors: [], bookmarks: [], logins: 0 };
+      var p = ev.payload || {};
+      if (ev.event_type === 'qa_question') cloudSummary[sid].qa.push({ q: (p.question||'').substring(0,60), a: (p.answer||'').substring(0,80), time: ev.created_at });
+      if (ev.event_type === 'ai_grading') cloudSummary[sid].grading.push({ caseId: p.caseId, score: p.score, time: ev.created_at });
+      if (ev.event_type === 'error_book') cloudSummary[sid].errors.push({ question: (p.question||'').substring(0,60), knowledgePoint: p.knowledgePoint, time: ev.created_at });
+      if (ev.event_type === 'bookmark') cloudSummary[sid].bookmarks.push({ title: (p.title||'').substring(0,40), type: p.type, time: ev.created_at });
+      if (ev.event_type === 'login') cloudSummary[sid].logins++;
+    });
+  }
+  
+  var cloudBadge = cloudEvents ? '<span style="font-size:0.72rem;padding:2px 8px;background:#e6f7ff;border:1px solid #91d5ff;border-radius:10px;color:#1890ff;margin-left:8px">☁️ 云端数据已加载</span>' : '';
+  
+  var rows = students.map(function(st, idx) {
+    var lastActiveStr = '-';
+    try { lastActiveStr = new Date(st.lastActive).toLocaleDateString('zh-CN'); } catch(e) {}
+    
+    var cloudData = cloudSummary[st.studentId] || null;
+    var cloudInfoHtml = '';
+    if (cloudData) {
+      cloudInfoHtml = '<div style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;font-size:0.76rem">';
+      if (cloudData.qa.length > 0) {
+        cloudInfoHtml += '<div style="background:#f0f7ff;padding:8px;border-radius:6px;border:1px solid #d4e8ff"><strong style="color:#1890ff">💬 问答 (' + cloudData.qa.length + ')</strong><div style="color:#666;margin-top:4px">';
+        cloudData.qa.slice(0,3).forEach(function(q) { cloudInfoHtml += '<div style="margin:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + escapeHtml(q.q) + '">Q: ' + escapeHtml(q.q) + '</div>'; });
+        if (cloudData.qa.length > 3) cloudInfoHtml += '<div style="color:#999">...还有' + (cloudData.qa.length-3) + '条</div>';
+        cloudInfoHtml += '</div></div>';
+      }
+      if (cloudData.grading.length > 0) {
+        cloudInfoHtml += '<div style="background:#f6ffed;padding:8px;border-radius:6px;border:1px solid #b7eb8f"><strong style="color:#52c41a">📝 AI批改 (' + cloudData.grading.length + ')</strong><div style="color:#666;margin-top:4px">';
+        cloudData.grading.slice(0,3).forEach(function(g) { cloudInfoHtml += '<div>' + escapeHtml(String(g.caseId||'').substring(0,20)) + ': <strong>' + g.score + '分</strong></div>'; });
+        cloudInfoHtml += '</div></div>';
+      }
+      if (cloudData.errors.length > 0) {
+        cloudInfoHtml += '<div style="background:#fff7e6;padding:8px;border-radius:6px;border:1px solid #ffd591"><strong style="color:#fa8c16">❌ 错题 (' + cloudData.errors.length + ')</strong><div style="color:#666;margin-top:4px">';
+        cloudData.errors.slice(0,3).forEach(function(e) { cloudInfoHtml += '<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + escapeHtml(e.question) + '">' + escapeHtml(e.question) + '</div>'; });
+        cloudInfoHtml += '</div></div>';
+      }
+      if (cloudData.bookmarks.length > 0) {
+        cloudInfoHtml += '<div style="background:#f9f0ff;padding:8px;border-radius:6px;border:1px solid #d3adf7"><strong style="color:#722ed1">⭐ 收藏 (' + cloudData.bookmarks.length + ')</strong><div style="color:#666;margin-top:4px">';
+        cloudData.bookmarks.slice(0,3).forEach(function(b) { cloudInfoHtml += '<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(b.title) + '</div>'; });
+        cloudInfoHtml += '</div></div>';
+      }
+      cloudInfoHtml += '</div>';
+    }
+    
+    return '<tr onclick="toggleStudentDetail(' + idx + ')" style="cursor:pointer">' +
+      '<td><strong>' + st.studentId + '</strong></td>' +
+      '<td>' + st.name + '</td>' +
+      '<td>' + st.completedCases + ' / ' + (st.totalCases || totalCases) + '</td>' +
+      '<td>' + st.avgScore + '分</td>' +
+      '<td>' +
+        '<div class="teacher-bar"><div class="teacher-bar-fill" style="width:' + st.progress + '%"></div></div>' +
+      '</td>' +
+      '<td>' + lastActiveStr + '</td>' +
+    '</tr>' +
+    '<tr id="studentDetail_' + idx + '" style="display:none">' +
+      '<td colspan="6" style="background:#f8f9fc;padding:16px">' +
+        '<div style="font-size:0.82rem;color:var(--text-secondary)">案例成绩详情：</div>' +
+        '<div style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">' +
+          (function() {
+            var caseNames = FIXED_CASES.map(function(c) { return c.name; });
+            var html = '';
+            caseNames.forEach(function(cName) {
+              var sc = st.caseScores && st.caseScores[cName];
+              var scoreText = sc ? sc.score + '分' : '未完成';
+              var color = sc ? (sc.score >= 80 ? 'var(--success)' : sc.score >= 60 ? 'var(--accent)' : '#e74c3c') : 'var(--text-light)';
+              html += '<div style="padding:8px 12px;background:#fff;border-radius:8px;border:1px solid var(--border);font-size:0.78rem">' +
+                '<div style="color:var(--text-secondary);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + cName + '">' + cName.substring(0, 12) + '</div>' +
+                '<div style="font-weight:700;color:' + color + '">' + scoreText + '</div></div>';
+            });
+            return html;
+          })() +
+        '</div>' +
+        cloudInfoHtml +
+      '</td>' +
+    '</tr>';
+  }).join('');
+  
+  var exportBtn = cloudEvents ? '<button class="teacher-export-btn" style="background:#1890ff;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.85rem" onclick="exportSupabaseCSV()">📥 导出云端学情报告</button>' : '';
+  
+  container.innerHTML = '<div class="teacher-panel">' +
+    '<div class="teacher-panel-header">' +
+      '<h2>📊 教师管理面板' + cloudBadge + '</h2>' +
+      subTabsHtml +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+        exportBtn +
+        '<button class="teacher-export-btn" style="background:var(--primary)" onclick="generateDemoStudentData()">🎲 模拟数据</button>' +
+        '<button class="teacher-export-btn" style="background:#f0f0f0;color:var(--text-primary);border:1px solid var(--border);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.85rem" onclick="exportTeacherCSV()">📥 导出CSV报告</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="teacher-stats-grid">' +
+      '<div class="teacher-stat-card"><div class="ts-num">' + totalStudents + '</div><div class="ts-label">学生总数</div></div>' +
+      '<div class="teacher-stat-card"><div class="ts-num">' + avgScore + '</div><div class="ts-label">平均分</div></div>' +
+      '<div class="teacher-stat-card"><div class="ts-num">' + completedRate + '%</div><div class="ts-label">完成率(>=3案例)</div></div>' +
+      '<div class="teacher-stat-card"><div class="ts-num">' + lastActive + '</div><div class="ts-label">最近活跃</div></div>' +
+    '</div>' +
+    '<div class="teacher-table-wrap">' +
+      '<table class="teacher-table">' +
+        '<thead><tr><th>学号</th><th>姓名</th><th>完成案例</th><th>平均分</th><th>学习进度</th><th>最近活跃</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>' +
+    '</div>' +
+    '<div style="background:var(--bg-card);border-radius:var(--radius-md);padding:20px;box-shadow:var(--shadow-sm)">' +
+      '<h4 style="margin-bottom:12px;color:var(--primary)">📈 班级案例完成率</h4>' +
+      '<div class="case-stats-grid">' +
+        FIXED_CASES.map(function(c, i) {
+          var count = students.filter(function(s) { return s.completedCases > i; }).length;
+          var pct = totalStudents > 0 ? Math.round(count / totalStudents * 100) : 0;
+          return '<div class="case-stat-item">' +
+            '<div class="case-stat-name" title="' + c.name + '">' + c.name.substring(0, 10) + '</div>' +
+            '<div class="case-stat-pct">' + pct + '%</div>' +
+            '<div class="teacher-bar" style="margin-top:6px"><div class="teacher-bar-fill" style="width:' + pct + '%"></div></div>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+// Export Supabase data as CSV
+async function exportSupabaseCSV() {
+  if (!_sbConfigured || !_sbClient) { alert('Supabase 未配置'); return; }
+  try {
+    var _res = _sbClient.from('events').select('*').order('created_at', { ascending: true });
+    var result = await _res;
+    if (!result || result.error) { alert('查询失败: ' + (result ? result.error.message : '未知错误')); return; }
+    var events = result.data;
+    if (events.length === 0) { alert('暂无云端事件数据'); return; }
+    
+    var csv = '\uFEFF学号,事件类型,模块,内容,时间\n';
+    events.forEach(function(ev) {
+      var payload = ev.payload || {};
+      var detail = '';
+      if (ev.event_type === 'qa_question') detail = 'Q:' + (payload.question||'').replace(/[\n,]/g,' ');
+      else if (ev.event_type === 'ai_grading') detail = '案例:' + (payload.caseId||'') + ' 得分:' + (payload.score||'');
+      else if (ev.event_type === 'error_book') detail = (payload.question||'').replace(/[\n,]/g,' ') + ' [' + (payload.knowledgePoint||'') + ']';
+      else if (ev.event_type === 'bookmark') detail = (payload.title||'').replace(/[\n,]/g,' ');
+      else detail = JSON.stringify(payload).substring(0,100);
+      csv += '"' + (ev.student_id||'') + '","' + (ev.event_type||'') + '","' + (ev.module||'') + '","' + detail.replace(/"/g,'""') + '","' + (ev.created_at||'') + '"\n';
+    });
+    
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = '学情报告_云端_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    alert('导出失败: ' + e.message);
   }
 }
 
@@ -9605,6 +9995,13 @@ function switchTeacherSubTab(tab) {
 function renderTeacherStudentsTab(container, subTabsHtml) {
   var students = getAllStudentsData();
   students = students.filter(function(s) { return s.role !== 'teacher'; });
+  
+  // If Supabase configured, try to load cloud data
+  if (_sbConfigured && _sbClient) {
+    _sbLoadTeacherCloudData(container, subTabsHtml, students);
+    return;
+  }
+
   
   var totalStudents = students.length;
   var avgScore = totalStudents > 0 ? Math.round(students.reduce(function(s, st) { return s + st.avgScore; }, 0) / totalStudents) : 0;
@@ -10244,6 +10641,7 @@ function submitQuiz() {
           knowledgePoint: q.knowledgePoint || '未知',
           subject: q.subject
         });
+        _sbTrackEvent('error_book', '知识测验', { question: q.text.substring(0,80)+'...', yourAnswer: selected||'未作答', correctAnswer: q.answer, knowledgePoint: q.knowledgePoint||'未知', subject: q.subject });
       }
     } else if (q.type === 'multi') {
       const selected = AppState.selectedAnswers[q.id] || [];
@@ -10276,6 +10674,7 @@ function submitQuiz() {
           knowledgePoint: q.knowledgePoint || '未知',
           subject: q.subject
         });
+        _sbTrackEvent('error_book', '知识测验', { question: q.text.substring(0,80)+'...', yourAnswer: selected.join(',')||'未作答', correctAnswer: q.answer, knowledgePoint: q.knowledgePoint||'未知', subject: q.subject });
       }
     } else if (q.type === 'essay') {
       const et = (document.getElementById('essay-'+q.id)||{}).value||'';
@@ -10292,7 +10691,7 @@ function submitQuiz() {
       if(er){const lc=es>=80?'var(--success)':es>=60?'var(--primary)':es>=40?'var(--warning)':'var(--danger)';
       const lt=es>=80?'优秀':es>=60?'良好':es>=40?'一般':'需加强';
       er.innerHTML=`<div style="border-left:3px solid ${lc};padding:12px;margin-top:12px;background:rgba(102,126,234,0.04);border-radius:0 8px 8px 0"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-size:1.2rem;font-weight:bold;color:${lc}">${Math.round(q.points*es/100)}分</span><span style="background:${lc};color:#fff;padding:2px 8px;border-radius:10px;font-size:0.75rem">${lt}</span><span style="color:var(--text-secondary);font-size:0.8rem">关键词${matched.length}/${kws.length}</span></div><div style="font-size:0.84rem;color:var(--text-secondary);line-height:1.7"><p>✅ 命中:${matched.join('、')||'无'}</p><p>💡 补充:${kws.filter(k=>!et.includes(k)).join('、')||'无'}</p><details style="margin-top:8px"><summary style="cursor:pointer;color:var(--primary)">📖 参考答案</summary><div style="margin-top:8px;padding:10px;background:#f8f9ff;border-radius:6px;font-size:0.82rem;line-height:1.8;white-space:pre-wrap">${q.referenceAnswer||''}</div></details></div></div>`;}
-      if(es<60){AppState.errorBook.push({question:q.text.substring(0,80)+'...',yourAnswer:et.substring(0,100),correctAnswer:'得分率'+es+'%',explanation:'参考:'+(q.referenceAnswer||'').substring(0,150),knowledgePoint:q.knowledgePoint||'未知',subject:q.subject});}
+      if(es<60){AppState.errorBook.push({question:q.text.substring(0,80)+'...',yourAnswer:et.substring(0,100),correctAnswer:'得分率'+es+'%',explanation:'参考:'+(q.referenceAnswer||'').substring(0,150),knowledgePoint:q.knowledgePoint||'未知',subject:q.subject});_sbTrackEvent('error_book','知识测验',{question:q.text.substring(0,80)+'...',yourAnswer:et.substring(0,100),correctAnswer:'得分率'+es+'%',knowledgePoint:q.knowledgePoint||'未知',subject:q.subject});}
       else{if(!AppState.knowledgeStats)AppState.knowledgeStats={};const kp=q.knowledgePoint||'未知';if(!AppState.knowledgeStats[kp])AppState.knowledgeStats[kp]={correct:0,total:0,subject:q.subject};AppState.knowledgeStats[kp].correct++;AppState.knowledgeStats[kp].total++;}
     }
 
@@ -11091,6 +11490,9 @@ async function generateResponseWithAI(query) {
     if (hint) hint.textContent = '基于知识库 + 豆包大模型';
     const preview = document.getElementById(srcPreviewId);
     if (preview) preview.remove();
+
+    // Supabase: 上报问答事件
+    _sbTrackEvent('qa_question', '智能问答', { question: query, answer: aiAnswer.substring(0,500), sources: sourceRefs.map(function(s){return s.title}), mode: AppState.searchMode||'normal' });
 
     // 从原始回答文本中提取"追问建议"（在formatMd转义前提取，保证可靠）
     let answerBody = aiAnswer;
@@ -12906,6 +13308,7 @@ function saveFavorite(item) {
     };
     favs.push(newItem);
     localStorage.setItem('sanguofa_student_' + studentId + '_favorites', JSON.stringify(favs));
+    _sbTrackEvent('bookmark', '收藏夹', { type: item.type, title: item.title, category: item.category });
   }
 }
 
@@ -14027,6 +14430,16 @@ function renderDebateStudentRecords(container) {
 // ============================================================
 
 
+
+// === Supabase Startup ===
+document.addEventListener('DOMContentLoaded', function() {
+  // Wait a bit for SDK to load
+  setTimeout(function() { _sbInit(); }, 1000);
+});
+window.addEventListener('online', function() {
+  setTimeout(function() { _sbFlushQueue(); }, 500);
+});
+
 </script>
 
 
@@ -14067,5 +14480,41 @@ function renderDebateStudentRecords(container) {
     <div id="doubaoTestResult" style="margin-top:12px;font-size:0.8rem;display:none"></div>
   </div>
 </div>
+
+<div id="supabaseSettingsModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10001;align-items:center;justify-content:center">
+  <div style="background:white;border-radius:16px;padding:28px;max-width:480px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);position:relative">
+    <button onclick="closeSupabaseSettings()" style="position:absolute;top:16px;right:16px;background:none;border:none;font-size:1.2rem;cursor:pointer;color:#999">✕</button>
+    <h3 style="margin:0 0 6px 0;font-size:1.1rem;color:#1a2332">☁️ 云端数据同步设置</h3>
+    <p style="font-size:0.8rem;color:#666;margin:0 0 20px 0">配置 Supabase 后，学生的学习行为将自动上报到云端数据库，教师可在后台查看实时学情分析。</p>
+    
+    <div style="margin-bottom:16px">
+      <label style="display:block;font-size:0.82rem;font-weight:600;color:#333;margin-bottom:6px">Supabase URL</label>
+      <input type="text" id="sbUrlInput" placeholder="https://xxxxx.supabase.co" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;box-sizing:border-box;outline:none;transition:border-color 0.2s" onfocus="this.style.borderColor='#c9a84c'" onblur="this.style.borderColor='#ddd'">
+      <p style="font-size:0.72rem;color:#999;margin:4px 0 0 0">在 Supabase 项目设置 > API 中获取 Project URL</p>
+    </div>
+    
+    <div style="margin-bottom:16px">
+      <label style="display:block;font-size:0.82rem;font-weight:600;color:#333;margin-bottom:6px">Anon Key（公开密钥）</label>
+      <input type="password" id="sbKeyInput" placeholder="eyJhbGciOi..." style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;box-sizing:border-box;outline:none;transition:border-color 0.2s" onfocus="this.style.borderColor='#c9a84c'" onblur="this.style.borderColor='#ddd'">
+      <p style="font-size:0.72rem;color:#999;margin:4px 0 0 0">在 Supabase 项目设置 > API > anon public 中获取</p>
+    </div>
+    
+    <div style="margin-bottom:20px;padding:12px;background:#f0f7ff;border-radius:8px;border:1px solid #d4e8ff">
+      <p style="font-size:0.75rem;color:#555;margin:0;line-height:1.6">
+        📋 <strong>需要的数据表：</strong><br>
+        ① <code>students</code> (student_id text PK, name text, role text, last_login_at timestamptz)<br>
+        ② <code>events</code> (id bigint PK, student_id text, event_type text, module text, payload jsonb, created_at timestamptz)
+      </p>
+    </div>
+    
+    <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;flex-wrap:wrap">
+      <button onclick="clearSupabaseConfig()" style="padding:8px 16px;border:1px solid #ff7875;background:white;color:#ff4d4f;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;margin-right:auto">清除配置</button>
+      <button onclick="testSupabaseConnection()" style="padding:8px 16px;border:1px solid #c9a84c;background:white;color:#c9a84c;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer">测试连接</button>
+      <button onclick="saveSupabaseConfig()" style="padding:8px 20px;border:none;background:linear-gradient(135deg,#c9a84c,#b08d3a);color:white;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer">保存配置</button>
+    </div>
+    <div id="sbTestResult" style="margin-top:12px;font-size:0.8rem;display:none"></div>
+  </div>
+</div>
+
 </body>
 </html>
