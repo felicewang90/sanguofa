@@ -4369,6 +4369,7 @@ button:active:not(:disabled),
 }
 
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
     
@@ -4380,24 +4381,48 @@ button:active:not(:disabled),
       </div>
       <div class="login-card-title">三国法教学智能体</div>
       <div class="login-card-subtitle">国际公法 · 国际私法 · 国际经济法</div>
-      <form id="loginForm" onsubmit="return handleLogin(event)">
+      <div id="authTabs" style="display:flex;margin-bottom:16px;border-bottom:2px solid #eee">
+        <div id="tabLogin" onclick="switchAuthTab('login')" style="flex:1;text-align:center;padding:10px 0;cursor:pointer;font-weight:bold;border-bottom:2px solid #1a73e8;color:#1a73e8;margin-bottom:-2px;transition:all 0.2s">登录</div>
+        <div id="tabRegister" onclick="switchAuthTab('register')" style="flex:1;text-align:center;padding:10px 0;cursor:pointer;color:#666;margin-bottom:-2px;transition:all 0.2s">注册</div>
+      </div>
+      <form id="loginForm" onsubmit="return handleSupabaseLogin(event)">
         <div class="login-field">
-          <label for="loginStudentId">学号</label>
-          <input type="text" id="loginStudentId" placeholder="请输入学号" required autocomplete="off">
+          <label for="loginEmail">邮箱</label>
+          <input type="email" id="loginEmail" placeholder="请输入邮箱" required autocomplete="email">
         </div>
         <div class="login-field">
-          <label for="loginName">姓名</label>
-          <input type="text" id="loginName" placeholder="请输入姓名" required autocomplete="off">
+          <label for="loginPassword">密码</label>
+          <input type="password" id="loginPassword" placeholder="请输入密码" required autocomplete="current-password">
+        </div>
+        <div class="login-error" id="loginError"></div>
+        <button type="submit" class="login-btn" id="loginBtn">登 录</button>
+      </form>
+      <form id="registerForm" style="display:none" onsubmit="return handleSupabaseRegister(event)">
+        <div class="login-field">
+          <label for="regName">姓名</label>
+          <input type="text" id="regName" placeholder="请输入姓名" required autocomplete="name">
         </div>
         <div class="login-field">
-          <label for="loginRole">角色</label>
-          <select id="loginRole">
+          <label for="regStudentId">学号</label>
+          <input type="text" id="regStudentId" placeholder="请输入学号" required autocomplete="off">
+        </div>
+        <div class="login-field">
+          <label for="regEmail">邮箱</label>
+          <input type="email" id="regEmail" placeholder="请输入邮箱" required autocomplete="email">
+        </div>
+        <div class="login-field">
+          <label for="regRole">角色</label>
+          <select id="regRole">
             <option value="student">学生</option>
             <option value="teacher">教师</option>
           </select>
         </div>
-        <div class="login-error" id="loginError"></div>
-        <button type="submit" class="login-btn">登 录</button>
+        <div class="login-field">
+          <label for="regPassword">密码</label>
+          <input type="password" id="regPassword" placeholder="至少6位密码" required minlength="6" autocomplete="new-password">
+        </div>
+        <div class="login-error" id="registerError"></div>
+        <button type="submit" class="login-btn" id="registerBtn">注 册</button>
       </form>
     </div>
   </div>
@@ -4445,6 +4470,20 @@ button:active:not(:disabled),
   
   
   <script>
+
+  // === Supabase 初始化 ===
+  var SUPABASE_URL = 'https://buckhpuxcenmnthxumuh.supabase.co';
+  var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ1Y2tocHV4Y2VubW50aHh1bXVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1ODU0ODgsImV4cCI6MjEwNTE2MTQ4OH0.HoNx0ZtEEJ5k3lrBJlCOhkv5rT-_C3BpNHJy3cAZXxw';
+  var supabase = null;
+  (function initSupabase() {
+    if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      console.log('[Supabase] Client initialized');
+    } else {
+      console.warn('[Supabase] SDK not loaded yet, retrying...');
+      setTimeout(initSupabase, 500);
+    }
+  })();
 
   // Knowledge base: raw JSON, no compression/decompression needed
   let KB_CHUNKS = null;
@@ -4676,7 +4715,7 @@ var MockData = {
       icon: '🏛️',
       children: [
         { id: 'ideology-doc', name: '官方文件', count: 6 },
-        { id: 'ideology-news', name: '前沿动态', count: 10 },
+        { id: 'ideology-news', name: '前沿动态', count: 15 },
       ]
     }
   ],
@@ -5231,159 +5270,217 @@ var MockData = {
   zhijianNews: [
     {
       id: 'news-1',
-      title: '全国人大常委会审议通过《外国国家豁免法》配套实施细则',
-      summary: '细则进一步明确外国国家豁免的适用范围、诉讼程序和执行程序，完善我国国家豁免法律制度体系，为涉外民商事审判提供更具体的操作指引。',
-      source: '全国人大',
+      title: '司法部：加快推进海外利益保护专门立法，一体推进涉外法治体系和能力建设',
+      summary: '司法部在国新办发布会上表示，"十五五"期间将加快海外利益保护专门立法，推进首个全国性涉外法律服务平台建设，构建覆盖全球的中国公民和企业权益保护机制。',
+      source: '司法部',
       sourceClass: 'source-npc',
-      date: '2026年3月',
-      sourceURL: 'https://flk.npc.gov.cn/detail2.html?zmdyMzUxNzE%3D',
+      date: '2026年9月',
+      sourceURL: 'https://www.moj.gov.cn/',
       teachingNote: {
-        knowledgeTags: ['国际公法', '国家豁免', '限制豁免主义'],
-        suggestion: '在"国家豁免"章节中对比传统绝对豁免与限制豁免的理论分歧，结合我国2023年《外国国家豁免法》的立法背景，分析我国从绝对豁免转向限制豁免的战略考量。可组织课堂讨论：中国为什么选择在此时制定国家豁免法？',
-        kbHint: '关联知识库：国际公法基础教学要点汇编 > 国家豁免章节'
+        knowledgeTags: ['国际公法', '涉外法治', '海外利益保护', '法治体系建设'],
+        suggestion: '在"国际法基本原则"和"涉外法治战略"章节中，结合十五五规划部署，分析我国海外利益保护的法治需求：(1) 海外公民和企业权益保护的法律框架；(2) 涉外法治体系建设的战略意义；(3) 与一带一路战略的协同关系。',
+        kbHint: '关联知识库：涉外法治战略文件汇编 > 海外利益保护相关条款'
       }
     },
     {
       id: 'news-2',
-      title: '外交部就南海仲裁案相关最新动态发表声明',
-      summary: '针对菲律宾方面在南海问题上的单边行动，外交部发言人重申中国在南海问题上的一贯立场，强调不接受、不承认所谓"南海仲裁案"裁决，坚定维护国家领土主权和海洋权益。',
+      title: '《人工智能安全治理框架3.0》正式发布',
+      summary: '我国发布人工智能安全治理框架3.0版本，更新AI安全风险分类体系，提出分级分类治理措施。外交部表态支持以联合国为主渠道构建全球AI治理体系，推动形成更具包容性的国际AI治理共识。',
       source: '外交部',
       sourceClass: 'source-mfa',
-      date: '2026年5月',
-      sourceURL: 'https://www.fmprc.gov.cn/web/wjb_673085/zzjg_673183/bjhysws_674671/xgxw_674673/202607/t20260712_11980339.shtml',
+      date: '2026年9月',
+      sourceURL: 'https://www.fmprc.gov.cn/',
       teachingNote: {
-        knowledgeTags: ['国际公法', '海洋法', '领土争端', 'UNCLOS'],
-        suggestion: '在"海洋法"和"领土法"教学中使用本案作为经典案例，重点讲解：(1) 仲裁庭管辖权异议；(2) 历史性权利与UNCLOS的关系；(3) 岛礁法律地位认定（岛屿vs岩礁）。可组织模拟法庭辩论。',
-        kbHint: '关联知识库：中国主权与国际法立场文件汇编 > 南海问题立场文件；ICJ经典判例摘要集'
+        knowledgeTags: ['国际公法', '人工智能治理', '全球治理', '国际规则制定'],
+        suggestion: '在"全球治理"和"国际法前沿"专题中讨论：(1) AI安全治理的国际竞争与合作；(2) 联合国框架下AI治理的中国方案；(3) AI技术对传统国际法体系带来的挑战与机遇。',
+        kbHint: '关联知识库：涉外法治战略文件汇编 > 新兴技术领域治理'
       }
     },
     {
       id: 'news-3',
-      title: '最高人民法院发布第六批涉外商事海事审判典型案例',
-      summary: '本批案例共12个，涵盖跨境电商、国际货物买卖、海事海商、跨境破产等多个领域，明确了多项涉外民商事审判中的法律适用标准和裁判规则，为类案审理提供指引。',
-      source: '最高法',
-      sourceClass: 'source-court',
-      date: '2026年4月',
-      sourceURL: 'https://www.court.gov.cn/zixun/xiangqing/497661.html',
+      title: '司法部发布首批涉外法律服务典型案例（18个）',
+      summary: '司法部发布首批18个涉外法律服务典型案例，涵盖跨境投资、国际贸易、知识产权保护、海事海商等领域，为涉外法律服务实践提供示范指引，推动涉外法律服务高质量发展。',
+      source: '司法部',
+      sourceClass: 'source-npc',
+      date: '2026年9月',
+      sourceURL: 'https://www.moj.gov.cn/',
       teachingNote: {
-        knowledgeTags: ['国际私法', '涉外管辖权', '法律适用', '判决承认执行'],
-        suggestion: '在国际私法"涉外民事诉讼"和"法律适用"章节中选取代表性案例进行案例教学，引导学生分析：(1) 涉外民事关系的认定标准；(2) 管辖权确定规则；(3) 准据法选择方法。建议结合《涉外民事关系法律适用法》具体条文讲解。',
-        kbHint: '关联知识库：涉外民商事典型案例汇编、涉外民事关系法律适用法'
+        knowledgeTags: ['国际私法', '涉外法律服务', '跨境投资', '案例教学'],
+        suggestion: '在涉外法治案例教学中，选取代表性案例开展分组讨论：(1) 跨境投资中的法律风险识别；(2) 国际贸易争端的解决路径；(3) 知识产权保护的国际协调。',
+        kbHint: '关联知识库：涉外民商事典型案例汇编'
       }
     },
     {
       id: 'news-4',
-      title: '商务部通报WTO争端解决最新进展及中国参与情况',
-      summary: '商务部发布2025年度中国参与WTO争端解决报告，全年共参与18起争端解决案件，涵盖贸易救济、补贴措施、技术壁垒等领域，并就WTO上诉机构改革提出中国方案。',
-      source: '商务部',
-      sourceClass: 'source-commerce',
-      date: '2026年2月',
-      sourceURL: 'https://www.mofcom.gov.cn/xwfb/xwfyrth/art/2026/art_517c913ad32e4af588eb54a461c688b9.html',
+      title: '《反跨境腐败法》草案首次提请全国人大常委会审议',
+      summary: '反跨境腐败法草案首次提请十四届全国人大常委会审议，旨在完善我国反腐败法律体系的域外适用机制，强化跨境腐败行为的法律规制，与国际反腐败公约接轨。',
+      source: '全国人大',
+      sourceClass: 'source-npc',
+      date: '2026年8月',
+      sourceURL: 'https://flk.npc.gov.cn/',
       teachingNote: {
-        knowledgeTags: ['国际经济法', 'WTO法', 'DSU争端解决机制', '贸易救济'],
-        suggestion: '在"WTO法"教学中结合本案分析：(1) DSU争端解决程序（磋商—专家组—上诉—执行）；(2) 上诉机构停摆危机及MPIA临时安排；(3) 中国在WTO争端解决中的角色演变。可模拟DSB会议讨论。',
-        kbHint: '关联知识库：贸易救济与中国法律汇编 > WTO争端解决机制章节'
+        knowledgeTags: ['国际公法', '反腐败', '域外管辖', '国际法基本原则'],
+        suggestion: '在"国际刑法"和"域外管辖权"章节中讨论：(1) 跨境腐败的法律定性与管辖权冲突；(2) 中国反跨境腐败立法与国际公约（UNCAC）的衔接；(3) 对企业合规出海的影响。',
+        kbHint: '关联知识库：国际公法基础教学要点汇编 > 国际刑法章节'
       }
     },
     {
       id: 'news-5',
-      title: '全国人大常委会审议《反外国制裁法》修正案草案',
-      summary: '修正案进一步完善反制裁的适用情形、工作机制和程序规范，强化对等反制措施的法律依据，为维护国家主权、安全、发展利益提供更加有力的法治保障。',
-      source: '全国人大',
-      sourceClass: 'source-npc',
-      date: '2026年6月',
-      sourceURL: 'https://flk.npc.gov.cn/detail2.html?zmdyMzUxNzE%3D',
+      title: '重庆签发全球首张基于UNCITRAL范本的电子可转让货物单证',
+      summary: '重庆成功签发全球首张基于联合国国际贸易法委员会（UNCITRAL）范本的电子可转让货物单证，标志着国际贸易数字化里程碑，为跨境贸易电子单证的法律确定性提供实践范本。',
+      source: '商务部',
+      sourceClass: 'source-commerce',
+      date: '2026年8月',
+      sourceURL: 'https://www.mofcom.gov.cn/',
       teachingNote: {
-        knowledgeTags: ['国际公法', '反制裁', '国家主权', '国际法基本原则'],
-        suggestion: '在"国际法基本原则"和"国家主权"章节中讨论反制裁法的国际法基础：(1) 不干涉内政原则；(2) 国家主权平等原则；(3) 反措施的合法性边界。可组织辩论：单边制裁与反制裁在国际法上的合法性。',
-        kbHint: '关联知识库：国际公法基础教学要点汇编 > 国际法基本原则章节'
+        knowledgeTags: ['国际经济法', '国际贸易法', '电子单证', '数字化贸易'],
+        suggestion: '在"国际贸易法"前沿专题中讲解：(1) 电子可转让单证的法律效力与UNCITRAL示范法框架；(2) 数字化对传统贸易单据体系的变革；(3) 中国在国际贸易数字化中的引领作用。',
+        kbHint: '关联知识库：CISG联合国国际货物销售合同公约'
       }
     },
     {
       id: 'news-6',
-      title: '外交部发布《全球治理体系变革的中国方案》白皮书',
-      summary: '白皮书系统阐述中国对全球治理体系改革的立场和主张，强调维护以联合国为核心的国际体系、以国际法为基础的国际秩序，推动全球治理朝着更加公正合理的方向发展。',
-      source: '外交部',
-      sourceClass: 'source-mfa',
+      title: '最高人民检察院：构建反制裁、反干预、反"长臂管辖"法治协同机制',
+      summary: '最高检发布工作通报，强调构建完善反制裁、反干预、反"长臂管辖"法治协同机制，强化涉外检察职能，维护国家主权安全和发展利益，为涉外法治提供司法保障。',
+      source: '最高法',
+      sourceClass: 'source-court',
       date: '2026年6月',
-      sourceURL: 'https://www.fmprc.gov.cn/nanhai/chn/index.htm',
+      sourceURL: 'https://www.spp.gov.cn/',
       teachingNote: {
-        knowledgeTags: ['国际公法', '全球治理', '国际组织法', '人类命运共同体'],
-        suggestion: '在"国际组织法"和"国际法基本原则"章节中结合白皮书内容，讲解：(1) 多边主义与单边主义的博弈；(2) 联合国的地位与改革；(3) 人类命运共同体理念的国际法意义。',
-        kbHint: '关联知识库：联合国宪章_要点与来源、涉外法治战略文件汇编'
+        knowledgeTags: ['国际公法', '反制裁', '长臂管辖', '国家主权'],
+        suggestion: '在"国家主权"和"域外管辖权"章节中分析：(1) "长臂管辖"的国际法争议；(2) 中国反制裁法律体系的构建逻辑；(3) 涉外检察职能的定位与作用。',
+        kbHint: '关联知识库：国际公法基础教学要点汇编 > 国家主权与管辖权'
       }
     },
     {
       id: 'news-7',
-      title: '最高人民法院国际商事法庭审结一批标志性案件',
-      summary: '最高法国际商事法庭（CICC）成立七年来已审结多起具有标杆意义的国际商事案件，涉及跨境买卖合同、知识产权侵权、公司股权争议等，"一站式"纠纷解决机制成效显著。',
-      source: '最高法',
-      sourceClass: 'source-court',
-      date: '2026年1月',
-      sourceURL: 'https://www.court.gov.cn/zixun/xiangqing/497661.html',
+      title: '《律师法》修正草案提请审议，强化涉外律师人才培养',
+      summary: '律师法修正草案提请全国人大常委会审议，重点增加涉外律师人才培养、涉外法律服务体系建设等内容，为涉外法治人才队伍专业化建设提供法律依据。',
+      source: '全国人大',
+      sourceClass: 'source-npc',
+      date: '2026年6月',
+      sourceURL: 'https://flk.npc.gov.cn/',
       teachingNote: {
-        knowledgeTags: ['国际经济法', '国际商事争端解决', 'CICC', '国际商事仲裁'],
-        suggestion: '在"国际商事仲裁"和"国际民事诉讼"章节中讲解CICC的创新机制：(1) 国际商事专家委员会制度；(2) "一站式"多元纠纷解决机制；(3) 仲裁与诉讼的衔接。可结合具体案例分析裁判思路。',
-        kbHint: '关联知识库：纽约公约、国际投资法知识汇编、涉外民商事典型案例汇编'
+        knowledgeTags: ['涉外法治', '法律人才培养', '律师制度', '法治建设'],
+        suggestion: '结合本项目研究目标讨论：(1) 涉外法治人才培养的制度保障；(2) AI赋能法律教育的政策导向；(3) 复合型涉外法治人才的能力标准构建。',
+        kbHint: '关联知识库：涉外法治战略文件汇编 > 人才培养相关政策'
       }
     },
     {
       id: 'news-8',
-      title: '商务部发布RCEP实施一周年成果报告',
-      summary: '报告显示RCEP生效实施以来，区域内贸易投资自由化便利化水平显著提升，中国与RCEP其他成员国贸易额持续增长，原产地累积规则、关税减让等制度红利持续释放。',
-      source: '商务部',
-      sourceClass: 'source-commerce',
-      date: '2026年1月',
-      sourceURL: 'http://www.mofcom.gov.cn/zwjg/jmxw/yz/art/2025/art_8cb1d91edbc4481b9a6542e020442c32.html',
+      title: '联合国《可转让货物单证公约》将于10月开放签署',
+      summary: '联合国大会于2025年12月通过的《联合国可转让货物单证公约》将于2026年10月正式开放签署，该公旨在为国际贸易中电子可转让单证提供统一法律框架，促进跨境贸易数字化。',
+      source: '联合国',
+      sourceClass: 'source-mfa',
+      date: '2026年6月',
+      sourceURL: 'https://uncitral.un.org/',
       teachingNote: {
-        knowledgeTags: ['国际经济法', '区域经济一体化', 'RCEP', '国际货物买卖'],
-        suggestion: '在"区域经济一体化"章节中分析RCEP的制度创新：(1) 原产地累积规则；(2) 服务贸易负面清单；(3) 电子商务章节。对比RCEP与CPTPP、WTO的异同，分析中国参与区域经济合作的战略布局。',
-        kbHint: '关联知识库：CISG联合国国际货物销售合同公约、国际投资法知识汇编'
+        knowledgeTags: ['国际经济法', '国际贸易法', '联合国公约', '贸易数字化'],
+        suggestion: '在"国际贸易法"章节中讲解：(1) 可转让货物单证的法律性质与流转规则；(2) 电子单证与传统纸质单证的法律差异；(3) 中国参与国际经贸规则制定的实践。',
+        kbHint: '关联知识库：CISG联合国国际货物销售合同公约'
       }
     },
     {
       id: 'news-9',
-      title: '全国人大常委会批准《海牙判决公约》',
-      summary: '全国人大常委会正式批准2019年《海牙承认与执行外国民商事判决公约》，将进一步便利我国当事人跨境民商事判决的承认与执行，提升我国涉外民商事司法国际公信力。',
+      title: '新修订《海商法》自主知识体系构建取得重要进展',
+      summary: '中国法学会举办海商法修订草案专题讲座，系统介绍新修订海商法的自主知识体系构建成果，涵盖船舶物权、海上运输合同、海事赔偿责任限制等核心制度的修订完善。',
       source: '全国人大',
       sourceClass: 'source-npc',
-      date: '2026年4月',
-      sourceURL: 'https://flk.npc.gov.cn/detail2.html?zmdyMzUxNzE%3D',
+      date: '2026年5月',
+      sourceURL: 'https://flk.npc.gov.cn/',
       teachingNote: {
-        knowledgeTags: ['国际私法', '判决承认与执行', '海牙公约', '涉外民事诉讼'],
-        suggestion: '在"国际民事诉讼"和"区际司法协助"章节中讲解：(1) 判决承认执行的条件与程序；(2) 海牙判决公约与我国现有双边司法协助条约的关系；(3) 对跨境商事纠纷解决的实际影响。',
-        kbHint: '关联知识库：内地与港澳台司法协助汇编、海牙公约要点汇编'
+        knowledgeTags: ['海商法', '国际私法', '海事法律', '自主知识体系'],
+        suggestion: '在"海商法"专题教学中结合本次修订：(1) 海商法自主知识体系的构建思路；(2) 与国际海事公约的衔接与协调；(3) 对中国航运业和海事司法实践的影响。',
+        kbHint: '关联知识库：涉外民事关系法律适用法'
       }
     },
     {
       id: 'news-10',
-      title: '商务部公布首批跨境数据流动合规试点企业名单',
-      summary: '根据《数据安全法》和《个人信息保护法》相关规定，商务部联合网信办公布首批跨境数据流动合规试点企业，探索建立数据跨境流动的"白名单"制度，助力数字经济国际合作。',
-      source: '商务部',
-      sourceClass: 'source-commerce',
-      date: '2026年3月',
-      sourceURL: 'https://www.mofcom.gov.cn/',
+      title: '国际调解院正式成立，总部设于香港',
+      summary: '国际调解院于2025年10月20日正式成立，总部设在香港，这是全球首个以调解为核心职能的政府间国际组织。《国际调解院公约》已于2025年9月开放签署，标志着国际争端解决机制多元化发展的重要里程碑。',
+      source: '外交部',
+      sourceClass: 'source-mfa',
+      date: '2025年10月',
+      sourceURL: 'https://www.fmprc.gov.cn/',
       teachingNote: {
-        knowledgeTags: ['国际经济法', '数字经济', '数据跨境流动', 'WTO数字贸易'],
-        suggestion: '在"国际贸易法"前沿专题中讨论：(1) 数据主权与跨境数据流动的国际法问题；(2) WTO数字贸易谈判进展；(3) 中国数据出境法律制度（《数据安全法》《个人信息保护法》）。适合开展前沿议题研讨。',
-        kbHint: '关联知识库：国际贸易救济与中国法律汇编'
+        knowledgeTags: ['国际公法', '国际争端解决', '国际调解', '国际组织'],
+        suggestion: '在"国际争端解决"章节中重点讲解：(1) 国际调解院的法律地位与职能；(2) 调解与仲裁、诉讼的互补关系；(3) 中国在香港设立国际调解院的战略考量。',
+        kbHint: '关联知识库：国际公法基础教学要点汇编 > 国际争端解决'
       }
     },
     {
       id: 'news-11',
-      title: '企业破产法修订草案二审在即，拟完善跨境破产规则与重整制度',
-      summary: '企业破产法修订草案二次审议稿拟于8月25日提请十四届全国人大常委会第二十四次会议审议。修订草案二审稿共拟作出六项主要修改，重点包括完善跨国破产制度、细化我国法院对跨国破产案件管辖权规定，以及借鉴域外有益经验优化重整制度挽救困境企业。这是继2025年9月初审后，在16章216条基础上的进一步修订完善。',
+      title: '企业破产法修订草案完善跨境破产规则',
+      summary: '企业破产法修订草案提请全国人大常委会审议，新增跨境破产专章，完善跨国破产案件管辖权规定，借鉴UNCITRAL《跨境破产案件示范法》，建立与国际接轨的跨境破产合作机制。',
       source: '全国人大',
       sourceClass: 'source-npc',
       date: '2026年8月',
       sourceURL: 'http://www.chinanews.com.cn/gn/2026/08-21/10681726.shtml',
       teachingNote: {
-        knowledgeTags: ['国际私法', '跨境破产', '企业破产法', '重整制度', '涉外民商事'],
-        suggestion: '在"跨境破产"和"涉外民商事法律适用"章节中结合本次修订进行前沿讨论：(1) 跨国破产管辖权的确定规则与我国立场；(2) 主要修订内容与UNCITRAL《跨境破产案件示范法》的对接；(3) 预重整机制的引入与地方实践的衔接；(4) 破产财产清偿顺位调整对涉外债权人的影响。可组织课堂讨论：中国跨境破产规则如何与国际惯例接轨？',
+        knowledgeTags: ['国际私法', '跨境破产', '企业破产法', '涉外民商事'],
+        suggestion: '在"跨境破产"和"涉外民商事法律适用"章节中讨论：(1) 跨国破产管辖权的确定规则与我国立场；(2) 与UNCITRAL《跨境破产案件示范法》的对接；(3) 破产财产清偿顺位对涉外债权人的影响。',
         kbHint: '关联知识库：涉外民事关系法律适用法、涉外民商典型案例汇编'
+      }
+    },
+    {
+      id: 'news-12',
+      title: '2025年度中国十大国际仲裁裁决新闻发布会召开',
+      summary: '中国法学会召开新闻发布会，发布2025年度中国十大国际仲裁裁决，涵盖国际投资仲裁、国际商事仲裁、海事仲裁等领域，集中展示中国仲裁事业的发展成就。',
+      source: '司法部',
+      sourceClass: 'source-npc',
+      date: '2026年7月',
+      sourceURL: 'https://www.moj.gov.cn/',
+      teachingNote: {
+        knowledgeTags: ['国际经济法', '国际仲裁', '争端解决', '仲裁裁决'],
+        suggestion: '在"国际商事仲裁"章节中结合典型案例讲解：(1) 国际仲裁裁决的法律效力；(2) 纽约公约框架下的裁决承认与执行；(3) 中国仲裁机构在国际争端解决中的地位提升。',
+        kbHint: '关联知识库：纽约公约、国际投资法知识汇编'
+      }
+    },
+    {
+      id: 'news-13',
+      title: '司法部发布首批国际仲裁典型案例',
+      summary: '司法部发布首批国际仲裁典型案例，涵盖投资仲裁、商事仲裁、海事仲裁等类别，系统展示中国仲裁实践的成果，为涉外法律实务提供参考借鉴。',
+      source: '司法部',
+      sourceClass: 'source-npc',
+      date: '2026年7月',
+      sourceURL: 'https://www.moj.gov.cn/',
+      teachingNote: {
+        knowledgeTags: ['国际经济法', '国际商事仲裁', '案例教学', '争端解决'],
+        suggestion: '在"国际商事仲裁"和"国际争端解决"章节中选取典型案例进行教学：(1) 仲裁协议的效力认定；(2) 仲裁程序中的法律适用；(3) 裁决的承认与执行实务。',
+        kbHint: '关联知识库：纽约公约、涉外民商事典型案例汇编'
+      }
+    },
+    {
+      id: 'news-14',
+      title: '最高人民法院发布涉外商事海事审判典型案例',
+      summary: '最高法发布涉外商事海事审判典型案例，涵盖跨境电商、国际货物买卖、海事海商等领域，明确涉外民商事审判中的法律适用标准和裁判规则。',
+      source: '最高法',
+      sourceClass: 'source-court',
+      date: '2026年4月',
+      sourceURL: 'https://www.court.gov.cn/',
+      teachingNote: {
+        knowledgeTags: ['国际私法', '涉外管辖权', '法律适用', '判决承认执行'],
+        suggestion: '在国际私法"涉外民事诉讼"和"法律适用"章节中选取代表性案例进行案例教学，引导学生分析涉外民事关系的认定标准、管辖权确定规则和准据法选择方法。',
+        kbHint: '关联知识库：涉外民商事典型案例汇编、涉外民事关系法律适用法'
+      }
+    },
+    {
+      id: 'news-15',
+      title: '司法部年均办理国际司法协助请求达3300多件',
+      summary: '司法部通报，我国年均办理国际司法协助请求达3300多件，涵盖民商事送达、取证、判决承认执行等多个领域，涉外法治工作体系日益完善。',
+      source: '司法部',
+      sourceClass: 'source-npc',
+      date: '2026年5月',
+      sourceURL: 'https://www.moj.gov.cn/',
+      teachingNote: {
+        knowledgeTags: ['国际私法', '司法协助', '区际法律合作', '涉外法治'],
+        suggestion: '在"国际司法协助"和"区际司法协助"章节中讲解：(1) 国际司法协助的法律框架；(2) 海牙送达公约和海牙取证公约的实践应用；(3) 我国国际司法协助的制度建设。',
+        kbHint: '关联知识库：内地与港澳台司法协助汇编、海牙公约要点汇编'
       }
     }
   ],
+
+  // === 材料分析题 ===  ],
 
   // === 材料分析题 ===
   materialQuestions: [
@@ -6222,23 +6319,34 @@ function loadDemoData() {
 }
 
 
-function initApp() {
-  // Check if already logged in
-  var savedUser = null;
-  try {
-    var raw = localStorage.getItem('sanguofa_current_user');
-    if (raw) savedUser = JSON.parse(raw);
-  } catch(e) {}
+async function initApp() {
+  // First check Supabase session
+  var loggedIn = false;
+  if (supabase) {
+    try {
+      loggedIn = await checkAuthState();
+    } catch(e) {
+      console.warn('[Supabase] checkAuthState failed:', e);
+    }
+  }
   
-  if (savedUser && savedUser.studentId && savedUser.name) {
-    AppState.currentUser = savedUser;
-    AppState.isGuest = false;
-    AppState.isTeacherMode = (savedUser.role === 'teacher');
-  } else {
-    // Guest mode - no login required
-    AppState.isGuest = true;
-    AppState.currentUser = null;
-    AppState.isTeacherMode = false;
+  if (!loggedIn) {
+    // Fallback: check localStorage
+    var savedUser = null;
+    try {
+      var raw = localStorage.getItem('sanguofa_current_user');
+      if (raw) savedUser = JSON.parse(raw);
+    } catch(e) {}
+    
+    if (savedUser && savedUser.studentId && savedUser.name) {
+      AppState.currentUser = savedUser;
+      AppState.isGuest = false;
+      AppState.isTeacherMode = (savedUser.role === 'teacher');
+    } else {
+      AppState.isGuest = true;
+      AppState.currentUser = null;
+      AppState.isTeacherMode = false;
+    }
   }
   startApp();
 }
@@ -6262,61 +6370,237 @@ function startApp() {
   showPage('dashboard');
 }
 
-// === Login / Logout ===
-function handleLogin(e) {
+// === Login / Logout (Supabase Auth) ===
+
+// Auth tab 切换
+function switchAuthTab(tab) {
+  var loginForm = document.getElementById('loginForm');
+  var registerForm = document.getElementById('registerForm');
+  var tabLoginEl = document.getElementById('tabLogin');
+  var tabRegisterEl = document.getElementById('tabRegister');
+  if (tab === 'login') {
+    loginForm.style.display = 'block';
+    registerForm.style.display = 'none';
+    tabLoginEl.style.borderBottom = '2px solid #1a73e8';
+    tabLoginEl.style.color = '#1a73e8';
+    tabLoginEl.style.fontWeight = 'bold';
+    tabRegisterEl.style.borderBottom = 'none';
+    tabRegisterEl.style.color = '#666';
+    tabRegisterEl.style.fontWeight = 'normal';
+  } else {
+    loginForm.style.display = 'none';
+    registerForm.style.display = 'block';
+    tabRegisterEl.style.borderBottom = '2px solid #1a73e8';
+    tabRegisterEl.style.color = '#1a73e8';
+    tabRegisterEl.style.fontWeight = 'bold';
+    tabLoginEl.style.borderBottom = 'none';
+    tabLoginEl.style.color = '#666';
+    tabLoginEl.style.fontWeight = 'normal';
+  }
+}
+
+// Supabase 登录
+async function handleSupabaseLogin(e) {
   e.preventDefault();
-  var studentId = document.getElementById('loginStudentId').value.trim();
-  var name = document.getElementById('loginName').value.trim();
-  var role = document.getElementById('loginRole').value;
+  if (!supabase) { alert('系统初始化中，请稍后再试'); return false; }
+  var email = document.getElementById('loginEmail').value.trim();
+  var password = document.getElementById('loginPassword').value;
   var errorEl = document.getElementById('loginError');
-  
-  if (!studentId || !name) {
-    errorEl.textContent = '请填写学号和姓名';
+  var btn = document.getElementById('loginBtn');
+  errorEl.style.display = 'none';
+  btn.textContent = '登录中...';
+  btn.disabled = true;
+
+  var result = await supabase.auth.signInWithPassword({ email: email, password: password });
+  var data = result.data;
+  var error = result.error;
+
+  btn.textContent = '登 录';
+  btn.disabled = false;
+
+  if (error) {
+    var msg = '登录失败';
+    if (error.message && error.message.indexOf('Invalid login credentials') >= 0) {
+      msg = '邮箱或密码错误';
+    } else if (error.message && error.message.indexOf('Email not confirmed') >= 0) {
+      msg = '邮箱未验证，请检查邮箱后重试';
+    } else {
+      msg = error.message || msg;
+    }
+    errorEl.textContent = msg;
     errorEl.style.display = 'block';
     return false;
   }
-  
-  var user = { studentId: studentId, name: name, role: role, loginTime: new Date().toISOString() };
-  localStorage.setItem('sanguofa_current_user', JSON.stringify(user));
-  AppState.currentUser = user;
+
+  var user = data.user;
+  var metadata = user.user_metadata || {};
+  var currentUser = {
+    id: user.id,
+    email: email,
+    studentId: metadata.studentId || '',
+    name: metadata.name || email,
+    role: metadata.role || 'student',
+    loginTime: new Date().toISOString()
+  };
+  localStorage.setItem('sanguofa_current_user', JSON.stringify(currentUser));
+  AppState.currentUser = currentUser;
   AppState.isGuest = false;
-  AppState.isTeacherMode = (role === 'teacher');
-  
-  // Record login in teacher students registry
+  AppState.isTeacherMode = (currentUser.role === 'teacher');
+
+  // Record in teacher students registry
   var registry = [];
   try {
     var raw = localStorage.getItem('sanguofa_student_registry');
     if (raw) registry = JSON.parse(raw);
-  } catch(e) {}
-  
-  var existing = registry.find(function(r) { return r.studentId === studentId; });
+  } catch(ex) {}
+  var existing = registry.find(function(r) { return r.studentId === currentUser.studentId; });
   if (existing) {
-    existing.name = name;
-    existing.role = role;
+    existing.name = currentUser.name;
+    existing.role = currentUser.role;
     existing.lastActive = new Date().toISOString();
   } else {
-    registry.push({ studentId: studentId, name: name, role: role, lastActive: new Date().toISOString() });
+    registry.push({
+      studentId: currentUser.studentId,
+      name: currentUser.name,
+      role: currentUser.role,
+      loginTime: currentUser.loginTime,
+      lastActive: new Date().toISOString()
+    });
   }
   localStorage.setItem('sanguofa_student_registry', JSON.stringify(registry));
-  
-  // Close login modal
+
   closeLoginModal();
   startApp();
   return false;
+}
+
+// Supabase 注册
+async function handleSupabaseRegister(e) {
+  e.preventDefault();
+  if (!supabase) { alert('系统初始化中，请稍后再试'); return false; }
+  var name = document.getElementById('regName').value.trim();
+  var studentId = document.getElementById('regStudentId').value.trim();
+  var email = document.getElementById('regEmail').value.trim();
+  var role = document.getElementById('regRole').value;
+  var password = document.getElementById('regPassword').value;
+  var errorEl = document.getElementById('registerError');
+  var btn = document.getElementById('registerBtn');
+  errorEl.style.display = 'none';
+  btn.textContent = '注册中...';
+  btn.disabled = true;
+
+  var result = await supabase.auth.signUp({
+    email: email,
+    password: password,
+    options: {
+      data: { name: name, studentId: studentId, role: role }
+    }
+  });
+  var data = result.data;
+  var error = result.error;
+
+  btn.textContent = '注 册';
+  btn.disabled = false;
+
+  if (error) {
+    var msg = '注册失败';
+    if (error.message && error.message.indexOf('already registered') >= 0) {
+      msg = '该邮箱已被注册，请直接登录';
+    } else if (error.message && error.message.indexOf('Password') >= 0) {
+      msg = error.message;
+    } else {
+      msg = error.message || msg;
+    }
+    errorEl.textContent = msg;
+    errorEl.style.display = 'block';
+    return false;
+  }
+
+  // 注册成功
+  if (data.session) {
+    // 直接获得session（邮箱验证未启用时）
+    var user = data.user;
+    var currentUser = {
+      id: user.id,
+      email: email,
+      studentId: studentId,
+      name: name,
+      role: role,
+      loginTime: new Date().toISOString()
+    };
+    localStorage.setItem('sanguofa_current_user', JSON.stringify(currentUser));
+    AppState.currentUser = currentUser;
+    AppState.isGuest = false;
+    AppState.isTeacherMode = (role === 'teacher');
+    closeLoginModal();
+    startApp();
+  } else {
+    // 需要邮箱验证
+    errorEl.textContent = '注册成功！请检查邮箱验证后登录。';
+    errorEl.style.color = '#2e7d32';
+    errorEl.style.display = 'block';
+    setTimeout(function() { switchAuthTab('login'); }, 3000);
+  }
+  return false;
+}
+
+// 检查 Supabase 登录状态
+async function checkAuthState() {
+  if (!supabase) return false;
+  var result = await supabase.auth.getSession();
+  var session = result.data.session;
+  if (session && session.user) {
+    var user = session.user;
+    var metadata = user.user_metadata || {};
+    var savedUser = {
+      id: user.id,
+      email: user.email,
+      studentId: metadata.studentId || '',
+      name: metadata.name || user.email,
+      role: metadata.role || 'student',
+      loginTime: new Date().toISOString()
+    };
+    AppState.currentUser = savedUser;
+    AppState.isGuest = false;
+    AppState.isTeacherMode = (savedUser.role === 'teacher');
+    localStorage.setItem('sanguofa_current_user', JSON.stringify(savedUser));
+    return true;
+  }
+  return false;
+}
+
+// 监听 auth 状态变化
+if (typeof window.supabase !== 'undefined') {
+  (function setupAuthListener() {
+    if (supabase) {
+      supabase.auth.onAuthStateChange(function(event, session) {
+        if (event === 'SIGNED_OUT') {
+          AppState.currentUser = null;
+          AppState.isGuest = true;
+        }
+      });
+    } else {
+      setTimeout(setupAuthListener, 500);
+    }
+  })();
 }
 
 function showLoginModal() {
   var overlay = document.getElementById('loginOverlay');
   if (overlay) {
     overlay.classList.add('visible');
-    // Reset form and error
-    var form = document.getElementById('loginForm');
-    if (form) form.reset();
-    var errorEl = document.getElementById('loginError');
-    if (errorEl) { errorEl.style.display = 'none'; errorEl.textContent = ''; }
+    // Reset to login tab
+    switchAuthTab('login');
+    // Reset forms and errors
+    var loginForm = document.getElementById('loginForm');
+    if (loginForm) loginForm.reset();
+    var registerForm = document.getElementById('registerForm');
+    if (registerForm) registerForm.reset();
+    var errorEls = document.querySelectorAll('.login-error');
+    errorEls.forEach(function(el) { el.style.display = 'none'; el.textContent = ''; });
     // Focus first input
     setTimeout(function() {
-      var firstInput = document.getElementById('loginStudentId');
+      var firstInput = document.getElementById('loginEmail');
       if (firstInput) firstInput.focus();
     }, 100);
   }
@@ -6522,7 +6806,11 @@ function exportProfileReport() {
   URL.revokeObjectURL(url);
 }
 
-function handleLogout() {
+async function handleLogout() {
+  // Supabase sign out
+  if (supabase) {
+    try { await supabase.auth.signOut(); } catch(e) { console.warn('[Supabase] signOut error:', e); }
+  }
   localStorage.removeItem('sanguofa_current_user');
   AppState.currentUser = null;
   AppState.isGuest = true;
@@ -6538,6 +6826,9 @@ function handleLogout() {
   renderAssessModule();
   renderIdeologyModule();
   showPage('dashboard');
+  
+  // Show login overlay
+  showLoginModal();
 }
 
 // === 导航栏 ===
@@ -10447,7 +10738,7 @@ function showToast(message) {
 }
 
 // === 启动应用 ===
-document.addEventListener('DOMContentLoaded', initApp);
+document.addEventListener('DOMContentLoaded', function() { initApp(); });
 
 
 // ========================================
