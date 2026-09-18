@@ -10195,6 +10195,11 @@ function getAllStudentsData() {
   var students = [];
   
   // 1. Load demo students if they exist
+  var demoVersion = localStorage.getItem('sanguofa_demo_version') || '';
+  if (demoVersion !== 'v2') {
+    localStorage.removeItem('sanguofa_demo_students');
+    localStorage.setItem('sanguofa_demo_version', 'v2');
+  }
   try {
     var demoRaw = localStorage.getItem('sanguofa_demo_students');
     if (demoRaw) {
