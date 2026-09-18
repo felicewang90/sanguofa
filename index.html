@@ -4474,10 +4474,10 @@ button:active:not(:disabled),
   // === Supabase 初始化 ===
   var SUPABASE_URL = 'https://buckhpuxcenmnthxumuh.supabase.co';
   var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ1Y2tocHV4Y2VubW50aHh1bXVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1ODU0ODgsImV4cCI6MjEwNTE2MTQ4OH0.HoNx0ZtEEJ5k3lrBJlCOhkv5rT-_C3BpNHJy3cAZXxw';
-  var supabase = null;
+  var sbAuthClient = null;
   (function initSupabase() {
     if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
-      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      sbAuthClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       console.log('[Supabase] Client initialized');
     } else {
       console.warn('[Supabase] SDK not loaded yet, retrying...');
@@ -4497,8 +4497,8 @@ function _sbInit() {
     var url = localStorage.getItem('supabase_url') || '';
     var key = localStorage.getItem('supabase_anon_key') || '';
     if (!url || !key) { _sbConfigured = false; return; }
-    if (typeof supabase !== 'undefined' && supabase.createClient) {
-      _sbClient = supabase.createClient(url, key);
+    if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+      _sbClient = window.supabase.createClient(url, key);
       _sbConfigured = true;
       console.log('[Supabase] Client initialized');
       _sbFlushQueue();
@@ -6661,7 +6661,7 @@ function loadDemoData() {
 async function initApp() {
   // First check Supabase session
   var loggedIn = false;
-  if (supabase) {
+  if (sbAuthClient) {
     try {
       loggedIn = await checkAuthState();
     } catch(e) {
@@ -6741,7 +6741,7 @@ function switchAuthTab(tab) {
 // Supabase 登录
 async function handleSupabaseLogin(e) {
   e.preventDefault();
-  if (!supabase) { alert('系统初始化中，请稍后再试'); return false; }
+  if (!sbAuthClient) { alert('系统初始化中，请稍后再试'); return false; }
   var email = document.getElementById('loginEmail').value.trim();
   var password = document.getElementById('loginPassword').value;
   var errorEl = document.getElementById('loginError');
@@ -6750,7 +6750,7 @@ async function handleSupabaseLogin(e) {
   btn.textContent = '登录中...';
   btn.disabled = true;
 
-  var result = await supabase.auth.signInWithPassword({ email: email, password: password });
+  var result = await sbAuthClient.auth.signInWithPassword({ email: email, password: password });
   var data = result.data;
   var error = result.error;
 
@@ -6819,7 +6819,7 @@ async function handleSupabaseLogin(e) {
 // Supabase 注册
 async function handleSupabaseRegister(e) {
   e.preventDefault();
-  if (!supabase) { alert('系统初始化中，请稍后再试'); return false; }
+  if (!sbAuthClient) { alert('系统初始化中，请稍后再试'); return false; }
   var name = document.getElementById('regName').value.trim();
   var studentId = document.getElementById('regStudentId').value.trim();
   var email = document.getElementById('regEmail').value.trim();
@@ -6831,7 +6831,7 @@ async function handleSupabaseRegister(e) {
   btn.textContent = '注册中...';
   btn.disabled = true;
 
-  var result = await supabase.auth.signUp({
+  var result = await sbAuthClient.auth.signUp({
     email: email,
     password: password,
     options: {
@@ -6888,8 +6888,8 @@ async function handleSupabaseRegister(e) {
 
 // 检查 Supabase 登录状态
 async function checkAuthState() {
-  if (!supabase) return false;
-  var result = await supabase.auth.getSession();
+  if (!sbAuthClient) return false;
+  var result = await sbAuthClient.auth.getSession();
   var session = result.data.session;
   if (session && session.user) {
     var user = session.user;
@@ -6914,8 +6914,8 @@ async function checkAuthState() {
 // 监听 auth 状态变化
 if (typeof window.supabase !== 'undefined') {
   (function setupAuthListener() {
-    if (supabase) {
-      supabase.auth.onAuthStateChange(function(event, session) {
+    if (sbAuthClient) {
+      sbAuthClient.auth.onAuthStateChange(function(event, session) {
         if (event === 'SIGNED_OUT') {
           AppState.currentUser = null;
           AppState.isGuest = true;
@@ -7150,8 +7150,8 @@ function exportProfileReport() {
 
 async function handleLogout() {
   // Supabase sign out
-  if (supabase) {
-    try { await supabase.auth.signOut(); } catch(e) { console.warn('[Supabase] signOut error:', e); }
+  if (sbAuthClient) {
+    try { await sbAuthClient.auth.signOut(); } catch(e) { console.warn('[Supabase] signOut error:', e); }
   }
   localStorage.removeItem('sanguofa_current_user');
   AppState.currentUser = null;
