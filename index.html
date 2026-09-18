@@ -6738,6 +6738,90 @@ function switchAuthTab(tab) {
   }
 }
 
+// === Initialize demo data for demo accounts ===
+function initDemoData(user) {
+  if (!user || !user.studentId) return;
+  var sid = user.studentId;
+  var favKey = 'sanguofa_student_' + sid + '_favorites';
+  if (!localStorage.getItem(favKey)) {
+    var favs = [];
+    if (sid === 'T2026001') {
+      var items = [
+        {type:'doc',sourceId:'vclt',title:'《维也纳条约法公约》全文及核心条款解读',summary:'涵盖条约缔结、保留、解释、修正、终止等全部条款。',icon:'📄',category:'法规汇编'},
+        {type:'doc',sourceId:'unclos',title:'《联合国海洋法公约》领海与专属经济区章节',summary:'含领海基线、毗连区、专属经济区、大陆架规定。',icon:'',category:'法规汇编'},
+        {type:'qa',sourceId:'qa-immunity',title:'国家豁免规则的演变：从绝对豁免到限制豁免',summary:'2023年《外国国家豁免法》标志中国转向限制豁免。',icon:'💬',category:'智能问答'},
+        {type:'qa',sourceId:'qa-treaty',title:'条约保留的法律效力分析',summary:'保留在保留国与接受国之间修改条约相关条款。',icon:'💬',category:'智能问答'},
+        {type:'qa',sourceId:'qa-icj',title:'国际法院管辖权的三重维度',summary:'诉讼管辖权限于国家之间，咨询管辖权面向联合国机关。',icon:'💬',category:'智能问答'},
+        {type:'case',sourceId:'case-9001',title:'国家管辖权豁免模拟案例',summary:'外国国家商业行为是否享有管辖豁免的核心争议。',icon:'⚖️',category:'案例实训'},
+        {type:'case',sourceId:'case-9002',title:'南海争端国际法分析案例',summary:'南海仲裁案管辖权争议与公约附件七仲裁适用边界。',icon:'⚖️',category:'案例实训'},
+        {type:'doc',sourceId:'foreign-law',title:'《对外关系法》要点',summary:'2023年通过，确立对外关系基本原则。',icon:'📄',category:'法规汇编'},
+        {type:'doc',sourceId:'anti-sanction',title:'反制裁、反干涉、反制"长臂管辖"法律工具箱',summary:'阻断法、不可靠实体清单、出口管制等工具。',icon:'📋',category:'政策解读'},
+        {type:'news',sourceId:'belt-road',title:'"一带一路"法治保障体系建设进展',summary:'国际商事争端预防与解决机制最新政策动态。',icon:'📰',category:'前沿动态'},
+        {type:'qa',sourceId:'qa-cisg',title:'CISG根本违约与合同解除权',summary:'违约实质上剥夺另一方依合同有权期待得到的东西。',icon:'💬',category:'智能问答'},
+        {type:'qa',sourceId:'qa-arbitration',title:'国际商事仲裁协议的形式与效力',summary:'仲裁协议须以书面形式订立。',icon:'💬',category:'智能问答'},
+        {type:'case',sourceId:'case-9003',title:'涉外合同法律适用案例',summary:'当事人意思自治原则与法律选择。',icon:'️',category:'案例实训'},
+        {type:'doc',sourceId:'wto-dsu',title:'WTO争端解决机制规则详解',summary:'磋商、专家组、上诉机构、执行审查全流程。',icon:'',category:'法规汇编'},
+        {type:'qa',sourceId:'qa-space',title:'外层空间法律地位与《外层空间条约》',summary:'外层空间不得据为己有，为全人类利益服务。',icon:'💬',category:'智能问答'},
+        {type:'qa',sourceId:'qa-diplomatic',title:'外交特权与豁免的例外情形',summary:'民事行政管辖豁免三大例外情形。',icon:'💬',category:'智能问答'}
+      ];
+      var ts = 1721300000000;
+      items.forEach(function(item, i) { favs.push({favId:item.type+'-'+item.sourceId,type:item.type,sourceId:item.sourceId,title:item.title,summary:item.summary,icon:item.icon,category:item.category,timestamp:ts+i*86400000*3,extra:null}); });
+    } else if (sid === 'S2024001') {
+      var items = [
+        {type:'qa',sourceId:'qa-ocean',title:'专属经济区与大陆架的区别',summary:'专属经济区200海里，大陆架可延伸至350海里。',icon:'',category:'智能问答'},
+        {type:'qa',sourceId:'qa-reservation',title:'条约保留制度的三个核心问题',summary:'谁能提出保留、保留的效力、与条约目的宗旨的关系。',icon:'💬',category:'智能问答'},
+        {type:'qa',sourceId:'qa-sovereignty',title:'国家基本权利四项内容详解',summary:'独立权、平等权、自保权、管辖权。',icon:'💬',category:'智能问答'},
+        {type:'case',sourceId:'case-9001',title:'国家管辖权豁免案例学习笔记',summary:'商业行为例外是限制豁免理论的核心。',icon:'⚖️',category:'案例实训'},
+        {type:'case',sourceId:'case-9005',title:'CISG根本违约案例分析',summary:'卖方交付严重不符货物，买方有权宣告合同无效。',icon:'️',category:'案例实训'},
+        {type:'qa',sourceId:'qa-consular',title:'领事官员与外交代表的特权差异',summary:'领事不享有完全人身不可侵犯权。',icon:'',category:'智能问答'},
+        {type:'qa',sourceId:'qa-un',title:'联合国六大主要机关及其职能',summary:'大会、安理会、经社理事会、托管理事会、国际法院、秘书处。',icon:'💬',category:'智能问答'},
+        {type:'qa',sourceId:'qa-jurisdiction',title:'属地管辖与属人管辖的关系',summary:'属地管辖是最基本的管辖权。',icon:'💬',category:'智能问答'},
+        {type:'doc',sourceId:'vclt-notes',title:'《维也纳条约法公约》重点条款笔记',summary:'第19-23条保留制度、第26-27条条约遵守、第31-33条解释规则。',icon:'',category:'学习笔记'},
+        {type:'qa',sourceId:'qa-dispute',title:'国际争端解决的和平方法',summary:'谈判、调解、调停、调查、和解、仲裁、司法解决七种。',icon:'💬',category:'智能问答'},
+        {type:'case',sourceId:'case-9004',title:'国际商事仲裁案例要点',summary:'Soler v. Mitsubishi案：反垄断争议可仲裁性。',icon:'⚖️',category:'案例实训'},
+        {type:'qa',sourceId:'qa-outer-space',title:'外层空间条约五大原则',summary:'不得据为己有、自由探索、为全人类利益、国际合作、国家责任。',icon:'💬',category:'智能问答'}
+      ];
+      var ts = 1721300000000;
+      items.forEach(function(item, i) { favs.push({favId:item.type+'-'+item.sourceId,type:item.type,sourceId:item.sourceId,title:item.title,summary:item.summary,icon:item.icon,category:item.category,timestamp:ts+i*86400000*4,extra:null}); });
+    } else if (sid.indexOf('DEMO') === 0) {
+      var commonItems = [
+        {type:'qa',sourceId:'qa-basic',title:'国际法渊源体系概述',summary:'国际条约、国际习惯、一般法律原则为主要渊源。',icon:'💬',category:'智能问答'},
+        {type:'qa',sourceId:'qa-territorial',title:'领海宽度与无害通过权',summary:'领海宽度不超过12海里，外国船舶享有无害通过权。',icon:'💬',category:'智能问答'},
+        {type:'case',sourceId:'case-9002',title:'南海争端案例学习',summary:'仲裁庭管辖权争议是本案核心法律焦点。',icon:'️',category:'案例实训'},
+        {type:'qa',sourceId:'qa-dip',title:'外交代表特权与豁免范围',summary:'人身不可侵犯、刑事管辖豁免、民事行政豁免有例外。',icon:'💬',category:'智能问答'},
+        {type:'qa',sourceId:'qa-treaty2',title:'条约的缔结程序',summary:'谈判、签署、批准、交换批准书四个阶段。',icon:'💬',category:'智能问答'},
+        {type:'doc',sourceId:'notes',title:'国际公法核心知识点整理',summary:'国家主权、领土制度、海洋法、外交关系法四大板块。',icon:'📄',category:'学习笔记'},
+        {type:'qa',sourceId:'qa-icsid',title:'ICSID投资仲裁机制',summary:'解决国家与他国国民间投资争端的专门仲裁机构。',icon:'💬',category:'智能问答'},
+        {type:'qa',sourceId:'qa-wto',title:'WTO最惠国待遇与国民待遇',summary:'最惠国待遇要求平等对待所有成员。',icon:'💬',category:'智能问答'}
+      ];
+      var n = 3 + (sid.charCodeAt(sid.length-1) % 5);
+      var shuffled = commonItems.slice().sort(function(){return 0.5-Math.random()});
+      var ts = 1721300000000;
+      shuffled.slice(0, n).forEach(function(item, i) { favs.push({favId:item.type+'-'+item.sourceId,type:item.type,sourceId:item.sourceId,title:item.title,summary:item.summary,icon:item.icon,category:item.category,timestamp:ts+i*86400000*5+Math.floor(Math.random()*86400000),extra:null}); });
+    }
+    if (favs.length > 0) localStorage.setItem(favKey, JSON.stringify(favs));
+  }
+  // === Debates ===
+  if (!localStorage.getItem('sanguofa_debate_debates')) {
+    var debates = [];
+    var dCases = [
+      {id:9001,name:'国家管辖权豁免',sideA:'原告方：主张限制豁免，商业行为例外适用',sideB:'被告方：主张绝对豁免，国有企业行为属主权行为'},
+      {id:9002,name:'南海争端',sideA:'申请方：主张仲裁庭有管辖权',sideB:'被申请方：主张仲裁庭无管辖权'},
+      {id:9003,name:'涉外合同法律适用',sideA:'中方：主张适用中国法中的强制性规定',sideB:'外方：主张严格按合同约定的英国法解释'},
+      {id:9005,name:'CISG根本违约',sideA:'买方：主张根本违约，有权宣告合同无效',sideB:'卖方：主张不构成根本违约，可通过补救措施解决'},
+      {id:9006,name:'WTO争端解决',sideA:'申诉方：反倾销措施违反WTO规则',sideB:'被诉方：反倾销调查程序合法'}
+    ];
+    var allIds = []; for (var di = 1; di <= 20; di++) allIds.push('DEMO2024' + String(di).padStart(3,'0'));
+    var bt = 1721300000000;
+    for (var di = 0; di < dCases.length; di++) {
+      var dc = dCases[di], dt = bt + di * 86400000 * 12;
+      var sh = allIds.slice().sort(function(){return 0.5-Math.random()});
+      debates.push({id:'debate-'+dt,title:dc.name+' - 分组对抗',caseId:dc.id,caseData:{id:dc.id,name:dc.name},createdBy:'T2026001',creatorName:'Wang',targetClass:'2024级国际法班',deadline:dt+86400000*7,status:di<3?'completed':'active',createdAt:dt,groups:[{groupId:'g-1',side:'A',roleName:dc.sideA,roleIcon:'⚔️',studentIds:sh.slice(0,10),materials:[{title:dc.name+'相关法条',type:'law'}]},{groupId:'g-2',side:'B',roleName:dc.sideB,roleIcon:'️',studentIds:sh.slice(10,20),materials:[{title:dc.name+'抗辩要点',type:'law'}]}],inviteCode:'DBT'+String(di+1).padStart(3,'0'),submissions:di<3?{A:{text:'A方已提交辩论意见',submittedAt:dt+86400000*3,submittedBy:sh[0]},B:{text:'B方已提交答辩意见',submittedAt:dt+86400000*4,submittedBy:sh[10]}}:{A:null,B:null},aiAnalysis:di<3?{score:{A:72+Math.floor(Math.random()*20),B:68+Math.floor(Math.random()*22)},comment:'双方围绕'+dc.name+'展开了充分辩论。',analyzedAt:dt+86400000*5}:null,source:'teacher'});
+    }
+    localStorage.setItem('sanguofa_debate_debates', JSON.stringify(debates));
+  }
+}
+
 // Supabase 登录
 async function handleSupabaseLogin(e) {
   e.preventDefault();
@@ -6785,6 +6869,9 @@ async function handleSupabaseLogin(e) {
   AppState.currentUser = currentUser;
   AppState.isGuest = false;
   AppState.isTeacherMode = (currentUser.role === 'teacher');
+
+  // Initialize demo data (favorites, debates) for demo accounts
+  initDemoData(currentUser);
 
   // Record in teacher students registry
   var registry = [];
