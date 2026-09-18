@@ -10199,6 +10199,7 @@ function getAllStudentsData() {
   if (demoVersion !== 'v2') {
     localStorage.removeItem('sanguofa_demo_students');
     localStorage.setItem('sanguofa_demo_version', 'v2');
+    generateMockStudents();
   }
   try {
     var demoRaw = localStorage.getItem('sanguofa_demo_students');
