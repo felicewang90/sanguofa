@@ -6816,9 +6816,20 @@ function initDemoData(user) {
     for (var di = 0; di < dCases.length; di++) {
       var dc = dCases[di], dt = bt + di * 86400000 * 12;
       var sh = allIds.slice().sort(function(){return 0.5-Math.random()});
-      debates.push({id:'debate-'+dt,title:dc.name+' - 分组对抗',caseId:dc.id,caseData:{id:dc.id,name:dc.name},createdBy:'T2026001',creatorName:'Wang',targetClass:'2024级国际法班',deadline:dt+86400000*7,status:di<3?'completed':'active',createdAt:dt,groups:[{groupId:'g-1',side:'A',roleName:dc.sideA,roleIcon:'⚔️',studentIds:sh.slice(0,10),materials:[{title:dc.name+'相关法条',type:'law'}]},{groupId:'g-2',side:'B',roleName:dc.sideB,roleIcon:'️',studentIds:sh.slice(10,20),materials:[{title:dc.name+'抗辩要点',type:'law'}]}],inviteCode:'DBT'+String(di+1).padStart(3,'0'),submissions:di<3?{A:{text:'A方已提交辩论意见',submittedAt:dt+86400000*3,submittedBy:sh[0]},B:{text:'B方已提交答辩意见',submittedAt:dt+86400000*4,submittedBy:sh[10]}}:{A:null,B:null},aiAnalysis:di<3?{score:{A:72+Math.floor(Math.random()*20),B:68+Math.floor(Math.random()*22)},comment:'双方围绕'+dc.name+'展开了充分辩论。',analyzedAt:dt+86400000*5}:null,source:'teacher'});
+      debates.push({id:'debate-'+dt,title:dc.name+' - 分组对抗',caseId:dc.id,caseData:{id:dc.id,name:dc.name},createdBy:'T2026001',creatorName:'Wang',targetClass:'2024级国际法班',deadline:dt+86400000*7,status:di<4?'completed':'active',createdAt:dt,groups:[{groupId:'g-1',side:'A',roleName:dc.sideA,roleIcon:'⚔️',studentIds:sh.slice(0,10),materials:[{title:dc.name+'相关法条',type:'law'}]},{groupId:'g-2',side:'B',roleName:dc.sideB,roleIcon:'️',studentIds:sh.slice(10,20),materials:[{title:dc.name+'抗辩要点',type:'law'}]}],inviteCode:'DBT'+String(di+1).padStart(3,'0'),submissions:di<4?{A:{outline:'【辩论提纲-A方】\n\n一、核心主张：'+dc.sideA+'\n\n二、法律依据：\n1. 《联合国海洋法公约》第2条相关规定\n2. 《维也纳条约法公约》第26条——条约必须遵守原则\n3. 相关国际习惯法规则\n\n三、事实与论证：\n结合本案具体事实，我方主张有充分的事实基础和法律支撑。\n（1）事实一：相关行为具有明确的商业性质；\n（2）事实二：被告方行为不构成主权行为豁免的适用范围；\n（3）事实三：国际司法实践中已有类似判例支持我方立场。\n\n四、结论：恳请法院依法支持我方主张。',submittedAt:dt+86400000*3,submittedBy:sh[0],submitterNames:sh.slice(0,5)},B:{outline:'【答辩提纲-B方】\n\n一、核心主张：'+dc.sideB+'\n\n二、法律依据：\n1. 《联合国国家及其财产管辖豁免公约》第10条\n2. 国际法院相关判决\n3. 国家豁免的一般国际法原则\n\n三、事实与论证：\n我方行为具有正当性和合法性：\n（1）涉案行为本质上属于行使国家主权职能的范畴；\n（2）相关措施符合国际法基本原则；\n（3）对方主张缺乏充分的法律基础。\n\n四、结论：恳请法院驳回对方主张，维护国家主权豁免原则。',submittedAt:dt+86400000*4,submittedBy:sh[10],submitterNames:sh.slice(10,15)}}:{A:null,B:null},aiAnalysis:di<4?{score:{A:78+Math.floor(Math.random()*15),B:72+Math.floor(Math.random()*15)},content:'【AI评阅意见】\n\nA方（'+dc.sideA+'）：\n• 论证结构完整，法条引用准确\n• 事实与法律结合紧密，逻辑清晰\n• 建议：可补充国际法院相关判例佐证\n\nB方（'+dc.sideB+'）：\n• 对豁免理论理解到位\n• 先例引用恰当\n• 不足：对商业行为例外的回应不够充分\n\n【综合点评】\n双方围绕"'+dc.name+'"展开了充分辩论。A方在论证深度上略胜一筹，B方在理论阐述方面表现扎实。建议同学们进一步研读相关国际公约条款，加强实务案例分析能力。',analyzedAt:dt+86400000*5}:null,source:'teacher'});
     }
     localStorage.setItem('sanguofa_debate_debates', JSON.stringify(debates));
+  }
+
+  // 初始化教师素材管理数据
+  if (!localStorage.getItem('sanguofa_teacher_materials')) {
+    var now = Date.now();
+    var materials = [
+      {id:'mat-unclos-001',title:'《联合国海洋法公约》核心条款汇编',type:'law',subject:'public',content:'涵盖UNCLOS领海、毗连区、专属经济区、大陆架等核心条款要点，便于教学引用和案例检索。',keywords:'海洋法,UNCLOS,领海,专属经济区,大陆架',createdAt:now-86400000*10},
+      {id:'mat-trade-002',title:'中美贸易摩擦典型案例集（2020-2026）',type:'case',subject:'economic',content:'收录近6年中美贸易摩擦中12个典型案例，涵盖反倾销、反补贴、知识产权争端等，附案件分析和教学讨论要点。',keywords:'贸易法,WTO,反倾销,反补贴,知识产权',createdAt:now-86400000*7},
+      {id:'mat-arb-003',title:'国际商事仲裁实务操作指引',type:'document',subject:'private',content:'涵盖ICC、SIAC、HKIAC等主要仲裁机构规则对比，仲裁协议起草要点，裁决执行（纽约公约）实务要点。',keywords:'仲裁,纽约公约,ICC,SIAC,HKIAC',createdAt:now-86400000*3}
+    ];
+    localStorage.setItem('sanguofa_teacher_materials', JSON.stringify(materials));
   }
 }
 
@@ -10246,13 +10257,17 @@ function generateMockStudents() {
   
   names.forEach(function(name, i) {
     var studentId = 'DEMO' + String(2024000 + i + 1);
-    var completedCases = Math.floor(Math.random() * 5);
+    // 杨雅淇(DEMO2024005)学习进度突出
+    var isYang = (studentId === 'DEMO2024005');
+    var completedCases = isYang ? 10 : Math.floor(Math.random() * 5);
+    // 所有学生最近活跃时间统一为9.30，但时间有差异
+    var activeDate = new Date('2026-09-30T' + String(8 + ((i * 3) % 12)).padStart(2,'0') + ':' + String((i * 17) % 60).padStart(2,'0') + ':00').toISOString();
     var scores = {};
     var caseNames = FIXED_CASES.map(function(c) { return c.name; });
     
-    for (var j = 0; j < completedCases; j++) {
+    for (var j = 0; j < completedCases && j < caseNames.length; j++) {
       var cName = caseNames[j] || ('案例' + (j + 1));
-      scores[cName] = { score: Math.floor(Math.random() * 40) + 50, completedAt: new Date(Date.now() - Math.random() * 7 * 86400000).toISOString(), attempts: Math.floor(Math.random() * 3) + 1 };
+      scores[cName] = { score: isYang ? (Math.floor(Math.random() * 15) + 85) : (Math.floor(Math.random() * 40) + 50), completedAt: new Date(Date.now() - Math.random() * 60 * 86400000).toISOString(), attempts: isYang ? 1 : (Math.floor(Math.random() * 3) + 1) };
     }
     
     var totalScore = 0;
@@ -10264,7 +10279,7 @@ function generateMockStudents() {
       studentId: studentId,
       name: name,
       role: 'student',
-      lastActive: new Date(Date.now() - Math.random() * 7 * 86400000).toISOString(),
+      lastActive: activeDate,
       completedCases: completedCases,
       avgScore: avgScore,
       totalCases: FIXED_CASES.length,
@@ -10283,9 +10298,11 @@ function getAllStudentsData() {
   
   // 1. Always ensure demo students exist
   var demoVersion = localStorage.getItem('sanguofa_demo_version') || '';
-  if (demoVersion !== 'v2') {
+  if (demoVersion !== 'v3') {
     localStorage.removeItem('sanguofa_demo_students');
-    localStorage.setItem('sanguofa_demo_version', 'v2');
+    localStorage.removeItem('sanguofa_debate_debates');
+    localStorage.removeItem('sanguofa_teacher_materials');
+    localStorage.setItem('sanguofa_demo_version', 'v3');
   }
   // Always regenerate to ensure latest names
   var genStudents = generateMockStudents();
