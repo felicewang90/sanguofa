@@ -6742,6 +6742,15 @@ function switchAuthTab(tab) {
 function initDemoData(user) {
   if (!user || !user.studentId) return;
   var sid = user.studentId;
+  
+  // 版本升级时清除旧缓存，确保重新生成演示数据
+  var initVer = localStorage.getItem('sanguofa_init_version') || '';
+  if (initVer !== 'v3') {
+    localStorage.removeItem('sanguofa_debate_debates');
+    localStorage.removeItem('sanguofa_teacher_materials');
+    localStorage.setItem('sanguofa_init_version', 'v3');
+  }
+  
   var favKey = 'sanguofa_student_' + sid + '_favorites';
   if (!localStorage.getItem(favKey)) {
     var favs = [];
