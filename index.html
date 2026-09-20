@@ -6745,10 +6745,15 @@ function initDemoData(user) {
   
   // 版本升级时清除旧缓存，确保重新生成演示数据
   var initVer = localStorage.getItem('sanguofa_init_version') || '';
-  if (initVer !== 'v3') {
+  if (initVer !== 'v4') {
     localStorage.removeItem('sanguofa_debate_debates');
     localStorage.removeItem('sanguofa_teacher_materials');
-    localStorage.setItem('sanguofa_init_version', 'v3');
+    localStorage.removeItem('sanguofa_student_S2024001_records');
+    localStorage.removeItem('sanguofa_student_S2024001_progress');
+    localStorage.removeItem('sanguofa_student_S2024001_quiz');
+    localStorage.removeItem('demo_data_loaded');
+    AppState.errorBook = [];
+    localStorage.setItem('sanguofa_init_version', 'v4');
   }
   
   var favKey = 'sanguofa_student_' + sid + '_favorites';
@@ -6839,6 +6844,87 @@ function initDemoData(user) {
       {id:'mat-arb-003',title:'国际商事仲裁实务操作指引',type:'document',subject:'private',content:'涵盖ICC、SIAC、HKIAC等主要仲裁机构规则对比，仲裁协议起草要点，裁决执行（纽约公约）实务要点。',keywords:'仲裁,纽约公约,ICC,SIAC,HKIAC',createdAt:now-86400000*3}
     ];
     localStorage.setItem('sanguofa_teacher_materials', JSON.stringify(materials));
+  }
+
+  // === 为学生账号初始化学习记录、错题本、进度数据 ===
+  if (sid === 'S2024001') {
+    // 初始化错题本
+    if (!AppState.errorBook || AppState.errorBook.length === 0) {
+      AppState.errorBook = [
+        {question:'根据《维也纳条约法公约》第19条，下列哪项不属于条约保留无效的情形？',yourAnswer:'C',correctAnswer:'D',explanation:'根据VCLT第19条，保留无效的情形包括：(a)条约明文禁止保留；(b)保留不在条约允许的保留范围内；(c)保留与条约目的和宗旨不符。D选项"与国际惯例法冲突"不是VCLT规定的保留无效情形。',knowledgePoint:'条约保留制度',subject:'public'},
+        {question:'在国际民事关系中，关于"最密切联系原则"的适用，下列说法正确的是？',yourAnswer:'B',correctAnswer:'A',explanation:'最密切联系原则是当事人未选择准据法时的补充规则。根据《涉外民事关系法律适用法》第41条，没有选择的，适用履行义务最能体现该合同特征的一方当事人经常居所地法律或其他与该合同有最密切联系的法律。',knowledgePoint:'国际私法冲突规范',subject:'private'},
+        {question:'根据WTO《反倾销协定》，下列哪项属于确定倾销幅度的正确方法？',yourAnswer:'D',correctAnswer:'A',explanation:'根据《反倾销协定》第2.4.2条，正常情况下应当将加权平均出口价格与加权平均国内价格进行比较（即"加权平均对加权平均"法）。"归零法"已被上诉机构在US—Zeroing案中裁定违法。',knowledgePoint:'WTO反倾销规则',subject:'economic'},
+        {question:'根据《联合国海洋法公约》，专属经济区的宽度从领海基线量起不超过多少海里？',yourAnswer:'C',correctAnswer:'B',explanation:'根据UNCLOS第57条，专属经济区从领海基线量起不超过200海里。领海宽度不超过12海里，专属经济区是在领海之外并邻接领海的区域。',knowledgePoint:'海洋法',subject:'public'},
+        {question:'《承认及执行外国仲裁裁决公约》（纽约公约）的核心内容是什么？',yourAnswer:'B',correctAnswer:'A',explanation:'纽约公约的核心内容是要求各缔约国承认和执行在其他缔约国作出的仲裁裁决，除非存在公约第5条规定的有限拒绝执行的情形。这为国际商事仲裁裁决的跨国执行提供了统一的法律框架。',knowledgePoint:'国际商事仲裁',subject:'private'}
+      ];
+    }
+
+    // 初始化学习记录
+    var recordsKey = 'sanguofa_student_S2024001_records';
+    if (!localStorage.getItem(recordsKey)) {
+      var now = Date.now();
+      var records = [
+        {title:'国家管辖权豁免',time:'2026-09-30 14:23',score:92,status:'已完成'},
+        {title:'南海争端国际法分析',time:'2026-09-29 16:45',score:88,status:'已完成'},
+        {title:'涉外合同法律适用',time:'2026-09-28 10:12',score:95,status:'已完成'},
+        {title:'CISG根本违约认定',time:'2026-09-27 20:30',score:90,status:'已完成'},
+        {title:'WTO争端解决机制',time:'2026-09-26 11:05',score:87,status:'已完成'},
+        {title:'国际商事仲裁协议效力',time:'2026-09-25 15:40',score:93,status:'已完成'},
+        {title:'外交特权与豁免',time:'2026-09-24 09:18',score:96,status:'已完成'},
+        {title:'条约法公约保留制度',time:'2026-09-23 13:55',score:91,status:'已完成'},
+        {title:'国际法渊源体系',time:'2026-09-22 17:30',score:85,status:'已完成'},
+        {title:'海洋法专属经济区制度',time:'2026-09-20 08:45',score:94,status:'已完成'}
+      ];
+      localStorage.setItem(recordsKey, JSON.stringify(records));
+    }
+
+    // 初始化学习进度
+    var progressKey = 'sanguofa_student_S2024001_progress';
+    if (!localStorage.getItem(progressKey)) {
+      var progress = {};
+      var caseList = typeof FIXED_CASES !== 'undefined' ? FIXED_CASES : [];
+      var scoresList = [92,88,95,90,87,93,96,91,85,94];
+      for (var ci = 0; ci < Math.min(10, caseList.length); ci++) {
+        progress[caseList[ci].name || caseList[ci].id] = {score: scoresList[ci], completedAt: new Date(Date.now() - (10-ci) * 86400000).toISOString(), attempts: 1};
+      }
+      localStorage.setItem(progressKey, JSON.stringify(progress));
+    }
+
+    // 初始化知识测验成绩
+    var quizKey = 'sanguofa_student_S2024001_quiz';
+    if (!localStorage.getItem(quizKey)) {
+      var quizScores = [
+        {subject:'国际公法',score:92,totalQuestions:10,correctCount:9,date:'2026-09-28',time:'15:30'},
+        {subject:'国际私法',score:88,totalQuestions:10,correctCount:8,date:'2026-09-26',time:'10:20'},
+        {subject:'国际经济法',score:95,totalQuestions:10,correctCount:9,date:'2026-09-24',time:'14:45'}
+      ];
+      localStorage.setItem(quizKey, JSON.stringify(quizScores));
+    }
+  }
+
+  // 确保学生S2024001参与部分辩论
+  if (sid === 'S2024001' || sid === 'DEMO2024005') {
+    var debateKey = 'sanguofa_debate_debates';
+    var debates = [];
+    try { var raw = localStorage.getItem(debateKey); if (raw) debates = JSON.parse(raw); } catch(e) {}
+    if (debates.length > 0) {
+      var myStudentId = sid === 'S2024001' ? 'DEMO2024005' : sid;
+      var updated = false;
+      for (var di = 0; di < debates.length && di < 3; di++) {
+        var groups = debates[di].groups || [];
+        var alreadyIn = false;
+        for (var gi = 0; gi < groups.length; gi++) {
+          if (groups[gi].studentIds && groups[gi].studentIds.indexOf(myStudentId) !== -1) { alreadyIn = true; break; }
+        }
+        if (!alreadyIn && groups.length > 0) {
+          // 加入A方
+          if (!groups[0].studentIds) groups[0].studentIds = [];
+          if (groups[0].studentIds.indexOf(myStudentId) === -1) groups[0].studentIds.push(myStudentId);
+          updated = true;
+        }
+      }
+      if (updated) localStorage.setItem(debateKey, JSON.stringify(debates));
+    }
   }
 }
 
