@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>三国法课程群知识图谱 - 涉外法治教学智能体</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #0a1628;
+    color: #e8edf5;
+    overflow: hidden;
+    height: 100vh;
+  }
+  .page-header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: linear-gradient(180deg, rgba(10,22,40,0.95) 0%, rgba(10,22,40,0.85) 100%);
+    backdrop-filter: blur(12px);
+    padding: 12px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid rgba(99,102,241,0.2);
+  }
+  .page-header h1 {
+    font-size: 18px; font-weight: 600;
+    background: linear-gradient(135deg, #6366f1, #a78bfa);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .page-header .subtitle { font-size: 12px; color: #8892a8; margin-top: 2px; }
+  .legend {
+    position: fixed; top: 70px; right: 20px; z-index: 100;
+    background: rgba(15,25,50,0.9); border: 1px solid rgba(99,102,241,0.2);
+    border-radius: 10px; padding: 14px 18px;
+    backdrop-filter: blur(8px);
+  }
+  .legend h3 { font-size: 13px; color: #a0aec0; margin-bottom: 10px; font-weight: 500; }
+  .legend-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 0; cursor: pointer; transition: opacity 0.2s;
+    font-size: 13px; color: #c8d0e0;
+  }
+  .legend-item:hover { opacity: 0.8; }
+  .legend-item.dimmed { opacity: 0.3; }
+  .legend-dot {
+    width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+  }
+  .legend-dot.pub { background: #3b82f6; box-shadow: 0 0 6px rgba(59,130,246,0.4); }
+  .legend-dot.pri { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,0.4); }
+  .legend-dot.eco { background: #10b981; box-shadow: 0 0 6px rgba(16,185,129,0.4); }
+  .legend-dot.cross { background: #a78bfa; box-shadow: 0 0 6px rgba(167,139,250,0.4); }
+  .stats {
+    position: fixed; top: 70px; left: 20px; z-index: 100;
+    background: rgba(15,25,50,0.9); border: 1px solid rgba(99,102,241,0.2);
+    border-radius: 10px; padding: 14px 18px;
+    backdrop-filter: blur(8px);
+    font-size: 12px;
+  }
+  .stats h3 { font-size: 13px; color: #a0aec0; margin-bottom: 10px; font-weight: 500; }
+  .stat-row { display: flex; justify-content: space-between; gap: 20px; padding: 3px 0; color: #c8d0e0; }
+  .stat-val { font-weight: 600; color: #e8edf5; }
+  .tooltip {
+    position: fixed; z-index: 200;
+    background: rgba(15,25,50,0.95); border: 1px solid rgba(99,102,241,0.3);
+    border-radius: 8px; padding: 12px 16px;
+    backdrop-filter: blur(12px);
+    pointer-events: none; opacity: 0; transition: opacity 0.15s;
+    max-width: 280px; font-size: 13px;
+  }
+  .tooltip.visible { opacity: 1; }
+  .tooltip .tt-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+  .tooltip .tt-course { font-size: 11px; color: #8892a8; margin-bottom: 6px; }
+  .tooltip .tt-desc { color: #b0b8c8; line-height: 1.5; }
+  .tooltip .tt-links { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(99,102,241,0.15); font-size: 11px; color: #a78bfa; }
+  svg { width: 100vw; height: 100vh; cursor: grab; }
+  svg:active { cursor: grabbing; }
+  .node-circle { transition: r 0.2s, opacity 0.3s; }
+  .node-label { font-size: 11px; fill: #c8d0e0; pointer-events: none; text-anchor: middle; dominant-baseline: central; font-weight: 500; }
+  .link-line { stroke-opacity: 0.15; transition: stroke-opacity 0.3s, stroke-width 0.3s; }
+  .link-line.cross-link { stroke: #a78bfa; stroke-opacity: 0.25; }
+  .cluster-bg { opacity: 0.06; transition: opacity 0.3s; }
+  .controls {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 100;
+    display: flex; gap: 8px; align-items: center;
+    background: rgba(15,25,50,0.9); border: 1px solid rgba(99,102,241,0.2);
+    border-radius: 10px; padding: 8px 16px;
+    backdrop-filter: blur(8px);
+  }
+  .ctrl-btn {
+    background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.3);
+    color: #a78bfa; padding: 6px 14px; border-radius: 6px;
+    font-size: 12px; cursor: pointer; transition: all 0.2s;
+  }
+  .ctrl-btn:hover { background: rgba(99,102,241,0.25); }
+  .ctrl-btn.active { background: rgba(99,102,241,0.35); border-color: #6366f1; }
+  .search-box {
+    background: rgba(30,41,59,0.8); border: 1px solid rgba(99,102,241,0.2);
+    border-radius: 6px; padding: 6px 12px; color: #e8edf5; font-size: 12px;
+    width: 180px; outline: none;
+  }
+  .search-box::placeholder { color: #5a6478; }
+  .search-box:focus { border-color: #6366f1; }
+  @media print {
+    body { background: white; color: #1a2a4a; overflow: visible; height: auto; }
+    .page-header, .legend, .stats, .controls, .tooltip { display: none; }
+    svg { width: 100%; height: 600px; }
+    .node-label { fill: #333; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <div>
+    <h1>三国法课程群知识图谱</h1>
+    <div class="subtitle">国际公法 · 国际私法 · 国际经济法 — 跨课程知识关联可视化</div>
+  </div>
+</div>
+
+<div class="legend" id="legend">
+  <h3>知识分类</h3>
+  <div class="legend-item" data-course="pub" onclick="toggleCourse('pub')">
+    <div class="legend-dot pub"></div><span>国际公法</span>
+  </div>
+  <div class="legend-item" data-course="pri" onclick="toggleCourse('pri')">
+    <div class="legend-dot pri"></div><span>国际私法</span>
+  </div>
+  <div class="legend-item" data-course="eco" onclick="toggleCourse('eco')">
+    <div class="legend-dot eco"></div><span>国际经济法</span>
+  </div>
+  <div class="legend-item" data-course="cross" onclick="toggleCourse('cross')">
+    <div class="legend-dot cross"></div><span>跨课程关联节点</span>
+  </div>
+</div>
+
+<div class="stats" id="stats">
+  <h3>图谱概览</h3>
+  <div class="stat-row"><span>知识点总数</span><span class="stat-val" id="statNodes">-</span></div>
+  <div class="stat-row"><span>跨课程关联</span><span class="stat-val" id="statLinks">-</span></div>
+  <div class="stat-row"><span>公法知识点</span><span class="stat-val" id="statPub">-</span></div>
+  <div class="stat-row"><span>私法知识点</span><span class="stat-val" id="statPri">-</span></div>
+  <div class="stat-row"><span>经济法知识点</span><span class="stat-val" id="statEco">-</span></div>
+</div>
+
+<div class="tooltip" id="tooltip">
+  <div class="tt-name" id="ttName"></div>
+  <div class="tt-course" id="ttCourse"></div>
+  <div class="tt-desc" id="ttDesc"></div>
+  <div class="tt-links" id="ttLinks"></div>
+</div>
+
+<div class="controls">
+  <input class="search-box" type="text" placeholder="搜索知识点..." id="searchBox" oninput="handleSearch(this.value)">
+  <button class="ctrl-btn" onclick="resetView()">重置视图</button>
+  <button class="ctrl-btn" onclick="toggleLabels()">标签开关</button>
+  <button class="ctrl-btn" onclick="showAllCourses()">显示全部</button>
+</div>
+
+<svg id="graph"></svg>
+
+<script>
+// ==================== 知识图谱数据 ====================
+const knowledgeData = {
+  nodes: [
+    // === 国际公法 ===
+    {id:'国家主权',course:'pub',desc:'国家最高权力，涉外法治的基石',r:16},
+    {id:'领土',course:'pub',desc:'国家构成的基本要素，涉及边界争端',r:12},
+    {id:'海洋法',course:'pub',desc:'UNCLOS框架下的海洋权益分配',r:15},
+    {id:'条约法',course:'pub',desc:'《维也纳条约法公约》，条约缔结与解释',r:13},
+    {id:'外交保护',course:'pub',desc:'国家为本国国民行使的国际法权利',r:13},
+    {id:'国家豁免',course:'pub',desc:'外国国家及其财产的管辖豁免原则',r:14},
+    {id:'使用武力',course:'pub',desc:'《联合国宪章》第2(4)条禁止使用武力原则',r:11},
+    {id:'国际责任',course:'pub',desc:'国家违反国际义务的法律后果',r:12},
+    {id:'国际组织',course:'pub',desc:'联合国、WTO等国际组织的法律地位',r:11},
+    {id:'人权法',course:'pub',desc:'国际人权公约体系与保护机制',r:10},
+    {id:'外交关系',course:'pub',desc:'《维也纳外交关系公约》，外交特权与豁免',r:11},
+    {id:'领事关系',course:'pub',desc:'领事职务、特权与豁免',r:9},
+    {id:'引渡',course:'pub',desc:'国家间移交犯罪嫌疑人的制度',r:10},
+    {id:'庇护',course:'pub',desc:'国家对政治犯的庇护权',r:9},
+    {id:'国际争端解决',course:'pub',desc:'谈判、调解、仲裁、司法解决等和平方式',r:13},
+    {id:'民族自决',course:'pub',desc:'人民自由决定政治地位的权利',r:9},
+    {id:'国家承认',course:'pub',desc:'对新国家或新政府的承认制度',r:10},
+    {id:'国家继承',course:'pub',desc:'国家变更时的权利义务继承',r:9},
+
+    // === 国际私法 ===
+    {id:'法律适用',course:'pri',desc:'涉外民事关系的准据法确定',r:15},
+    {id:'管辖权',course:'pri',desc:'涉外民商事案件的法院管辖权',r:14},
+    {id:'外国判决承认执行',course:'pri',desc:'外国法院判决的承认与执行制度',r:13},
+    {id:'涉外合同',course:'pri',desc:'涉外合同的法律适用与效力认定',r:13},
+    {id:'涉外侵权',course:'pri',desc:'跨国侵权行为的责任与法律适用',r:11},
+    {id:'冲突规范',course:'pri',desc:'指引准据法的法律规则',r:12},
+    {id:'反致',course:'pri',desc:'法院地冲突规范指向外国法时的处理',r:9},
+    {id:'公共秩序保留',course:'pri',desc:'排除外国法适用的安全阀',r:11},
+    {id:'不方便法院',course:'pri',desc:'法院主动拒绝行使管辖权的原则',r:10},
+    {id:'意思自治',course:'pri',desc:'当事人选择合同准据法的权利',r:12},
+    {id:'最密切联系',course:'pri',desc:'与合同有最密切联系地的法律适用',r:11},
+    {id:'涉外物权',course:'pri',desc:'涉外物权关系的法律适用',r:10},
+    {id:'涉外婚姻家庭',course:'pri',desc:'跨国婚姻、抚养、继承的法律适用',r:10},
+    {id:'国际民事诉讼',course:'pri',desc:'涉外民事诉讼程序的特殊规则',r:11},
+    {id:'国际商事仲裁',course:'pri',desc:'《纽约公约》框架下的仲裁裁决执行',r:13},
+    {id:'区际法律冲突',course:'pri',desc:'一国之内不同法域的法律冲突',r:9},
+
+    // === 国际经济法 ===
+    {id:'国际贸易法',course:'eco',desc:'GATT/WTO框架下的国际贸易规则',r:15},
+    {id:'国际投资法',course:'eco',desc:'BIT、多边投资担保等国际投资保护',r:15},
+    {id:'国际金融法',course:'eco',desc:'IMF、世界银行等国际金融秩序',r:12},
+    {id:'国际税法',course:'eco',desc:'避免双重征税与反避税规则',r:11},
+    {id:'WTO规则',course:'eco',desc:'货物贸易、服务贸易、知识产权协定',r:14},
+    {id:'CISG',course:'eco',desc:'《国际货物销售合同公约》',r:13},
+    {id:'BIT',course:'eco',desc:'双边投资保护协定',r:13},
+    {id:'ICSID',course:'eco',desc:'解决投资争端国际中心',r:13},
+    {id:'反倾销',course:'eco',desc:'WTO反倾销规则与国内反倾销法',r:11},
+    {id:'反补贴',course:'eco',desc:'WTO补贴与反补贴措施协定',r:10},
+    {id:'保障措施',course:'eco',desc:'进口激增时的临时贸易救济',r:10},
+    {id:'征收与补偿',course:'eco',desc:'直接征收与间接征收的认定标准',r:12},
+    {id:'公平公正待遇',course:'eco',desc:'BIT中的核心投资保护标准',r:12},
+    {id:'国民待遇',course:'eco',desc:'外国人与本国人同等对待原则',r:11},
+    {id:'最惠国待遇',course:'eco',desc:'缔约方间相互给予最优待遇',r:11},
+    {id:'争端解决机制',course:'eco',desc:'WTO DSB、ICSID等争端解决程序',r:13},
+    {id:'TRIPS',course:'eco',desc:'与贸易有关的知识产权协定',r:10},
+    {id:'服务贸易',course:'eco',desc:'GATS框架下的服务贸易规则',r:10},
+
+    // === 跨课程关联节点 ===
+    {id:'一带一路法治',course:'cross',desc:'"一带一路"倡议的法律保障体系，贯穿三门课程',r:15},
+    {id:'涉外制裁与反制',course:'cross',desc:'反外国制裁法、不可靠实体清单等反制工具',r:14},
+    {id:'国家管辖权豁免',course:'cross',desc:'公法的主权豁免与私法的法院管辖权交叉',r:14},
+    {id:'跨境数据治理',course:'cross',desc:'数据跨境流动的法律规制，涉及公法主权与私法合同',r:13},
+    {id:'国际商事争端',course:'cross',desc:'综合仲裁、诉讼、调解的多元争端解决',r:13},
+    {id:'海外投资保护',course:'cross',desc:'BIT保护、外交保护、东道国救济的综合体系',r:14},
+    {id:'条约解释方法',course:'cross',desc:'《维也纳条约法公约》第31-32条，三门课程共用',r:12},
+    {id:'域外管辖',course:'cross',desc:'国内法的域外效力，涉及主权、管辖权与贸易规则',r:13},
+    {id:'对外关系法',course:'cross',desc:'统筹国内法治与涉外法治的基础性法律',r:13},
+    {id:'国际法与国内法关系',course:'cross',desc:'条约在国内的适用方式，贯穿三门课程',r:12}
+  ],
+  links: [
+    // 公法内部
+    {s:'国家主权',t:'领土'},{s:'国家主权',t:'国家豁免'},{s:'国家主权',t:'使用武力'},
+    {s:'海洋法',t:'领土'},{s:'海洋法',t:'条约法'},
+    {s:'条约法',t:'国际组织'},{s:'条约法',t:'国际争端解决'},
+    {s:'外交保护',t:'外交关系'},{s:'外交保护',t:'国际责任'},
+    {s:'引渡',t:'庇护'},{s:'国家承认',t:'国家继承'},
+
+    // 私法内部
+    {s:'法律适用',t:'冲突规范'},{s:'法律适用',t:'涉外合同'},{s:'法律适用',t:'涉外侵权'},
+    {s:'管辖权',t:'不方便法院'},{s:'管辖权',t:'国际民事诉讼'},
+    {s:'外国判决承认执行',t:'国际民事诉讼'},{s:'外国判决承认执行',t:'国际商事仲裁'},
+    {s:'意思自治',t:'最密切联系'},{s:'公共秩序保留',t:'反致'},
+    {s:'涉外物权',t:'法律适用'},{s:'涉外婚姻家庭',t:'法律适用'},
+
+    // 经济法内部
+    {s:'国际贸易法',t:'WTO规则'},{s:'国际贸易法',t:'CISG'},
+    {s:'WTO规则',t:'反倾销'},{s:'WTO规则',t:'反补贴'},{s:'WTO规则',t:'保障措施'},
+    {s:'WTO规则',t:'TRIPS'},{s:'WTO规则',t:'服务贸易'},
+    {s:'国际投资法',t:'BIT'},{s:'国际投资法',t:'ICSID'},
+    {s:'BIT',t:'征收与补偿'},{s:'BIT',t:'公平公正待遇'},
+    {s:'争端解决机制',t:'ICSID'},{s:'争端解决机制',t:'WTO规则'},
+    {s:'国民待遇',t:'最惠国待遇'},{s:'国际金融法',t:'国际税法'},
+
+    // === 跨课程关联 ===
+    {s:'国家主权',t:'一带一路法治',cross:true},
+    {s:'外交保护',t:'海外投资保护',cross:true},
+    {s:'国际争端解决',t:'国际商事争端',cross:true},
+    {s:'条约法',t:'条约解释方法',cross:true},
+    {s:'国家豁免',t:'国家管辖权豁免',cross:true},
+    {s:'管辖权',t:'国家管辖权豁免',cross:true},
+    {s:'条约法',t:'国际法与国内法关系',cross:true},
+    {s:'法律适用',t:'国际法与国内法关系',cross:true},
+    {s:'涉外合同',t:'CISG',cross:true},
+    {s:'国际商事仲裁',t:'国际商事争端',cross:true},
+    {s:'国际商事仲裁',t:'ICSID',cross:true},
+    {s:'BIT',t:'海外投资保护',cross:true},
+    {s:'外交保护',t:'海外投资保护',cross:true},
+    {s:'反倾销',t:'涉外制裁与反制',cross:true},
+    {s:'国家主权',t:'涉外制裁与反制',cross:true},
+    {s:'域外管辖',t:'涉外制裁与反制',cross:true},
+    {s:'域外管辖',t:'管辖权',cross:true},
+    {s:'域外管辖',t:'国家主权',cross:true},
+    {s:'一带一路法治',t:'BIT',cross:true},
+    {s:'一带一路法治',t:'条约法',cross:true},
+    {s:'跨境数据治理',t:'国家主权',cross:true},
+    {s:'跨境数据治理',t:'涉外合同',cross:true},
+    {s:'对外关系法',t:'国家主权',cross:true},
+    {s:'对外关系法',t:'涉外制裁与反制',cross:true},
+    {s:'对外关系法',t:'一带一路法治',cross:true}
+  ]
+};
+
+// ==================== 渲染引擎 ====================
+const svg = document.getElementById('graph');
+const tooltip = document.getElementById('tooltip');
+let showLabels = true;
+let activeCourses = {pub: true, pri: true, eco: true, cross: true};
+let nodes, links;
+let width = window.innerWidth;
+let height = window.innerHeight;
+let transform = {x: 0, y: 0, k: 1};
+let dragging = null;
+let dragOffset = {x: 0, y: 0};
+let isPanning = false;
+let panStart = {x: 0, y: 0};
+let panTransformStart = {x: 0, y: 0};
+
+// 初始化位置 - 按课程聚类
+function initPositions() {
+  const cx = {pub: width*0.3, pri: width*0.7, eco: width*0.5, cross: width*0.5};
+  const cy = {pub: height*0.35, pri: height*0.35, eco: height*0.65, cross: height*0.5};
+  const spread = {pub: 180, pri: 180, eco: 200, cross: 120};
+
+  knowledgeData.nodes.forEach((n, i) => {
+    const courseNodes = knowledgeData.nodes.filter(m => m.course === n.course);
+    const idx = courseNodes.indexOf(n);
+    const angle = (idx / courseNodes.length) * Math.PI * 2 - Math.PI/2;
+    n.x = cx[n.course] + Math.cos(angle) * spread[n.course] * (0.5 + Math.random()*0.5);
+    n.y = cy[n.course] + Math.sin(angle) * spread[n.course] * (0.5 + Math.random()*0.5);
+    n.vx = 0; n.vy = 0;
+  });
+}
+
+// 力导向模拟
+function simulate(iterations) {
+  const alpha = 0.3;
+  const repulsion = 2000;
+  const attraction = 0.008;
+  const centerForce = 0.01;
+  const damping = 0.85;
+
+  for (let iter = 0; iter < iterations; iter++) {
+    // 斥力
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i+1; j < nodes.length; j++) {
+        let dx = nodes[j].x - nodes[i].x;
+        let dy = nodes[j].y - nodes[i].y;
+        let dist = Math.sqrt(dx*dx + dy*dy) || 1;
+        let force = repulsion / (dist * dist);
+        let fx = (dx/dist) * force;
+        let fy = (dy/dist) * force;
+        if (nodes[i] !== dragging) { nodes[i].vx -= fx * alpha; nodes[i].vy -= fy * alpha; }
+        if (nodes[j] !== dragging) { nodes[j].vx += fx * alpha; nodes[j].vy += fy * alpha; }
+      }
+    }
+    // 引力
+    links.forEach(l => {
+      let s = nodes.find(n => n.id === l.s);
+      let t = nodes.find(n => n.id === l.t);
+      if (!s || !t) return;
+      let dx = t.x - s.x;
+      let dy = t.y - s.y;
+      let dist = Math.sqrt(dx*dx + dy*dy) || 1;
+      let idealDist = l.cross ? 150 : 100;
+      let force = (dist - idealDist) * attraction;
+      let fx = (dx/dist) * force;
+      let fy = (dy/dist) * force;
+      if (s !== dragging) { s.vx += fx * alpha; s.vy += fy * alpha; }
+      if (t !== dragging) { t.vx -= fx * alpha; t.vy -= fy * alpha; }
+    });
+    // 向课程中心聚集
+    const centers = {pub: {x: width*0.28, y: height*0.38}, pri: {x: width*0.72, y: height*0.38}, eco: {x: width*0.5, y: height*0.65}, cross: {x: width*0.5, y: height*0.48}};
+    nodes.forEach(n => {
+      if (n === dragging) return;
+      let c = centers[n.course];
+      n.vx += (c.x - n.x) * centerForce * alpha;
+      n.vy += (c.y - n.y) * centerForce * alpha;
+      n.vx *= damping;
+      n.vy *= damping;
+      n.x += n.vx;
+      n.y += n.vy;
+      // 边界约束
+      n.x = Math.max(40, Math.min(width - 40, n.x));
+      n.y = Math.max(80, Math.min(height - 40, n.y));
+    });
+  }
+}
+
+// 渲染
+function render() {
+  const svgNS = 'http://www.w3.org/2000/svg';
+  svg.innerHTML = '';
+
+  // 绘制课程区域背景
+  const regions = [
+    {course:'pub', cx: width*0.28, cy: height*0.38, rx: 220, ry: 180, label:'国际公法', color:'#3b82f6'},
+    {course:'pri', cx: width*0.72, cy: height*0.38, rx: 220, ry: 180, label:'国际私法', color:'#f59e0b'},
+    {course:'eco', cx: width*0.5, cy: height*0.65, rx: 260, ry: 160, label:'国际经济法', color:'#10b981'}
+  ];
+  regions.forEach(r => {
+    const el = document.createElementNS(svgNS, 'ellipse');
+    el.setAttribute('cx', r.cx); el.setAttribute('cy', r.cy);
+    el.setAttribute('rx', r.rx); el.setAttribute('ry', r.ry);
+    el.setAttribute('fill', r.color);
+    el.setAttribute('class', 'cluster-bg');
+    el.setAttribute('opacity', activeCourses[r.course] ? '0.06' : '0.02');
+    svg.appendChild(el);
+    const txt = document.createElementNS(svgNS, 'text');
+    txt.setAttribute('x', r.cx); txt.setAttribute('y', r.cy - r.ry + 20);
+    txt.setAttribute('text-anchor', 'middle');
+    txt.setAttribute('fill', r.color);
+    txt.setAttribute('font-size', '13');
+    txt.setAttribute('font-weight', '600');
+    txt.setAttribute('opacity', activeCourses[r.course] ? '0.5' : '0.15');
+    txt.textContent = r.label;
+    svg.appendChild(txt);
+  });
+
+  // 绘制连线
+  links.forEach(l => {
+    const s = nodes.find(n => n.id === l.s);
+    const t = nodes.find(n => n.id === l.t);
+    if (!s || !t) return;
+    const sVis = activeCourses[s.course];
+    const tVis = activeCourses[t.course];
+    if (!sVis || !tVis) return;
+
+    const line = document.createElementNS(svgNS, 'line');
+    line.setAttribute('x1', s.x); line.setAttribute('y1', s.y);
+    line.setAttribute('x2', t.x); line.setAttribute('y2', t.y);
+    line.setAttribute('class', 'link-line' + (l.cross ? ' cross-link' : ''));
+    line.setAttribute('stroke', l.cross ? '#a78bfa' : (s.course === t.course ? (s.course==='pub'?'#3b82f6':s.course==='pri'?'#f59e0b':'#10b981') : '#a78bfa'));
+    line.setAttribute('stroke-width', l.cross ? '1.5' : '1');
+    line.dataset.source = l.s;
+    line.dataset.target = l.t;
+    svg.appendChild(line);
+  });
+
+  // 绘制节点
+  nodes.forEach(n => {
+    if (!activeCourses[n.course]) return;
+    const g = document.createElementNS(svgNS, 'g');
+    g.setAttribute('transform', `translate(${n.x},${n.y})`);
+    g.style.cursor = 'pointer';
+
+    // 外圈光晕
+    const glow = document.createElementNS(svgNS, 'circle');
+    const colors = {pub:'#3b82f6', pri:'#f59e0b', eco:'#10b981', cross:'#a78bfa'};
+    glow.setAttribute('r', n.r + 4);
+    glow.setAttribute('fill', colors[n.course]);
+    glow.setAttribute('opacity', '0.1');
+    g.appendChild(glow);
+
+    // 主圆
+    const circle = document.createElementNS(svgNS, 'circle');
+    circle.setAttribute('r', n.r);
+    circle.setAttribute('fill', colors[n.course]);
+    circle.setAttribute('opacity', '0.85');
+    circle.setAttribute('class', 'node-circle');
+    circle.dataset.id = n.id;
+    g.appendChild(circle);
+
+    // 内圈
+    const inner = document.createElementNS(svgNS, 'circle');
+    inner.setAttribute('r', n.r - 3);
+    inner.setAttribute('fill', 'rgba(10,22,40,0.3)');
+    g.appendChild(inner);
+
+    // 标签
+    if (showLabels) {
+      const label = document.createElementNS(svgNS, 'text');
+      label.setAttribute('class', 'node-label');
+      label.setAttribute('y', n.r + 14);
+      label.setAttribute('font-size', n.r > 13 ? '11' : '10');
+      label.textContent = n.id;
+      g.appendChild(label);
+    }
+
+    // 事件
+    g.addEventListener('mouseenter', (e) => showTooltip(e, n));
+    g.addEventListener('mouseleave', hideTooltip);
+    g.addEventListener('mousedown', (e) => startDrag(e, n));
+
+    svg.appendChild(g);
+  });
+}
+
+// 交互
+function showTooltip(e, n) {
+  const colors = {pub:'#3b82f6', pri:'#f59e0b', eco:'#10b981', cross:'#a78bfa'};
+  const courseNames = {pub:'国际公法', pri:'国际私法', eco:'国际经济法', cross:'跨课程关联'};
+  const relatedLinks = links.filter(l => l.s === n.id || l.t === n.id);
+  const crossLinks = relatedLinks.filter(l => l.cross);
+
+  document.getElementById('ttName').textContent = n.id;
+  document.getElementById('ttName').style.color = colors[n.course];
+  document.getElementById('ttCourse').textContent = courseNames[n.course];
+  document.getElementById('ttDesc').textContent = n.desc;
+  document.getElementById('ttLinks').textContent = crossLinks.length > 0 ? `跨课程关联: ${crossLinks.map(l => l.s === n.id ? l.t : l.s).join('、')}` : '';
+
+  tooltip.style.left = (e.clientX + 16) + 'px';
+  tooltip.style.top = (e.clientY - 10) + 'px';
+  tooltip.classList.add('visible');
+
+  // 高亮关联
+  svg.querySelectorAll('.link-line').forEach(line => {
+    if (line.dataset.source === n.id || line.dataset.target === n.id) {
+      line.setAttribute('stroke-opacity', '0.6');
+      line.setAttribute('stroke-width', '2.5');
+    } else {
+      line.setAttribute('stroke-opacity', '0.05');
+    }
+  });
+  svg.querySelectorAll('.node-circle').forEach(c => {
+    const nodeId = c.dataset.id;
+    const isRelated = links.some(l => (l.s === n.id && l.t === nodeId) || (l.t === n.id && l.s === nodeId));
+    if (nodeId === n.id) {
+      c.setAttribute('opacity', '1');
+    } else if (isRelated) {
+      c.setAttribute('opacity', '0.9');
+    } else {
+      c.setAttribute('opacity', '0.2');
+    }
+  });
+}
+
+function hideTooltip() {
+  tooltip.classList.remove('visible');
+  svg.querySelectorAll('.link-line').forEach(line => {
+    const isCross = line.classList.contains('cross-link');
+    line.setAttribute('stroke-opacity', isCross ? '0.25' : '0.15');
+    line.setAttribute('stroke-width', isCross ? '1.5' : '1');
+  });
+  svg.querySelectorAll('.node-circle').forEach(c => c.setAttribute('opacity', '0.85'));
+}
+
+function startDrag(e, n) {
+  e.preventDefault();
+  dragging = n;
+  const rect = svg.getBoundingClientRect();
+  dragOffset.x = e.clientX - rect.left - n.x;
+  dragOffset.y = e.clientY - rect.top - n.y;
+}
+
+document.addEventListener('mousemove', (e) => {
+  if (dragging) {
+    const rect = svg.getBoundingClientRect();
+    dragging.x = e.clientX - rect.left - dragOffset.x;
+    dragging.y = e.clientY - rect.top - dragOffset.y;
+    dragging.vx = 0; dragging.vy = 0;
+    render();
+  } else if (isPanning) {
+    const dx = e.clientX - panStart.x;
+    const dy = e.clientY - panStart.y;
+    svg.style.transform = `translate(${panTransformStart.x + dx}px, ${panTransformStart.y + dy}px)`;
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  dragging = null;
+  isPanning = false;
+});
+
+svg.addEventListener('mousedown', (e) => {
+  if (!dragging) {
+    isPanning = true;
+    panStart = {x: e.clientX, y: e.clientY};
+    const t = svg.style.transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+    panTransformStart = {x: t ? parseFloat(t[1]) : 0, y: t ? parseFloat(t[2]) : 0};
+  }
+});
+
+svg.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? 0.95 : 1.05;
+  transform.k *= delta;
+  transform.k = Math.max(0.5, Math.min(2, transform.k));
+  svg.style.transform = `scale(${transform.k})`;
+}, {passive: false});
+
+// 课程筛选
+function toggleCourse(course) {
+  activeCourses[course] = !activeCourses[course];
+  document.querySelector(`.legend-item[data-course="${course}"]`).classList.toggle('dimmed', !activeCourses[course]);
+  render();
+}
+
+function showAllCourses() {
+  activeCourses = {pub: true, pri: true, eco: true, cross: true};
+  document.querySelectorAll('.legend-item').forEach(el => el.classList.remove('dimmed'));
+  render();
+}
+
+function toggleLabels() {
+  showLabels = !showLabels;
+  render();
+}
+
+function resetView() {
+  svg.style.transform = '';
+  transform = {x:0, y:0, k:1};
+  initPositions();
+  simulate(100);
+  render();
+}
+
+function handleSearch(val) {
+  if (!val.trim()) {
+    svg.querySelectorAll('.node-circle').forEach(c => c.setAttribute('opacity', '0.85'));
+    svg.querySelectorAll('.node-label').forEach(l => l.setAttribute('opacity', '1'));
+    return;
+  }
+  const q = val.toLowerCase();
+  const matched = nodes.filter(n => n.id.toLowerCase().includes(q)).map(n => n.id);
+  svg.querySelectorAll('.node-circle').forEach(c => {
+    const isMatch = matched.includes(c.dataset.id);
+    c.setAttribute('opacity', isMatch ? '1' : '0.15');
+    if (isMatch) c.setAttribute('r', parseFloat(c.getAttribute('r')) + 3);
+    else c.setAttribute('r', nodes.find(n => n.id === c.dataset.id)?.r || 12);
+  });
+  svg.querySelectorAll('.node-label').forEach(l => {
+    l.setAttribute('opacity', matched.some(m => l.textContent === m) ? '1' : '0.2');
+  });
+}
+
+// 初始化
+function init() {
+  initPositions();
+  simulate(200);
+  render();
+
+  // 更新统计
+  document.getElementById('statNodes').textContent = knowledgeData.nodes.length;
+  document.getElementById('statLinks').textContent = knowledgeData.links.filter(l => l.cross).length;
+  document.getElementById('statPub').textContent = knowledgeData.nodes.filter(n => n.course === 'pub').length;
+  document.getElementById('statPri').textContent = knowledgeData.nodes.filter(n => n.course === 'pri').length;
+  document.getElementById('statEco').textContent = knowledgeData.nodes.filter(n => n.course === 'eco').length;
+}
+
+window.addEventListener('resize', () => {
+  width = window.innerWidth;
+  height = window.innerHeight;
+  initPositions();
+  simulate(50);
+  render();
+});
+
+init();
+</script>
+</body>
+</html>

@@ -1113,6 +1113,7 @@ input, textarea, select { font-family: inherit; outline: none; }
 .case-tag.pub { background: rgba(26, 42, 94, 0.08); color: var(--primary); }
 .case-tag.pri { background: rgba(201, 168, 76, 0.12); color: var(--accent-dark); }
 .case-tag.eco { background: rgba(40, 167, 69, 0.1); color: var(--success); }
+.case-tag.cross { background: linear-gradient(135deg, rgba(99,102,241,0.12), rgba(168,85,247,0.12)); color: #6366f1; font-weight: 600; }
 
 .case-card .case-name {
   font-size: 0.92rem;
@@ -8425,6 +8426,58 @@ const FIXED_CASES = [
       'Johnson主张A公司先违约，竞业限制条款应失效'
     ],
     evalLaws: ['涉外民事关系法律适用法', '第43条', '劳动合同法', '第23条', '第24条', '竞业限制', '商业秘密', '劳动者保护', '外国人就业', '补偿金', '工作地法', '公共秩序']
+  },
+  {
+    id: 'fc-cross-1',
+    name: ' 中企海外投资争端：从准入到保护的全链条',
+    tag: 'cross', tagText: '课程群综合',
+    brief: '【课程群贯穿案例】某中资企业"一带一路"投资项目遭遇东道国限制措施，需综合运用国际公法、国际私法、国际经济法三维视角进行综合法律分析与争端解决。本案例打破三门课程壁垒，展示同一涉外法律事件的多维法律面向。',
+    difficulty: '高级', duration: '120分钟',
+    crossCourse: true,
+    crossPerspectives: [
+      { course: '国际公法', icon: '🌐', title: '公法视角：国家主权与外交保护', focus: '东道国限制措施的国家主权边界、经济制裁的国际法规制、外交保护权的行使条件' },
+      { course: '国际私法', icon: '⚖️', title: '私法视角：合同效力与法律冲突', focus: '跨国合资合同的准据法确定、不可抗力条款的法律适用、管辖权冲突与判决承认执行' },
+      { course: '国际经济法', icon: '', title: '经济法视角：投资保护与争端解决', focus: 'BIT下的间接征收认定、公平公正待遇标准、ICSID/UNCITRAL仲裁程序与执行' }
+    ],
+    roles: [
+      { name: '中方企业法务总监', icon: '🏢', desc: '统筹三维法律分析，制定综合维权策略' },
+      { name: '东道国政府法律顾问', icon: '🏛️', desc: '论证限制措施的合法性与主权正当性' },
+      { name: '国际仲裁代理人', icon: '⚖️', desc: '代理投资者提起国际投资仲裁' },
+      { name: '法官/仲裁员', icon: '', desc: '综合公法、私法、经济法视角进行裁判' }
+    ],
+    issues: [
+      '【公法】东道国以"国家安全"为由限制中资准入，是否构成对主权权力的滥用？国际法上如何界定经济安全与国家安全的关系？',
+      '【私法】合资合同中的不可抗力条款能否涵盖东道国政策变更？合同准据法应如何确定？中国法与东道国法冲突时如何解决？',
+      '【经济法】东道国的渐进式限制措施是否构成BIT下的"间接征收"？"公平公正待遇"条款的保护范围如何界定？',
+      '【综合】企业应如何选择最优争端解决路径——外交保护、东道国国内诉讼、还是国际投资仲裁？三条路径的优劣比较与策略选择。',
+      '【综合】本案涉及"一带一路"法治保障体系建设中的哪些核心问题？中国应如何完善海外投资法律保护机制？'
+    ],
+    keywords: ['课程群', '综合案例', '一带一路', '间接征收', '国家安全审查', 'BIT', '外交保护', '不可抗力', '准据法', '管辖权冲突', 'ICSID', '公平公正待遇', '警察权', '赫尔公式', '适当补偿', '平行诉讼', '判决承认与执行', '外国国家豁免法', '对外关系法', '反外国制裁法'],
+    laws: [
+      { title: '《对外关系法》第2条-立法目的', text: '为了发展对外关系，维护国家主权、安全、发展利益，维护和发展人民利益，建设社会主义现代化强国，实现中华民族伟大复兴，促进世界和平与发展，推动构建人类命运共同体，根据宪法，制定本法。' },
+      { title: '《外国国家豁免法》第2条-豁免原则', text: '外国国家及其财产在中华人民共和国的法院享有管辖豁免，本法另有规定的除外。本法所称外国国家包括：（一）外国主权国家；（二）外国主权国家的国家机关或者组成单位；（三）外国主权国家授权行使主权权力且基于该项授权从事活动的组织或者个人。' },
+      { title: '典型BIT第5条-征收与补偿', text: '缔约任何一方对缔约另一方投资者在其领土内的投资不得采取征收、国有化或相当于征收或国有化的措施（以下简称"征收"），除非同时满足以下条件：(a)为了公共利益；(b)按照国内法律程序；(c)非歧视性的；(d)给予充分、有效和及时的补偿。' },
+      { title: '典型BIT第3条-公平公正待遇', text: '缔约一方应始终给予缔约另一方投资者的投资公平公正待遇，并提供充分的保护与安全。缔约一方给予缔约另一方投资者投资的待遇，不应低于其在类似情况下给予本国投资者或第三国投资者投资的待遇。' },
+      { title: 'ICSID公约第25条-管辖权', text: '中心的管辖权应扩展至缔约国（或缔约国向中心指定的该国的任何组成部分或机构）和另一缔约国国民之间直接因投资而产生的任何法律争端，而该争端经双方书面同意提交给中心。' }
+    ],
+    evidence: [
+      { title: '背景：中资企业海外投资项目概况', detail: '中国A能源集团（国有企业）与东道国X国国有能源公司签署合资协议，投资50亿美元建设天然气管道项目。合资合同约定适用X国法律，争议提交新加坡国际仲裁中心（SIAC）。项目已进入施工阶段。' },
+      { title: '东道国政策变更', detail: 'X国新政府上台后，以"国家安全"和"能源主权"为由，颁布《战略能源设施保护法案》，要求外资在战略能源项目中的持股比例不得超过20%。A集团持股比例为51%，被迫转让股份。' },
+      { title: '合资合同纠纷', detail: 'X国合作方援引合同中的不可抗力条款，主张政策变更为"不可预见的法律变更"，要求重新谈判合同条款。A集团认为政策变更不构成不可抗力，对方应继续履行合同。' },
+      { title: '国际制裁叠加', detail: '项目推进期间，第三国Y对X国部分能源企业实施制裁，涉及A集团的合资伙伴。制裁导致项目融资渠道受阻，设备供应商退出。' },
+      { title: 'BIT仲裁准备', detail: 'A集团发现中国与X国签署的双边投资协定（BIT）中包含投资保护条款。A集团准备依据BIT提起ICSID仲裁，主张东道国措施构成间接征收，要求全额补偿。' }
+    ],
+    facts: [
+      '2023年3月，中国A能源集团与X国国有能源公司签署50亿美元天然气管道合资项目协议',
+      '合同约定中方持股51%，适用X国法律，争议提交SIAC仲裁',
+      '2024年1月，X国新政府颁布《战略能源设施保护法案》，外资持股上限20%',
+      'X国合作方援引不可抗力条款要求重新谈判，A集团拒绝',
+      '第三国Y对X国部分能源企业实施制裁，项目融资受阻',
+      'A集团依据中国-X国BIT准备提起ICSID仲裁，主张间接征收',
+      '本案同时涉及公法（国家安全vs经济主权）、私法（合同效力vs政策变更）、经济法（投资保护vs东道国监管权）三维法律问题'
+    ],
+    crossCourseNote: '本案例是课程群整合教学的核心载体。同一投资争端事件，在公法层面涉及国家主权与经济安全边界，在私法层面涉及跨国合同的准据法与不可抗力认定，在经济法层面涉及BIT投资保护与仲裁机制。学生通过本案例可深刻理解三门课程的内在关联，培养跨课程综合分析能力。案例融入"一带一路"法治保障、涉外法治建设等国家战略议题，实现专业教育与思政教育的有机统一。',
+    evalLaws: ['BIT', 'ICSID', '间接征收', '公平公正待遇', '国家安全', '不可抗力', '准据法', '管辖权冲突', '外交保护', '一带一路', '对外关系法', '外国国家豁免法', '反外国制裁法', '征收补偿', '赫尔公式', '适当补偿']
   }
 
 ];
@@ -9487,6 +9540,8 @@ function renderStage2_CaseReading(cd) {
       </div>
       <div class="stage-reading-body">
         <p style="line-height:1.8;margin-bottom:16px">${brief}</p>
+        ${cd.crossCourseNote ? `<div style="background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(168,85,247,0.08));border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:14px 16px;margin-bottom:16px"><div style="font-size:0.82rem;font-weight:600;color:#a78bfa;margin-bottom:6px">🎯 课程群整合说明</div><p style="font-size:0.82rem;color:var(--text-secondary);line-height:1.7">${cd.crossCourseNote}</p></div>` : ''}
+        ${cd.crossPerspectives ? `<div style="margin-bottom:16px"><div style="font-size:0.82rem;font-weight:600;color:var(--primary);margin-bottom:10px">📐 三维分析视角</div>${cd.crossPerspectives.map(p => `<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;margin-bottom:8px;background:rgba(255,255,255,0.03);border-radius:8px;border-left:3px solid ${p.course==='国际公法'?'#3b82f6':p.course==='国际私法'?'#f59e0b':'#10b981'}"><span style="font-size:1.2rem">${p.icon}</span><div><div style="font-size:0.82rem;font-weight:600;color:#e8edf5">${p.course} · ${p.title}</div><div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">${p.focus}</div></div></div>`).join('')}</div>` : ''}
         ${cd.description ? `<div class="law-text">${cleanMarkdown(cd.description)}</div>` : ''}
         ${factHtml ? `<h5 style="margin:16px 0 8px;color:var(--primary)">📌 关键事实</h5><div class="case-fact-list">${factHtml}</div>` : ''}
         ${(cd.laws || []).length ? `
@@ -13192,6 +13247,12 @@ const GRAPH_DATA = {
     {id:'eco-dsb', label:'WTO争端解决', group:'economic', x:0, y:0, r:17, desc:'DSU机制：磋商→专家组→上诉→执行。反向一致原则，报复机制', keywords:['DSU','专家组','上诉机构','反向一致','报复']},
     {id:'eco-monetary', label:'国际货币金融法', group:'economic', x:0, y:0, r:14, desc:'IMF协定、SDR、国际货币基金组织职能与贷款条件性', keywords:['IMF','SDR','贷款条件','牙买加体系']},
     {id:'eco-tax', label:'国际税法', group:'economic', x:0, y:0, r:13, desc:'避免双重征税协定、转让定价、BEPS行动计划、税收情报交换', keywords:['OECD','BEPS','转让定价','税收协定']},
+    
+    // === 跨课程综合节点 ===
+    {id:'cross-bri', label:'一带一路\n法治保障', group:'hub', x:0, y:0, r:24, desc:'"一带一路"倡议的法律保障体系，贯穿国际公法（主权合作）、国际私法（跨国合同）、国际经济法（投资保护）三门课程', keywords:['一带一路','亚投行','丝路基金','争端预防']},
+    {id:'cross-sanction', label:'涉外制裁\n与反制', group:'hub', x:0, y:0, r:22, desc:'反外国制裁法、不可靠实体清单、阻断办法。涉及公法主权、私法合同效力、经济法贸易规则三维交叉', keywords:['反外国制裁法','阻断法','实体清单','长臂管辖']},
+    {id:'cross-data', label:'跨境数据\n治理', group:'hub', x:0, y:0, r:20, desc:'数据跨境流动的法律规制，涉及公法数据主权、私法数据合同、经济法数字贸易规则', keywords:['数据出境','数据安全法','GDPR','数字贸易']},
+    {id:'cross-immunity', label:'国家管辖权\n豁免', group:'hub', x:0, y:0, r:21, desc:'公法的主权豁免原则与私法的法院管辖权交叉。中国《外国国家豁免法》(2024)采限制豁免', keywords:['外国国家豁免法','限制豁免','执行豁免','管辖豁免']},
   ],
   
   edges: [
@@ -13241,6 +13302,20 @@ const GRAPH_DATA = {
     {from:'pri-arbitration', to:'eco-investment', label:'ISDS仲裁', cross:true},
     {from:'pub-humanrights', to:'eco-investment', label:'人权vs投资', cross:true},
     {from:'eco-dsb', to:'hub-sovereignty', label:'主权让渡', cross:true},
+    
+    // === 跨课程综合节点连接 ===
+    {from:'cross-bri', to:'hub-sovereignty', label:'主权合作', cross:true},
+    {from:'cross-bri', to:'eco-investment', label:'投资保护', cross:true},
+    {from:'cross-bri', to:'pri-arbitration', label:'争端预防', cross:true},
+    {from:'cross-sanction', to:'hub-sovereignty', label:'主权反制', cross:true},
+    {from:'cross-sanction', to:'eco-wto', label:'贸易制裁', cross:true},
+    {from:'cross-sanction', to:'pri-applicable', label:'合同效力', cross:true},
+    {from:'cross-data', to:'hub-sovereignty', label:'数据主权', cross:true},
+    {from:'cross-data', to:'eco-trade', label:'数字贸易', cross:true},
+    {from:'cross-data', to:'pri-applicable', label:'数据合同', cross:true},
+    {from:'cross-immunity', to:'pub-immunity', label:'主权豁免', cross:true},
+    {from:'cross-immunity', to:'pri-jurisdiction', label:'法院管辖', cross:true},
+    {from:'cross-immunity', to:'pri-arbitration', label:'仲裁豁免', cross:true},
   ]
 };
 
