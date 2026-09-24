@@ -4485,6 +4485,28 @@ button:active:not(:disabled),
 .modal-field textarea { resize:vertical; min-height:100px; }
 .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; }
 
+/* ====== Classroom Live 实时层 ====== */
+.live-status-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+.live-badge { display:inline-flex; align-items:center; gap:6px; padding:5px 14px; border-radius:16px; font-size:0.78rem; font-weight:700; }
+.live-badge.connecting { background:rgba(201,168,76,0.12); color:#b08d3a; border:1px solid rgba(201,168,76,0.35); }
+.live-badge.live { background:rgba(46,125,50,0.12); color:#2e7d32; border:1px solid rgba(46,125,50,0.3); }
+.live-badge.offline { background:rgba(158,158,158,0.12); color:#757575; border:1px solid rgba(158,158,158,0.3); }
+.live-online-count { font-size:0.78rem; color:var(--text-secondary); }
+.quiz-option.correct { border-color:#2e7d32; background:rgba(46,125,50,0.12); color:#2e7d32; font-weight:600; }
+.quiz-option.wrong { border-color:#c62828; background:rgba(198,40,40,0.08); color:#c62828; font-weight:600; }
+.quiz-option:disabled { cursor:default; opacity:0.85; }
+.quiz-option-line { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.quiz-option-stat { font-size:0.72rem; color:var(--text-secondary); white-space:nowrap; }
+.quiz-option-bar { height:5px; border-radius:3px; background:rgba(26,115,232,0.12); margin-top:8px; overflow:hidden; }
+.quiz-option-bar-fill { height:100%; background:linear-gradient(90deg, var(--primary), #1565c0); border-radius:3px; }
+.quiz-feedback { font-size:0.85rem; font-weight:700; margin:10px 0 0; }
+.quiz-feedback.ok { color:#2e7d32; }
+.quiz-feedback.no { color:#c62828; }
+.live-section-title { margin:22px 0 12px; font-size:0.95rem; color:var(--text-primary); }
+.live-view-form { background:rgba(26,115,232,0.03); border:1px solid rgba(26,115,232,0.15); border-radius:12px; padding:16px; margin-top:16px; }
+.live-view-form select { width:100%; padding:10px 14px; border:1px solid var(--border); border-radius:10px; background:var(--card-bg); color:var(--text-primary); font-size:0.88rem; outline:none; margin-bottom:10px; box-sizing:border-box; }
+.live-view-form textarea { width:100%; min-height:90px; padding:12px 14px; border:1px solid var(--border); border-radius:10px; background:var(--card-bg); color:var(--text-primary); font-size:0.88rem; outline:none; box-sizing:border-box; resize:vertical; }
+
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -7552,7 +7574,12 @@ function showPage(page) {
   }
   
   AppState.currentPage = page;
-  
+
+  // 课堂实时层：离开课堂页时清理通道，避免重复订阅
+  if (prevPage === 'classroom' && page !== 'classroom' && typeof _liveLeave === 'function') {
+    _liveLeave();
+  }
+
   // 切换到页面顶部
   window.scrollTo({ top: 0, behavior: 'smooth' });
   
@@ -7611,6 +7638,7 @@ function showPage(page) {
   
   // 课堂模式
   if (page === 'classroom') {
+    if (typeof _liveJoin === 'function') _liveJoin();
     renderClassroomPage();
   }
 }
@@ -15547,10 +15575,563 @@ function submitVideoComment(vid) {
 // ====== 课堂模式页面渲染 ======
 var classroomCurrentTab = 'qa';
 
+// ============================================================
+// 课堂实时层：Supabase Realtime Broadcast 即时推送 + REST 轮询兜底
+// ============================================================
+var CLASSROOM_ROOM = 'sanguofa-classroom';
+var CLASSROOM_DISCUSSION_ID = 'case-nanhai';
+
+var _liveState = {
+  sessions: [],          // 由 classroom_session 事件重建
+  qaAnswers: [],         // 即时问答回答
+  quizAnswers: [],       // 测验作答
+  discussionAnswers: [], // 案例讨论观点
+  quizCode: 'quiz-default',
+  quizStartedAt: null,
+  presence: {}
+};
+
+var _liveChannel = null;
+var _liveActive = false;
+var _liveStatus = 'connecting'; // connecting | live | offline
+var _liveRestOk = false;
+var _livePollTimer = null;
+var _liveTickTimer = null;
+var _livePresenceTimer = null;
+var _liveSweepTimer = null;
+var _liveMsgIds = {};
+var _liveLastPresence = 0;
+var _liveMyPresenceId = 'p_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+
+function _getSb() {
+  if (typeof sbAuthClient !== 'undefined' && sbAuthClient) return sbAuthClient;
+  try {
+    if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+      return window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+  } catch (e) {}
+  return null;
+}
+
+function _liveIdentity() {
+  var cu = AppState.currentUser || {};
+  var id = cu.studentId || cu.id || 'guest_' + (localStorage.getItem('sanguofa_guest_id') || '');
+  if (id === 'guest_') {
+    var gid = 'g' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+    localStorage.setItem('sanguofa_guest_id', gid);
+    id = 'guest_' + gid;
+  }
+  return { id: id, name: cu.name || cu.email || '匿名同学', role: cu.role || 'student' };
+}
+
+function _liveSeen(clientMsgId) {
+  if (!clientMsgId) return false;
+  if (_liveMsgIds[clientMsgId]) return true;
+  _liveMsgIds[clientMsgId] = 1;
+  return false;
+}
+
+function _liveNewMsgId(prefix) {
+  return (prefix || 'm') + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
+}
+
+function _setStatus(s) {
+  _liveStatus = s;
+  var el = document.getElementById('liveStatusBadge');
+  if (el) {
+    if (s === 'live') { el.className = 'live-badge live'; el.innerHTML = '🟢 实时已连接'; }
+    else if (s === 'offline') { el.className = 'live-badge offline'; el.innerHTML = '⚪ 离线（演示数据）'; }
+    else { el.className = 'live-badge connecting'; el.innerHTML = '🟡 连接中'; }
+  }
+  var oc = document.getElementById('liveOnlineCount');
+  if (oc) {
+    var n = 0;
+    for (var k in _liveState.presence) { if (_liveState.presence[k]) n++; }
+    oc.textContent = '在线 ' + n + ' 人';
+  }
+}
+
+function _ensureLiveSession(sid, type, topic, ts) {
+  for (var i = 0; i < _liveState.sessions.length; i++) {
+    if (_liveState.sessions[i].id === sid) {
+      if (type) _liveState.sessions[i].type = type;
+      if (topic) _liveState.sessions[i].topic = topic;
+      return _liveState.sessions[i];
+    }
+  }
+  var s = {
+    id: sid,
+    type: type || 'qa',
+    topic: topic || '课堂话题',
+    createdAt: ts || new Date().toISOString(),
+    status: 'active'
+  };
+  _liveState.sessions.push(s);
+  return s;
+}
+
+function _applySessionRow(p, ts) {
+  if (!p.sessionId) return false;
+  var changed = false;
+  if (p.action === 'close') {
+    var ses = _ensureLiveSession(p.sessionId, p.type || 'qa', p.topic, ts);
+    if (ses.status !== 'closed') { ses.status = 'closed'; changed = true; }
+  } else {
+    var found = false;
+    for (var i = 0; i < _liveState.sessions.length; i++) {
+      if (_liveState.sessions[i].id === p.sessionId) { found = true; break; }
+    }
+    if (!found) {
+      _liveState.sessions.push({
+        id: p.sessionId,
+        type: p.type || 'qa',
+        topic: p.topic || '课堂话题',
+        createdAt: ts,
+        status: 'active'
+      });
+      changed = true;
+    } else {
+      if (p.topic && _liveState.sessions[i].topic !== p.topic) { _liveState.sessions[i].topic = p.topic; changed = true; }
+    }
+    if ((p.type || 'qa') === 'qa' && p.status !== 'closed') {
+      for (var j = 0; j < _liveState.sessions.length; j++) {
+        var sx = _liveState.sessions[j];
+        if (sx.id !== p.sessionId && sx.type === 'qa' && sx.status === 'active') {
+          sx.status = 'closed'; changed = true;
+        }
+      }
+    }
+  }
+  return changed;
+}
+
+function _applyQA(p, ts) {
+  if (!p.sessionId || !p.studentId) return false;
+  for (var i = 0; i < _liveState.qaAnswers.length; i++) {
+    if (_liveState.qaAnswers[i].clientMsgId && p.clientMsgId && _liveState.qaAnswers[i].clientMsgId === p.clientMsgId) return false;
+  }
+  _liveState.qaAnswers.push({
+    sessionId: p.sessionId,
+    studentId: p.studentId,
+    studentName: p.studentName || '匿名同学',
+    content: p.content || '',
+    ts: p.ts || ts,
+    clientMsgId: p.clientMsgId || ''
+  });
+  _ensureLiveSession(p.sessionId, 'qa', p.topic, ts);
+  return true;
+}
+
+function _applyQuiz(p, ts) {
+  if (!p.studentId || !p.qid) return false;
+  var code = p.quizCode || 'quiz-default';
+  for (var i = 0; i < _liveState.quizAnswers.length; i++) {
+    var ex = _liveState.quizAnswers[i];
+    if (ex.studentId === p.studentId && ex.qid === p.qid && ex.quizCode === code) {
+      ex.option = p.option;
+      ex.isCorrect = !!p.isCorrect;
+      ex.studentName = p.studentName || ex.studentName;
+      ex.ts = p.ts || ts;
+      ex.clientMsgId = p.clientMsgId || ex.clientMsgId;
+      return true;
+    }
+  }
+  _liveState.quizAnswers.push({
+    quizCode: code,
+    qid: p.qid,
+    studentId: p.studentId,
+    studentName: p.studentName || '匿名同学',
+    option: p.option,
+    isCorrect: !!p.isCorrect,
+    ts: p.ts || ts,
+    clientMsgId: p.clientMsgId || ''
+  });
+  return true;
+}
+
+function _applyDiscussion(p, ts) {
+  if (!p.studentId || !p.discussionId) return false;
+  for (var i = 0; i < _liveState.discussionAnswers.length; i++) {
+    if (_liveState.discussionAnswers[i].clientMsgId && p.clientMsgId && _liveState.discussionAnswers[i].clientMsgId === p.clientMsgId) return false;
+  }
+  _liveState.discussionAnswers.push({
+    discussionId: p.discussionId,
+    groupName: p.groupName || '自由视角',
+    studentId: p.studentId,
+    studentName: p.studentName || '匿名同学',
+    content: p.content || '',
+    ts: p.ts || ts,
+    clientMsgId: p.clientMsgId || ''
+  });
+  return true;
+}
+
+function _rebuildState(rows) {
+  _liveState.sessions = [];
+  _liveState.qaAnswers = [];
+  _liveState.quizAnswers = [];
+  _liveState.discussionAnswers = [];
+  _liveState.quizCode = 'quiz-default';
+  _liveState.quizStartedAt = null;
+  var savedPresence = _liveState.presence;
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var p = null;
+    try { p = JSON.parse(r.payload || '{}'); } catch (e) { p = null; }
+    if (!p) continue;
+    var ts = r.created_at || p.ts || new Date().toISOString();
+    if (r.event_type === 'classroom_session') { _applySessionRow(p, ts); }
+    else if (r.event_type === 'classroom_qa_answer') { _applyQA(p, ts); }
+    else if (r.event_type === 'classroom_quiz_answer') { _applyQuiz(p, ts); }
+    else if (r.event_type === 'classroom_discussion_answer') { _applyDiscussion(p, ts); }
+    if (r.event_type === 'classroom_session' && p.type === 'quiz' && p.quizCode) {
+      if (!_liveState.quizStartedAt || ts > _liveState.quizStartedAt) {
+        _liveState.quizCode = p.quizCode;
+        _liveState.quizStartedAt = ts;
+      }
+    }
+  }
+  _liveState.presence = savedPresence;
+}
+
+function _liveBroadcastHandler(eventName, payload) {
+  if (!payload) return;
+  if (eventName === 'presence_join') {
+    if (payload.presenceId) {
+      _liveState.presence[payload.presenceId] = { name: payload.name || '同学', role: payload.role || 'student', ts: Date.now() };
+      _setStatus(_liveStatus);
+    }
+    return;
+  }
+  if (eventName === 'presence_leave') {
+    if (payload.presenceId) {
+      delete _liveState.presence[payload.presenceId];
+      _setStatus(_liveStatus);
+    }
+    return;
+  }
+  if (eventName === 'presence_tick') {
+    if (payload.presenceId) {
+      var exists = _liveState.presence[payload.presenceId];
+      _liveState.presence[payload.presenceId] = { name: payload.name || (exists ? exists.name : '同学'), role: payload.role || (exists ? exists.role : 'student'), ts: Date.now() };
+      _setStatus(_liveStatus);
+    }
+    return;
+  }
+  if (eventName === 'session_control') {
+    var changed2 = false;
+    if (payload.action === 'quiz_start' && payload.quizCode) {
+      if (_liveState.quizCode !== payload.quizCode) {
+        _liveState.quizCode = payload.quizCode;
+        _liveState.quizStartedAt = payload.ts || new Date().toISOString();
+        changed2 = true;
+      }
+    } else if (payload.action === 'qa_open') {
+      changed2 = _applySessionRow({ sessionId: payload.sessionId, type: 'qa', topic: payload.topic, status: 'active' }, payload.ts || new Date().toISOString());
+    } else if (payload.action === 'close') {
+      changed2 = _applySessionRow({ sessionId: payload.sessionId, type: payload.type || 'qa', topic: payload.topic, action: 'close' }, payload.ts || new Date().toISOString());
+    }
+    if (changed2) _liveRender();
+    return;
+  }
+
+  var cid = payload.clientMsgId;
+  if (_liveSeen(cid)) return;
+  var changed3 = false;
+  var nowTs = payload.ts || new Date().toISOString();
+  if (eventName === 'qa_answer') changed3 = _applyQA(payload, nowTs);
+  else if (eventName === 'quiz_answer') changed3 = _applyQuiz(payload, nowTs);
+  else if (eventName === 'discussion_answer') changed3 = _applyDiscussion(payload, nowTs);
+  if (changed3) _liveRender();
+}
+
+// 统一提交：先即时广播（本地即时可见），再 REST 持久化
+async function _liveSubmit(eventName, payload) {
+  if (!payload.clientMsgId) payload.clientMsgId = _liveNewMsgId(eventName);
+  if (!payload.ts) payload.ts = new Date().toISOString();
+  _liveBroadcastHandler(eventName, payload);
+  var sb = _getSb();
+  if (sb) {
+    var ident = _liveIdentity();
+    var row = {
+      student_id: ident.id,
+      event_type: eventName === 'session_control' ? 'classroom_session' : ('classroom_' + eventName),
+      module: 'classroom',
+      payload: JSON.stringify(payload),
+      created_at: new Date().toISOString()
+    };
+    var res = await sb.from('events').insert(row);
+    if (res && res.error) throw res.error;
+  }
+}
+
+function _liveSendBroadcast(channel, eventName, payload) {
+  if (!channel) return;
+  try {
+    channel.send({ type: 'broadcast', event: eventName, payload: payload });
+  } catch (e) {}
+}
+
+function _liveJoin() {
+  var sb = _getSb();
+  if (_liveActive && _liveChannel) return;
+  _liveActive = true;
+  _setStatus('connecting');
+  if (!sb) {
+    _liveRestOk = false;
+    _setStatus('offline');
+    return;
+  }
+  if (_liveChannel) {
+    try { sb.removeChannel(_liveChannel); } catch (e) {}
+    _liveChannel = null;
+  }
+  var ch = sb.channel(CLASSROOM_ROOM, { config: { broadcast: { self: false } } });
+  var events = ['qa_answer', 'quiz_answer', 'discussion_answer', 'session_control', 'presence_join', 'presence_leave', 'presence_tick'];
+  events.forEach(function(ev) {
+    ch.on('broadcast', { event: ev }, function(msg) {
+      try {
+        var payloadObj = msg && msg.payload ? msg.payload : msg;
+        _liveBroadcastHandler(ev, payloadObj);
+      } catch (e) { console.warn('[ClassroomLive] broadcast handler error', e); }
+    });
+  });
+  ch.subscribe(function(status) {
+    if (status === 'SUBSCRIBED') {
+      _liveChannel = ch;
+      _liveAnnounceJoin();
+    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+      if (!_liveRestOk) _setStatus('offline');
+    }
+  });
+  _liveChannel = ch;
+
+  _liveFetchInitial();
+
+  _liveTickTimer = setInterval(function() {
+    if (classroomCurrentTab === 'quiz') {
+      var tel = document.getElementById('quizTimeLeft');
+      if (tel) tel.innerHTML = '<strong>' + _quizTimeText() + '</strong>';
+    }
+  }, 1000);
+
+  _livePollTimer = setInterval(_livePollFetch, 3000);
+  _livePresenceTimer = setInterval(_liveAnnounceTick, 15000);
+  _liveSweepTimer = setInterval(function() {
+    var nowMs = Date.now();
+    var changed4 = false;
+    for (var key in _liveState.presence) {
+      if (nowMs - _liveState.presence[key].ts > 40000) { delete _liveState.presence[key]; changed4 = true; }
+    }
+    if (changed4) _setStatus(_liveStatus);
+  }, 10000);
+}
+
+async function _liveFetchInitial() {
+  var sb = _getSb();
+  if (!sb) { _liveRestOk = false; _setStatus('offline'); return; }
+  try {
+    var res = await sb.from('events').select('*').eq('module', 'classroom').order('created_at', { ascending: false }).limit(500);
+    if (res && res.error) throw res.error;
+    _liveRestOk = true;
+    _rebuildState(res.data || []);
+    _setStatus('live');
+    _liveRender(true);
+  } catch (e) {
+    _liveRestOk = false;
+    _setStatus('offline');
+    console.warn('[ClassroomLive] initial fetch failed', e);
+  }
+}
+
+async function _livePollFetch() {
+  if (!_liveActive) return;
+  var sb = _getSb();
+  if (!sb) { _liveRestOk = false; _setStatus('offline'); return; }
+  try {
+    var res = await sb.from('events').select('*').eq('module', 'classroom').order('created_at', { ascending: false }).limit(500);
+    if (res && res.error) throw res.error;
+    _liveRestOk = true;
+    var rows = res.data || [];
+    var changed = false;
+    for (var i = rows.length - 1; i >= 0; i--) {
+      var r = rows[i];
+      var cid = null;
+      try { var pp = JSON.parse(r.payload || '{}'); cid = pp.clientMsgId; } catch (e) {}
+      if (cid && _liveSeen(cid)) continue;
+      var payload2 = null;
+      try { payload2 = JSON.parse(r.payload || '{}'); } catch (e2) { payload2 = null; }
+      if (!payload2) continue;
+      var ts2 = r.created_at || payload2.ts || new Date().toISOString();
+      if (r.event_type === 'classroom_session') {
+        if (_applySessionRow(payload2, ts2)) changed = true;
+        if (payload2.type === 'quiz' && payload2.quizCode && (!_liveState.quizStartedAt || ts2 > _liveState.quizStartedAt)) {
+          _liveState.quizCode = payload2.quizCode;
+          _liveState.quizStartedAt = ts2;
+          changed = true;
+        }
+      } else if (r.event_type === 'classroom_qa_answer') { if (_applyQA(payload2, ts2)) changed = true; }
+      else if (r.event_type === 'classroom_quiz_answer') { if (_applyQuiz(payload2, ts2)) changed = true; }
+      else if (r.event_type === 'classroom_discussion_answer') { if (_applyDiscussion(payload2, ts2)) changed = true; }
+    }
+    if (_liveStatus !== 'live') _setStatus('live');
+    if (changed) _liveRender();
+  } catch (e) {
+    _liveRestOk = false;
+    if (!_liveChannel) _setStatus('offline');
+  }
+}
+
+function _liveLeave() {
+  if (!_liveActive) return;
+  _liveActive = false;
+  _liveAnnounceLeave();
+  if (_livePollTimer) { clearInterval(_livePollTimer); _livePollTimer = null; }
+  if (_liveTickTimer) { clearInterval(_liveTickTimer); _liveTickTimer = null; }
+  if (_livePresenceTimer) { clearInterval(_livePresenceTimer); _livePresenceTimer = null; }
+  if (_liveSweepTimer) { clearInterval(_liveSweepTimer); _liveSweepTimer = null; }
+  var sb = _getSb();
+  if (sb && _liveChannel) {
+    try { sb.removeChannel(_liveChannel); } catch (e) {}
+  }
+  _liveChannel = null;
+  _liveState.presence = {};
+}
+
+function _liveAnnounce(ev, extra) {
+  var ident = _liveIdentity();
+  var payload3 = { presenceId: _liveMyPresenceId, name: ident.name, role: ident.role };
+  for (var k in extra) { payload3[k] = extra[k]; }
+  if (ev !== 'presence_leave') {
+    _liveState.presence[_liveMyPresenceId] = { name: ident.name, role: ident.role, ts: Date.now(), self: 1 };
+    _setStatus(_liveStatus);
+  }
+  _liveSendBroadcast(_liveChannel, ev, payload3);
+}
+function _liveAnnounceJoin() {
+  var nowMs2 = Date.now();
+  if (nowMs2 - _liveLastPresence < 3000) return;
+  _liveLastPresence = nowMs2;
+  _liveAnnounce('presence_join');
+}
+function _liveAnnounceTick() {
+  _liveLastPresence = Date.now();
+  _liveAnnounce('presence_tick');
+}
+function _liveAnnounceLeave() {
+  if (_liveState.presence[_liveMyPresenceId]) delete _liveState.presence[_liveMyPresenceId];
+  _setStatus(_liveStatus);
+  _liveAnnounce('presence_leave');
+}
+
+// 草稿保护与无变化跳渲染
+function _liveSignature() {
+  function maxTs(arr) {
+    var m = '';
+    for (var i = 0; i < arr.length; i++) {
+      var t = arr[i].ts || '';
+      if (t > m) m = t;
+    }
+    return m + ':' + arr.length;
+  }
+  var sc = [];
+  for (var i = 0; i < _liveState.sessions.length; i++) {
+    sc.push(_liveState.sessions[i].id + '=' + _liveState.sessions[i].status);
+  }
+  return _liveStatus + '|' + classroomCurrentTab + '|' + sc.join(',') + '|' +
+    maxTs(_liveState.qaAnswers) + '|' + maxTs(_liveState.quizAnswers) + '|' +
+    maxTs(_liveState.discussionAnswers) + '|' + (_liveState.quizCode || '');
+}
+
+var _liveLastSig = '';
+
+function _liveRender(force) {
+  if (!_liveActive) return;
+  var pageEl = document.getElementById('page-classroom');
+  if (!pageEl || !pageEl.classList.contains('active')) return;
+  var drafts = _captureDrafts();
+  var sig = _liveSignature();
+  if (!force && sig === _liveLastSig) return;
+  _liveLastSig = sig;
+  renderClassroomPage();
+  _restoreDrafts(drafts);
+}
+
+function _captureDrafts() {
+  var out = {};
+  var qaInput = document.getElementById('qaResponseInput');
+  if (qaInput) out.qaResponseInput = qaInput.value;
+  var dInput = document.getElementById('discussionViewInput');
+  if (dInput) out.discussionViewInput = dInput.value;
+  var dSel = document.getElementById('discussionViewGroup');
+  if (dSel) out.discussionViewGroup = dSel.value;
+  return out;
+}
+
+function _restoreDrafts(d) {
+  for (var id in d) {
+    var el = document.getElementById(id);
+    if (el) el.value = d[id];
+  }
+}
+
+function getClassroomSessions() {
+  var sessions = _liveState.sessions.slice();
+  var byId = {};
+  sessions.forEach(function(s) { byId[s.id] = s; });
+  _liveState.qaAnswers.forEach(function(a) {
+    if (!byId[a.sessionId]) {
+      var ns = { id: a.sessionId, type: 'qa', topic: '课堂话题', createdAt: a.ts, status: 'active' };
+      sessions.push(ns);
+      byId[a.sessionId] = ns;
+    }
+  });
+  sessions.forEach(function(s) {
+    var list = _liveState.qaAnswers.filter(function(a) { return a.sessionId === s.id; });
+    list.sort(function(a, b) { return (a.ts < b.ts) ? -1 : (a.ts > b.ts ? 1 : 0); });
+    s.responses = list;
+  });
+  return sessions;
+}
+
+function getOfflineDemoSessions() {
+  try { return JSON.parse(localStorage.getItem('sanguofa_classroom_sessions') || '[]'); }
+  catch (e) { return []; }
+}
+
+function _fmtTime(ts) {
+  if (!ts) return '';
+  try {
+    var d = new Date(ts);
+    if (isNaN(d.getTime())) return String(ts).substring(0, 16);
+    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  } catch (e) { return String(ts); }
+}
+
+function _getActiveQA(sessions) {
+  var active = null;
+  sessions.forEach(function(s) {
+    if (s.type === 'qa' && s.status === 'active') {
+      if (!active || s.createdAt > active.createdAt) active = s;
+    }
+  });
+  return active;
+}
+
+function _buildQASummary(responses) {
+  if (!responses || responses.length < 2) return '';
+  var kws = responses.slice(0, 6).map(function(r) {
+    return (r.content || '').substring(0, 25);
+  }).join('；');
+  return '全班共 ' + responses.length + ' 人参与讨论。主要观点：' + kws + '。教师可重点关注学生理解差异，进行针对性讲解。';
+}
+
 function renderClassroomPage() {
   var container = document.getElementById('page-classroom');
   if (!container) return;
-  var sessions = JSON.parse(localStorage.getItem('sanguofa_classroom_sessions') || '[]');
+  var isCloud = _liveStatus !== 'offline' && _getSb();
+  var sessions = isCloud ? getClassroomSessions() : getOfflineDemoSessions();
   var cu = AppState.currentUser || {};
   var isTeacher = cu.role === 'teacher';
 
@@ -15562,6 +16143,11 @@ function renderClassroomPage() {
   html += '<p style="margin-top:10px;font-size:0.88rem;opacity:0.7">三大核心模块：💬 即时问答 · 📝 随堂测验 · 🎯 案例讨论引导</p>';
   html += '</div>';
 
+  html += '<div class="live-status-bar">';
+  html += '<span class="live-badge connecting" id="liveStatusBadge">🟡 连接中</span>';
+  html += '<span class="live-online-count" id="liveOnlineCount"></span>';
+  html += '</div>';
+
   html += '<div class="classroom-tabs">';
   html += '<div class="classroom-tab' + (classroomCurrentTab==='qa'?' active':'') + '" onclick="switchClassroomTab(\'qa\')">';
   html += '<span class="classroom-tab-icon">💬</span>即时问答</div>';
@@ -15571,19 +16157,24 @@ function renderClassroomPage() {
   html += '<span class="classroom-tab-icon">🎯</span>案例讨论引导</div>';
   html += '</div>';
 
-  if (classroomCurrentTab === 'qa') html += renderClassroomQA(sessions, isTeacher, cu);
-  else if (classroomCurrentTab === 'quiz') html += renderClassroomQuiz(sessions, isTeacher, cu);
-  else if (classroomCurrentTab === 'discussion') html += renderClassroomDiscussion(sessions, isTeacher, cu);
+  if (classroomCurrentTab === 'qa') html += renderClassroomQA(sessions, isTeacher, cu, isCloud);
+  else if (classroomCurrentTab === 'quiz') html += renderClassroomQuiz(sessions, isTeacher, cu, isCloud);
+  else if (classroomCurrentTab === 'discussion') html += renderClassroomDiscussion(sessions, isTeacher, cu, isCloud);
 
   html += '</div>';
   container.innerHTML = html;
+  _setStatus(_liveStatus);
 }
 
-function switchClassroomTab(tab) { classroomCurrentTab = tab; renderClassroomPage(); }
+function switchClassroomTab(tab) {
+  classroomCurrentTab = tab;
+  _liveLastSig = '';
+  renderClassroomPage();
+}
 
-function renderClassroomQA(sessions, isTeacher, cu) {
+function renderClassroomQA(sessions, isTeacher, cu, isCloud) {
   var qaSessions = sessions.filter(function(s) { return s.type === 'qa'; });
-  var active = qaSessions.find(function(s) { return s.status === 'active'; });
+  var active = _getActiveQA(qaSessions);
   var html = '<div class="classroom-panel"><h3>💬 即时问答</h3>';
   html += '<p style="color:var(--text-secondary);margin-bottom:20px">教师发起课堂话题，学生实时提交观点，AI智能分析全班理解情况，帮助教师即时调整教学节奏。</p>';
 
@@ -15593,15 +16184,16 @@ function renderClassroomQA(sessions, isTeacher, cu) {
       html += '<h4 style="margin:0;color:var(--primary)">当前进行中的话题</h4>';
       html += '<span class="classroom-status-badge active">● 进行中</span></div>';
       html += '<div class="qa-topic-display"><h4>' + active.topic + '</h4>';
-      html += '<p style="font-size:0.82rem;margin:0">' + active.createdAt + '</p></div>';
+      html += '<p style="font-size:0.82rem;margin:0">' + _fmtTime(active.createdAt) + '</p></div>';
       html += '<div class="qa-responses-list"><h4 style="margin:16px 0 12px">学生回答 (' + active.responses.length + ' 人)</h4>';
       active.responses.forEach(function(r) {
-        html += '<div class="qa-response-item"><div class="qa-response-meta">👤 ' + r.studentName + ' · ' + r.timestamp + '</div>';
+        html += '<div class="qa-response-item"><div class="qa-response-meta">👤 ' + r.studentName + ' · ' + _fmtTime(r.ts || r.timestamp) + '</div>';
         html += '<div class="qa-response-content">' + r.content + '</div></div>';
       });
       html += '</div>';
-      if (active.aiSummary) {
-        html += '<div class="qa-ai-summary"><h4>🤖 AI学情分析报告</h4><p>' + active.aiSummary + '</p></div>';
+      var summary = active.aiSummary || _buildQASummary(active.responses);
+      if (summary) {
+        html += '<div class="qa-ai-summary"><h4>🤖 AI学情分析报告</h4><p>' + summary + '</p></div>';
       }
       html += '<div style="margin-top:20px;text-align:right">';
       html += '<button class="classroom-action-btn secondary" onclick="closeClassroomSession(\'' + active.id + '\')">结束话题</button></div>';
@@ -15615,19 +16207,22 @@ function renderClassroomQA(sessions, isTeacher, cu) {
     if (active) {
       html += '<div class="qa-topic-display"><h4>📢 当前话题</h4>';
       html += '<p style="font-size:1.05rem;font-weight:600;color:var(--text-primary);margin:8px 0">' + active.topic + '</p></div>';
-      var responded = active.responses.some(function(r) { return r.studentId === cu.id; });
+      var myId = isCloud ? _liveIdentity().id : cu.id;
+      var myResponses = active.responses.filter(function(r) { return r.studentId === myId; });
+      var responded = myResponses.length > 0;
       if (!responded) {
         html += '<div style="margin:20px 0"><h4 style="margin-bottom:12px">提交你的观点</h4>';
         html += '<textarea id="qaResponseInput" placeholder="请输入你对这个问题的看法..." style="width:100%;min-height:120px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--card-bg);color:var(--text-primary);font-size:0.9rem;outline:none;box-sizing:border-box;resize:vertical"></textarea>';
-        html += '<div style="margin-top:12px;text-align:right"><button class="classroom-action-btn primary" onclick="submitQAResponse(\'' + active.id + '\')">提交回答</button></div></div>';
+        html += '<div style="margin-top:12px;text-align:right"><button class="classroom-action-btn primary" id="qaSubmitBtn" onclick="submitQAResponse(\'' + active.id + '\')">提交回答</button></div></div>';
       } else {
-        var myR = active.responses.find(function(r) { return r.studentId === cu.id; });
+        var myR = myResponses[myResponses.length - 1];
         html += '<div style="background:rgba(46,125,50,0.08);border:1px solid rgba(46,125,50,0.2);border-radius:10px;padding:16px;margin:16px 0">';
-        html += '<div style="color:#2e7d32;font-weight:600;margin-bottom:8px">✅ 你已提交回答</div>';
+        html += '<div style="color:#2e7d32;font-weight:600;margin-bottom:8px">✅ 已提交，教师可实时看到</div>';
         html += '<div style="color:var(--text-secondary);font-size:0.88rem">' + myR.content + '</div></div>';
       }
-      if (active.aiSummary) {
-        html += '<div class="qa-ai-summary"><h4>🤖 AI观点摘要</h4><p>' + active.aiSummary + '</p></div>';
+      var summary2 = active.aiSummary || _buildQASummary(active.responses);
+      if (summary2) {
+        html += '<div class="qa-ai-summary"><h4>🤖 AI观点摘要</h4><p>' + summary2 + '</p></div>';
       }
     } else {
       html += '<div style="text-align:center;padding:60px 20px"><div style="font-size:3rem;margin-bottom:16px">⏳</div>';
@@ -15636,13 +16231,16 @@ function renderClassroomQA(sessions, isTeacher, cu) {
   }
 
   var closed = qaSessions.filter(function(s) { return s.status === 'closed'; });
+  closed.sort(function(a, b) { return (a.createdAt < b.createdAt) ? 1 : -1; });
   if (closed.length > 0) {
     html += '<div style="margin-top:32px;padding-top:24px;border-top:1px solid var(--border)">';
     html += '<h4 style="margin-bottom:16px;color:var(--text-secondary)">📚 历史话题</h4>';
     closed.forEach(function(s) {
+      var distinctStudents = {};
+      (s.responses || []).forEach(function(r) { distinctStudents[r.studentId] = 1; });
       html += '<div class="post-card" style="padding:14px"><div style="display:flex;justify-content:space-between;align-items:center">';
       html += '<div><div style="font-weight:600;margin-bottom:4px">' + s.topic + '</div>';
-      html += '<div style="font-size:0.78rem;color:var(--text-secondary)">' + s.createdAt + ' · ' + s.responses.length + ' 人参与</div></div>';
+      html += '<div style="font-size:0.78rem;color:var(--text-secondary)">' + _fmtTime(s.createdAt) + ' · ' + Object.keys(distinctStudents).length + ' 人参与</div></div>';
       html += '<span class="classroom-status-badge closed">已结束</span></div></div>';
     });
     html += '</div>';
@@ -15660,84 +16258,334 @@ function openNewTopicModal() {
   document.body.insertAdjacentHTML('beforeend', m);
 }
 function closeNewTopicModal() { var m = document.getElementById('newTopicModal'); if (m) m.remove(); }
-function createNewTopic() {
-  var topic = document.getElementById('newTopicInput').value.trim();
+
+async function createNewTopic() {
+  var input = document.getElementById('newTopicInput');
+  var topic = input.value.trim();
   if (!topic) { alert('请输入话题主题'); return; }
-  var cu = AppState.currentUser || {};
-  var ss = JSON.parse(localStorage.getItem('sanguofa_classroom_sessions') || '[]');
-  ss.forEach(function(s) { if (s.status === 'active') s.status = 'closed'; });
-  ss.push({
-    id: 'session-' + Date.now(), type: 'qa', topic: topic,
-    createdBy: cu.id || 'teacher',
-    createdAt: new Date().toLocaleString('zh-CN',{hour12:false}).replace(/\//g,'-'),
-    status: 'active', responses: [], aiSummary: '等待更多学生回答后生成分析...'
-  });
-  localStorage.setItem('sanguofa_classroom_sessions', JSON.stringify(ss));
-  closeNewTopicModal(); renderClassroomPage();
+  var sid = 'qa-' + Date.now();
+  var nowIso = new Date().toISOString();
+  try {
+    var oldActive = _getActiveQA(getClassroomSessions());
+    if (oldActive) {
+      await _liveSubmit('session_control', {
+        sessionId: oldActive.id, type: 'qa', topic: oldActive.topic, action: 'close', ts: nowIso
+      });
+      _liveSendBroadcast(_liveChannel, 'session_control', {
+        action: 'close', sessionId: oldActive.id, type: 'qa', topic: oldActive.topic, ts: nowIso
+      });
+    }
+    await _liveSubmit('session_control', {
+      sessionId: sid, type: 'qa', topic: topic, status: 'active', ts: nowIso
+    });
+    _liveSendBroadcast(_liveChannel, 'session_control', {
+      action: 'qa_open', sessionId: sid, topic: topic, ts: nowIso
+    });
+    closeNewTopicModal();
+    _liveRender(true);
+  } catch (e) {
+    alert('发起失败，请检查网络后重试');
+  }
 }
-function submitQAResponse(sid) {
+
+async function submitQAResponse(sid) {
   var input = document.getElementById('qaResponseInput');
   var content = input.value.trim();
   if (!content) { alert('请输入你的观点'); return; }
-  var cu = AppState.currentUser || {};
-  var ss = JSON.parse(localStorage.getItem('sanguofa_classroom_sessions') || '[]');
-  var s = ss.find(function(x) { return x.id === sid; });
-  if (s) {
-    s.responses.push({
-      studentId: cu.id || 'st' + Date.now(),
-      studentName: cu.name || cu.email || '匿名',
-      content: content,
-      timestamp: new Date().toLocaleString('zh-CN',{hour12:false}).replace(/\//g,'-')
+  var btn = document.getElementById('qaSubmitBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '提交中…'; }
+  var ident = _liveIdentity();
+  var topic = '';
+  var sessions2 = getClassroomSessions();
+  for (var i = 0; i < sessions2.length; i++) {
+    if (sessions2[i].id === sid) { topic = sessions2[i].topic; break; }
+  }
+  try {
+    await _liveSubmit('qa_answer', {
+      sessionId: sid,
+      topic: topic,
+      studentId: ident.id,
+      studentName: ident.name,
+      content: content
     });
-    if (s.responses.length >= 2) {
-      var keywords = s.responses.map(function(r) { return r.content.substring(0, 25); }).join('；');
-      s.aiSummary = '全班共 ' + s.responses.length + ' 人参与讨论。主要观点：' + keywords + '。教师可重点关注学生理解差异，进行针对性讲解。';
-    }
-    localStorage.setItem('sanguofa_classroom_sessions', JSON.stringify(ss));
-    renderClassroomPage();
+    _liveRender(true);
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = '提交回答'; }
+    alert('提交失败，请检查网络后重试');
   }
 }
-function closeClassroomSession(sid) {
+
+async function closeClassroomSession(sid) {
   if (!confirm('确定要结束这个话题吗？')) return;
-  var ss = JSON.parse(localStorage.getItem('sanguofa_classroom_sessions') || '[]');
-  var s = ss.find(function(x) { return x.id === sid; });
-  if (s) { s.status = 'closed'; localStorage.setItem('sanguofa_classroom_sessions', JSON.stringify(ss)); renderClassroomPage(); }
+  var sessions3 = getClassroomSessions();
+  var ses3 = null;
+  for (var i = 0; i < sessions3.length; i++) {
+    if (sessions3[i].id === sid) { ses3 = sessions3[i]; break; }
+  }
+  var nowIso2 = new Date().toISOString();
+  try {
+    await _liveSubmit('session_control', {
+      sessionId: sid, type: 'qa', topic: ses3 ? ses3.topic : '', action: 'close', ts: nowIso2
+    });
+    _liveSendBroadcast(_liveChannel, 'session_control', {
+      action: 'close', sessionId: sid, type: 'qa', topic: ses3 ? ses3.topic : '', ts: nowIso2
+    });
+    _liveRender(true);
+  } catch (e) {
+    alert('操作失败，请检查网络后重试');
+  }
 }
 
-function renderClassroomQuiz(sessions, isTeacher, cu) {
+// ====== 随堂测验：题库与真实聚合 ======
+var CLASSROOM_QUIZ_QUESTIONS = [
+  { id:'q1', text:'1. 国家管辖权豁免的主要理论依据是什么？', opts:['A. 主权平等原则','B. 国际礼让原则','C. 互惠原则','D. 公平原则'], ans:'A', kp:'管辖权豁免的理论基础（主权平等原则）' },
+  { id:'q2', text:'2. 限制豁免原则下，以下哪种行为不享有豁免权？', opts:['A. 外交行为','B. 军事行为','C. 商业行为','D. 立法行为'], ans:'C', kp:'限制豁免原则的适用边界（主权行为vs商业行为）' },
+  { id:'q3', text:'3. 《联合国国家及其财产管辖豁免公约》的通过年份是？', opts:['A. 2000年','B. 2004年','C. 2008年','D. 2012年'], ans:'B', kp:'国际公约的通过时间与生效条件' },
+  { id:'q4', text:'4. 以下哪项不属于国际法院的管辖权类型？', opts:['A. 自愿管辖','B. 协定管辖','C. 强制管辖','D. 专属管辖'], ans:'D', kp:'国际法院管辖权类型与豁免例外情形' }
+];
+
+function _currentQuizAnswers() {
+  var code = _liveState.quizCode || 'quiz-default';
+  return _liveState.quizAnswers.filter(function(a) { return a.quizCode === code; });
+}
+
+function _quizStats() {
+  var answers = _currentQuizAnswers();
+  var students = {};
+  var latestMap = {};
+  answers.forEach(function(a) {
+    students[a.studentId] = 1;
+    var key = a.studentId + '|' + a.qid;
+    if (!latestMap[key] || a.ts > latestMap[key].ts) latestMap[key] = a;
+  });
+  var total = 0;
+  var correct = 0;
+  for (var k in latestMap) {
+    total++;
+    if (latestMap[k].isCorrect) correct++;
+  }
+  var rate = total > 0 ? Math.round(correct * 100 / total) : 0;
+  return { studentCount: Object.keys(students).length, total: total, correct: correct, rate: rate, latestMap: latestMap };
+}
+
+function _quizTimeText() {
+  if (!_liveState.quizStartedAt) return '--:--';
+  try {
+    var startMs = new Date(_liveState.quizStartedAt).getTime();
+    if (isNaN(startMs)) return '--:--';
+    var remain = startMs + 5 * 60 * 1000 - Date.now();
+    if (remain <= 0) return '00:00';
+    var mm = Math.floor(remain / 60000);
+    var ss = Math.floor((remain % 60000) / 1000);
+    return (mm < 10 ? '0' + mm : '' + mm) + ':' + (ss < 10 ? '0' + ss : '' + ss);
+  } catch (e) { return '--:--'; }
+}
+
+function _questionStats(qid) {
+  var st = _quizStats();
+  var total = 0;
+  var correct = 0;
+  var perOption = { A:0, B:0, C:0, D:0 };
+  for (var k in st.latestMap) {
+    var a = st.latestMap[k];
+    if (a.qid === qid) {
+      total++;
+      if (a.isCorrect) correct++;
+      if (perOption[a.option] !== undefined) perOption[a.option]++;
+    }
+  }
+  return { total: total, correct: correct, wrong: total - correct, perOption: perOption };
+}
+
+async function studentSelectQuizOption(btn, qid, option) {
+  if (btn.disabled) return;
+  var q = null;
+  for (var i = 0; i < CLASSROOM_QUIZ_QUESTIONS.length; i++) {
+    if (CLASSROOM_QUIZ_QUESTIONS[i].id === qid) { q = CLASSROOM_QUIZ_QUESTIONS[i]; break; }
+  }
+  if (!q) return;
+  // 每题提交锁：防止快速连点产生多条记录
+  window._quizLock = window._quizLock || {};
+  if (window._quizLock[qid]) return;
+  window._quizLock[qid] = 1;
+
+  var isCorrect = option === q.ans;
+  var card = btn.parentElement;
+  var btns = card.querySelectorAll('.quiz-option');
+  for (var j = 0; j < btns.length; j++) {
+    btns[j].disabled = true;
+    btns[j].classList.remove('selected', 'correct', 'wrong');
+  }
+  btn.classList.add(isCorrect ? 'correct' : 'wrong');
+  for (var t = 0; t < btns.length; t++) {
+    var bOpt = btns[t].getAttribute('data-opt');
+    if (bOpt === q.ans && !btns[t].classList.contains('correct')) btns[t].classList.add('correct');
+  }
+  var fb = card.querySelector('.quiz-feedback');
+  if (!fb) {
+    fb = document.createElement('p');
+    fb.className = 'quiz-feedback';
+    card.appendChild(fb);
+  }
+  fb.className = 'quiz-feedback ' + (isCorrect ? 'ok' : 'no');
+  fb.textContent = isCorrect ? '✅ 回答正确，已实时提交' : '❌ 回答错误，正确答案：' + q.ans + '（可重新作答）';
+
+  var ident = _liveIdentity();
+  try {
+    await _liveSubmit('quiz_answer', {
+      quizCode: _liveState.quizCode || 'quiz-default',
+      qid: qid,
+      option: option,
+      isCorrect: isCorrect,
+      studentId: ident.id,
+      studentName: ident.name
+    });
+  } catch (e) {
+    fb.textContent = '提交失败，请检查网络（本地显示为：' + (isCorrect ? '正确' : '错误') + '）';
+  } finally {
+    // 重新启用选项，保留最新一次对错反馈，允许学生重新作答
+    for (var u = 0; u < btns.length; u++) { btns[u].disabled = false; }
+    window._quizLock[qid] = 0;
+  }
+}
+
+function _teacherOptionHtml(q, opt, idx, qs) {
+  var letter = opt.substring(0, 1);
+  var n = qs.perOption[letter] || 0;
+  var pct = qs.total > 0 ? Math.round(n * 100 / qs.total) : 0;
+  var cls = 'quiz-option';
+  if (letter === q.ans) cls += ' correct';
+  var h = '<button class="' + cls + '" disabled>';
+  h += '<div class="quiz-option-line"><span>' + opt + '</span>';
+  h += '<span class="quiz-option-stat">' + n + ' 人 · ' + pct + '%</span></div>';
+  h += '<div class="quiz-option-bar"><div class="quiz-option-bar-fill" style="width:' + pct + '%"></div></div>';
+  h += '</button>';
+  return h;
+}
+
+function _quizAIListHtml() {
+  var st = _quizStats();
+  if (st.total < 4) {
+    var h = '<p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:10px">根据实时答题数据分析，以下知识点学生掌握薄弱：</p><ul>';
+    h += '<li><strong>限制豁免原则的适用边界</strong> — 错误率32%，建议结合具体案例对比讲解主权行为vs商业行为</li>';
+    h += '<li><strong>国际公约的生效条件</strong> — 错误率28%，学生对公约通过时间和生效要件混淆</li>';
+    h += '<li><strong>管辖权豁免的例外情形</strong> — 错误率25%，建议通过案例分析加深理解</li></ul>';
+    return h;
+  }
+  var items = [];
+  CLASSROOM_QUIZ_QUESTIONS.forEach(function(q) {
+    var qs2 = _questionStats(q.id);
+    if (qs2.total === 0) return;
+    var wrongRate = Math.round(qs2.wrong * 100 / qs2.total);
+    items.push({ q: q, wrongRate: wrongRate, total: qs2.total });
+  });
+  items.sort(function(a, b) { return b.wrongRate - a.wrongRate; });
+  var h2 = '<p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:10px">根据实时答题数据分析，以下知识点学生掌握薄弱：</p><ul>';
+  if (items.length === 0) {
+    h2 += '<li>暂无足够作答数据，学生开始作答后此处将实时更新</li></ul>';
+    return h2;
+  }
+  var shown = items.slice(0, 3);
+  shown.forEach(function(it) {
+    h2 += '<li><strong>' + it.q.kp + '</strong> — 错误率' + it.wrongRate + '%（' + it.total + '人作答），建议结合案例重点讲解</li>';
+  });
+  h2 += '</ul>';
+  return h2;
+}
+
+async function startNewQuiz() {
+  var code = 'quiz-' + Date.now();
+  var nowIso = new Date().toISOString();
+  try {
+    await _liveSubmit('session_control', {
+      sessionId: code, type: 'quiz', quizCode: code, ts: nowIso
+    });
+    _liveSendBroadcast(_liveChannel, 'session_control', {
+      action: 'quiz_start', quizCode: code, ts: nowIso
+    });
+    alert('新测验已发起，房间内学生端已实时收到新测验');
+    _liveRender(true);
+  } catch (e) {
+    alert('发起失败，请检查网络后重试');
+  }
+}
+
+function exportQuizCSV() {
+  var answers = _currentQuizAnswers();
+  if (!answers.length) { alert('当前测验暂无作答数据'); return; }
+  var rows = [['quizCode', 'qid', 'studentId', 'studentName', 'option', 'isCorrect', 'ts']];
+  answers.forEach(function(a) {
+    rows.push([a.quizCode, a.qid, a.studentId, a.studentName, a.option, a.isCorrect ? 'true' : 'false', a.ts || '']);
+  });
+  var csv = rows.map(function(r) {
+    return r.map(function(c) {
+      var s = String(c == null ? '' : c);
+      if (s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0) {
+        s = '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    }).join(',');
+  }).join('\n');
+  var blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'classroom_quiz_' + (_liveState.quizCode || 'quiz') + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function() { URL.revokeObjectURL(url); }, 2000);
+}
+
+function renderClassroomQuiz(sessions, isTeacher, cu, isCloud) {
   var html = '<div class="classroom-panel"><h3>📝 随堂测验</h3>';
   html += '<p style="color:var(--text-secondary);margin-bottom:20px">教师一键发起选择题测验，学生实时作答。系统自动统计正确率，AI根据答题情况推荐需重点讲解的知识点。</p>';
 
-  html += '<div class="quiz-stats-bar">';
-  html += '<div class="quiz-stat">📊 参与人数: <strong>28</strong></div>';
-  html += '<div class="quiz-stat">✅ 平均正确率: <strong>76%</strong></div>';
-  html += '<div class="quiz-stat">⏱️ 剩余时间: <strong>05:00</strong></div></div>';
+  if (!isCloud) {
+    html += '<div class="quiz-stats-bar">';
+    html += '<div class="quiz-stat">📊 参与人数: <strong>28</strong></div>';
+    html += '<div class="quiz-stat">✅ 平均正确率: <strong>76%</strong></div>';
+    html += '<div class="quiz-stat">⏱️ 剩余时间: <strong>05:00</strong></div></div>';
+  } else {
+    var st = _quizStats();
+    html += '<div class="quiz-stats-bar">';
+    html += '<div class="quiz-stat">📊 参与人数: <strong>' + st.studentCount + '</strong></div>';
+    html += '<div class="quiz-stat">✅ 平均正确率: <strong>' + st.rate + '%</strong></div>';
+    html += '<div class="quiz-stat" id="quizTimeLeft">⏱️ 剩余时间: <strong>' + _quizTimeText() + '</strong></div></div>';
+  }
 
-  var qs = [
-    { id:'q1', text:'1. 国家管辖权豁免的主要理论依据是什么？', opts:['A. 主权平等原则','B. 国际礼让原则','C. 互惠原则','D. 公平原则'], ans:'A' },
-    { id:'q2', text:'2. 限制豁免原则下，以下哪种行为不享有豁免权？', opts:['A. 外交行为','B. 军事行为','C. 商业行为','D. 立法行为'], ans:'C' },
-    { id:'q3', text:'3. 《联合国国家及其财产管辖豁免公约》的通过年份是？', opts:['A. 2000年','B. 2004年','C. 2008年','D. 2012年'], ans:'B' },
-    { id:'q4', text:'4. 以下哪项不属于国际法院的管辖权类型？', opts:['A. 自愿管辖','B. 协定管辖','C. 强制管辖','D. 专属管辖'], ans:'D' }
-  ];
-
-  qs.forEach(function(q) {
+  CLASSROOM_QUIZ_QUESTIONS.forEach(function(q) {
     html += '<div class="quiz-question-card"><h4>' + q.text + '</h4>';
-    q.opts.forEach(function(o) {
-      html += '<button class="quiz-option" onclick="selectQuizOption(this)">' + o + '</button>';
-    });
+    if (isCloud && isTeacher) {
+      var qs = _questionStats(q.id);
+      q.opts.forEach(function(o) {
+        html += _teacherOptionHtml(q, o, 0, qs);
+      });
+      html += '<div style="font-size:0.76rem;color:var(--text-secondary);margin-top:6px">本题 ' + qs.total + ' 人作答，正确率 ' + (qs.total > 0 ? Math.round(qs.correct * 100 / qs.total) : 0) + '%</div>';
+    } else {
+      q.opts.forEach(function(o) {
+        var letter = o.substring(0, 1);
+        if (isCloud) {
+          html += '<button class="quiz-option" data-qid="' + q.id + '" data-opt="' + letter + '" onclick="studentSelectQuizOption(this,\'' + q.id + '\',\'' + letter + '\')">' + o + '</button>';
+        } else {
+          html += '<button class="quiz-option" onclick="selectQuizOption(this)">' + o + '</button>';
+        }
+      });
+    }
     html += '</div>';
   });
 
   html += '<div class="quiz-ai-rec"><h4>🤖 AI智能推荐 - 建议重点讲解</h4>';
-  html += '<p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:10px">根据实时答题数据分析，以下知识点学生掌握薄弱：</p><ul>';
-  html += '<li><strong>限制豁免原则的适用边界</strong> — 错误率32%，建议结合具体案例对比讲解主权行为vs商业行为</li>';
-  html += '<li><strong>国际公约的生效条件</strong> — 错误率28%，学生对公约通过时间和生效要件混淆</li>';
-  html += '<li><strong>管辖权豁免的例外情形</strong> — 错误率25%，建议通过案例分析加深理解</li></ul></div>';
+  html += isCloud ? _quizAIListHtml() : ('<p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:10px">根据实时答题数据分析，以下知识点学生掌握薄弱：</p><ul>' +
+    '<li><strong>限制豁免原则的适用边界</strong> — 错误率32%，建议结合具体案例对比讲解主权行为vs商业行为</li>' +
+    '<li><strong>国际公约的生效条件</strong> — 错误率28%，学生对公约通过时间和生效要件混淆</li>' +
+    '<li><strong>管辖权豁免的例外情形</strong> — 错误率25%，建议通过案例分析加深理解</li></ul>');
+  html += '</div>';
 
   if (isTeacher) {
     html += '<div style="margin-top:24px;display:flex;gap:12px;justify-content:flex-end">';
-    html += '<button class="classroom-action-btn primary" onclick="alert(\'测验已发起，学生端将实时收到题目！\')">🚀 发起新测验</button>';
-    html += '<button class="classroom-action-btn accent" onclick="alert(\'答题数据已导出为CSV！\')">📊 导出结果</button></div>';
+    html += '<button class="classroom-action-btn primary" onclick="startNewQuiz()">🚀 发起新测验</button>';
+    html += '<button class="classroom-action-btn accent" onclick="exportQuizCSV()">📊 导出结果</button></div>';
   }
   html += '</div>';
   return html;
@@ -15749,7 +16597,38 @@ function selectQuizOption(btn) {
   btn.classList.add('selected');
 }
 
-function renderClassroomDiscussion(sessions, isTeacher, cu) {
+// ====== 案例讨论：实时观点提交 ======
+function _getLiveDiscussion() {
+  return _liveState.discussionAnswers.filter(function(d) {
+    return d.discussionId === CLASSROOM_DISCUSSION_ID;
+  });
+}
+
+async function submitDiscussionView() {
+  var input = document.getElementById('discussionViewInput');
+  var sel = document.getElementById('discussionViewGroup');
+  var content = input.value.trim();
+  if (!content) { alert('请填写小组观点'); return; }
+  var groupName = sel ? sel.value : '自由视角';
+  var btn = document.getElementById('discussionSubmitBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '提交中…'; }
+  var ident = _liveIdentity();
+  try {
+    await _liveSubmit('discussion_answer', {
+      discussionId: CLASSROOM_DISCUSSION_ID,
+      groupName: groupName,
+      studentId: ident.id,
+      studentName: ident.name,
+      content: content
+    });
+    _liveRender(true);
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = '提交观点'; }
+    alert('提交失败，请检查网络后重试');
+  }
+}
+
+function renderClassroomDiscussion(sessions, isTeacher, cu, isCloud) {
   var html = '<div class="classroom-panel"><h3>🎯 案例讨论引导</h3>';
   html += '<p style="color:var(--text-secondary);margin-bottom:20px">选择教学案例后，AI自动生成苏格拉底式引导问题，学生分组讨论并提交观点，AI对各组观点进行对比分析，找出争议焦点，辅助教师总结点评。</p>';
 
@@ -15764,7 +16643,7 @@ function renderClassroomDiscussion(sessions, isTeacher, cu) {
   html += '<div class="socratic-q">从国际法治角度看，单边仲裁与多边协商哪种方式更有利于解决海洋争端？为什么？</div>';
   html += '<div class="socratic-q">本案裁决对国际海洋法秩序的未来发展产生了哪些深远影响？</div></div>';
 
-  html += '<h4 style="margin:24px 0 16px">👥 各小组观点</h4>';
+  html += '<h4 class="live-section-title">📖 示范观点（教学示例）</h4>';
   var groups = [
     { name:'第一组 · 国际公法视角', content:'仲裁庭管辖权存在瑕疵。菲律宾将领土主权问题包装为海洋法问题，规避了中国的2006年排除性声明。仲裁庭应更审慎地审查管辖权要件，不应降低审查标准。' },
     { name:'第二组 · 海洋法视角', content:'应区分不同层面的问题：领土主权争议不属于公约调整范围，但岛礁地位和海洋权利问题可以通过公约机制解决。关键在于准确界定争端的真实性质。' },
@@ -15773,6 +16652,32 @@ function renderClassroomDiscussion(sessions, isTeacher, cu) {
   groups.forEach(function(g) {
     html += '<div class="group-response-card"><h5>' + g.name + '</h5><p>' + g.content + '</p></div>';
   });
+
+  if (isCloud) {
+    var liveList = _getLiveDiscussion();
+    liveList.sort(function(a, b) { return (a.ts < b.ts) ? -1 : (a.ts > b.ts ? 1 : 0); });
+    html += '<h4 class="live-section-title">🌐 课堂实时观点（' + liveList.length + ' 条）</h4>';
+    if (liveList.length === 0) {
+      html += '<div style="text-align:center;padding:20px;color:var(--text-secondary);font-size:0.85rem">还没有小组提交，提交后教师端实时可见</div>';
+    } else {
+      liveList.forEach(function(d) {
+        html += '<div class="group-response-card" style="border-left:3px solid var(--primary)">';
+        html += '<h5>' + d.groupName + ' · ' + d.studentName + '</h5>';
+        html += '<p>' + d.content + '</p>';
+        html += '<div style="font-size:0.72rem;color:var(--text-secondary);margin-top:4px">' + _fmtTime(d.ts) + '</div></div>';
+      });
+    }
+    html += '<div class="live-view-form">';
+    html += '<h5 style="margin:0 0 10px">✍️ 提交小组观点</h5>';
+    html += '<select id="discussionViewGroup">';
+    html += '<option value="第一组 · 国际公法视角">第一组 · 国际公法视角</option>';
+    html += '<option value="第二组 · 海洋法视角">第二组 · 海洋法视角</option>';
+    html += '<option value="第三组 · 国际关系视角">第三组 · 国际关系视角</option>';
+    html += '<option value="自由视角">自由视角</option></select>';
+    html += '<textarea id="discussionViewInput" placeholder="请输入本组讨论形成的观点..."></textarea>';
+    html += '<div style="margin-top:10px;text-align:right"><button class="classroom-action-btn primary" id="discussionSubmitBtn" onclick="submitDiscussionView()">提交观点</button></div>';
+    html += '</div>';
+  }
 
   html += '<div class="ai-comparison"><h4>🤖 AI对比分析与争议焦点</h4>';
   html += '<p><strong>🔍 核心争议焦点：</strong></p>';
