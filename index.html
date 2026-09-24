@@ -4369,6 +4369,122 @@ button:active:not(:disabled),
   color: #1565c0;
 }
 
+
+/* ====== Discussion Board ====== */
+.discussion-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:12px; }
+.discussion-header h2 { font-size:1.5rem; color:var(--text-primary); margin:0; }
+.post-card { background:var(--card-bg); border-radius:12px; padding:20px; margin-bottom:16px; border:1px solid var(--border); transition:all 0.2s; }
+.post-card:hover { border-color:var(--primary); box-shadow:0 4px 16px rgba(26,115,232,0.08); }
+.post-card-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; }
+.post-card-title { font-size:1.1rem; font-weight:700; color:var(--text-primary); cursor:pointer; }
+.post-card-title:hover { color:var(--primary); }
+.role-badge { display:inline-block; padding:2px 10px; border-radius:20px; font-size:0.72rem; font-weight:600; margin-left:8px; vertical-align:middle; }
+.role-badge.teacher { background:rgba(201,168,76,0.15); color:var(--accent); }
+.role-badge.student { background:rgba(26,115,232,0.12); color:var(--primary); }
+.post-card-meta { font-size:0.78rem; color:var(--text-secondary); }
+.post-card-body { font-size:0.9rem; color:var(--text-secondary); line-height:1.7; margin-bottom:12px; }
+.post-card-footer { display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; color:var(--text-secondary); }
+.post-card-actions { display:flex; gap:12px; }
+.post-card-actions button { background:none; border:none; cursor:pointer; color:var(--text-secondary); font-size:0.8rem; padding:4px 0; transition:color 0.2s; }
+.post-card-actions button:hover { color:var(--primary); }
+.reply-section { margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
+.reply-item { padding:10px 14px; margin-bottom:8px; background:rgba(26,115,232,0.03); border-radius:8px; border-left:3px solid var(--primary); }
+.reply-item.teacher-reply { border-left-color:var(--accent); background:rgba(201,168,76,0.04); }
+.reply-form { margin-top:12px; display:flex; gap:8px; }
+.reply-form input { flex:1; padding:8px 12px; border:1px solid var(--border); border-radius:8px; background:var(--card-bg); color:var(--text-primary); font-size:0.85rem; outline:none; }
+.reply-form button { padding:8px 16px; border:none; background:var(--primary); color:white; border-radius:8px; font-size:0.82rem; font-weight:600; cursor:pointer; white-space:nowrap; }
+
+/* ====== Video Learning ====== */
+.video-page-header { margin-bottom:28px; }
+.video-page-header h2 { font-size:1.5rem; color:var(--text-primary); margin-bottom:8px; }
+.video-filter-bar { display:flex; gap:10px; margin-bottom:24px; flex-wrap:wrap; }
+.video-filter-btn { padding:8px 20px; border:1px solid var(--border); border-radius:20px; background:var(--card-bg); color:var(--text-secondary); cursor:pointer; font-size:0.85rem; font-weight:500; transition:all 0.2s; }
+.video-filter-btn.active, .video-filter-btn:hover { background:var(--primary); color:white; border-color:var(--primary); }
+.video-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:24px; }
+.video-card { background:var(--card-bg); border-radius:14px; overflow:hidden; border:1px solid var(--border); transition:all 0.3s; }
+.video-card:hover { border-color:var(--primary); transform:translateY(-4px); box-shadow:0 12px 32px rgba(0,0,0,0.1); }
+.video-thumb { width:100%; height:200px; background:linear-gradient(135deg, #1a3a5c 0%, #2c5f8a 100%); display:flex; flex-direction:column; align-items:center; justify-content:center; color:white; position:relative; }
+.video-thumb-icon { font-size:3.5rem; margin-bottom:8px; opacity:0.9; }
+.video-thumb-duration { position:absolute; bottom:10px; right:10px; background:rgba(0,0,0,0.7); color:white; padding:3px 10px; border-radius:6px; font-size:0.75rem; }
+.video-card-body { padding:18px; }
+.video-card-category { display:inline-block; padding:3px 10px; border-radius:12px; font-size:0.72rem; font-weight:600; margin-bottom:8px; }
+.video-card-category.pub { background:rgba(26,115,232,0.1); color:#1a73e8; }
+.video-card-category.pri { background:rgba(156,39,176,0.1); color:#9c27b0; }
+.video-card-category.eco { background:rgba(46,125,50,0.1); color:#2e7d32; }
+.video-card-title { font-size:1.05rem; font-weight:700; color:var(--text-primary); margin-bottom:8px; line-height:1.4; }
+.video-card-desc { font-size:0.84rem; color:var(--text-secondary); line-height:1.6; margin-bottom:12px; }
+.video-card-actions { display:flex; gap:10px; }
+.video-card-actions button { padding:7px 16px; border:none; border-radius:8px; font-size:0.82rem; font-weight:600; cursor:pointer; transition:all 0.2s; }
+.video-comment-section { margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
+.video-comment-item { padding:8px 0; font-size:0.84rem; color:var(--text-secondary); border-bottom:1px solid rgba(0,0,0,0.04); }
+.video-comment-item strong { color:var(--text-primary); }
+
+/* ====== Classroom Mode ====== */
+.classroom-page { padding:0; }
+.classroom-hero { background:linear-gradient(135deg, #0d2137 0%, #1a3a5c 50%, #2c5f8a 100%); border-radius:18px; padding:36px 40px; margin-bottom:28px; color:white; position:relative; overflow:hidden; }
+.classroom-hero::before { content:''; position:absolute; top:-50%; right:-20%; width:400px; height:400px; background:radial-gradient(circle, rgba(201,168,76,0.12) 0%, transparent 70%); pointer-events:none; }
+.classroom-hero h2 { font-size:1.8rem; font-weight:800; margin-bottom:8px; position:relative; }
+.classroom-hero p { font-size:0.95rem; opacity:0.85; line-height:1.7; max-width:700px; position:relative; }
+.classroom-hero .hero-badge { display:inline-block; padding:4px 14px; background:rgba(201,168,76,0.2); border:1px solid rgba(201,168,76,0.4); border-radius:20px; font-size:0.78rem; font-weight:600; color:#f0d78c; margin-bottom:12px; }
+.classroom-tabs { display:flex; gap:0; margin-bottom:28px; background:var(--card-bg); border-radius:14px; overflow:hidden; border:1px solid var(--border); }
+.classroom-tab { flex:1; padding:16px 20px; text-align:center; cursor:pointer; font-size:0.92rem; font-weight:600; color:var(--text-secondary); transition:all 0.2s; border-bottom:3px solid transparent; }
+.classroom-tab:hover { color:var(--primary); background:rgba(26,115,232,0.04); }
+.classroom-tab.active { color:var(--primary); border-bottom-color:var(--primary); background:rgba(26,115,232,0.06); }
+.classroom-tab-icon { font-size:1.5rem; display:block; margin-bottom:4px; }
+.classroom-panel { background:var(--card-bg); border-radius:14px; padding:28px; border:1px solid var(--border); }
+.classroom-panel h3 { font-size:1.2rem; font-weight:700; color:var(--text-primary); margin-bottom:16px; }
+.qa-topic-display { background:linear-gradient(135deg, rgba(26,115,232,0.06), rgba(201,168,76,0.04)); border-radius:12px; padding:20px; margin-bottom:20px; border:1px solid rgba(26,115,232,0.15); }
+.qa-topic-display h4 { font-size:1rem; color:var(--primary); margin-bottom:6px; }
+.qa-topic-display p { font-size:0.88rem; color:var(--text-secondary); line-height:1.6; }
+.qa-responses-list { max-height:400px; overflow-y:auto; margin-bottom:16px; }
+.qa-response-item { padding:12px 16px; background:rgba(26,115,232,0.03); border-radius:10px; margin-bottom:10px; border-left:3px solid var(--primary); }
+.qa-response-meta { font-size:0.76rem; color:var(--text-secondary); margin-bottom:4px; }
+.qa-response-content { font-size:0.88rem; color:var(--text-primary); line-height:1.6; }
+.qa-ai-summary { background:linear-gradient(135deg, rgba(201,168,76,0.08), rgba(26,115,232,0.04)); border-radius:12px; padding:18px; margin-top:16px; border:1px solid rgba(201,168,76,0.2); }
+.qa-ai-summary h4 { font-size:0.95rem; color:var(--accent); margin-bottom:8px; }
+.qa-ai-summary p { font-size:0.85rem; color:var(--text-secondary); line-height:1.7; }
+.quiz-question-card { background:var(--card-bg); border-radius:12px; padding:20px; margin-bottom:16px; border:1px solid var(--border); }
+.quiz-question-card h4 { font-size:0.95rem; color:var(--text-primary); margin-bottom:14px; line-height:1.5; }
+.quiz-option { display:block; width:100%; padding:12px 16px; margin-bottom:8px; border:1px solid var(--border); border-radius:10px; background:var(--card-bg); cursor:pointer; text-align:left; font-size:0.88rem; color:var(--text-primary); transition:all 0.2s; }
+.quiz-option:hover { border-color:var(--primary); background:rgba(26,115,232,0.04); }
+.quiz-option.selected { border-color:var(--primary); background:rgba(26,115,232,0.1); color:var(--primary); font-weight:600; }
+.quiz-stats-bar { display:flex; gap:16px; align-items:center; padding:14px 18px; background:rgba(26,115,232,0.04); border-radius:10px; margin-bottom:16px; flex-wrap:wrap; }
+.quiz-stat { font-size:0.85rem; color:var(--text-secondary); }
+.quiz-stat strong { color:var(--primary); }
+.quiz-ai-rec { background:rgba(201,168,76,0.06); border-radius:10px; padding:16px; margin-top:16px; border:1px solid rgba(201,168,76,0.2); }
+.quiz-ai-rec h4 { font-size:0.92rem; color:var(--accent); margin-bottom:8px; }
+.quiz-ai-rec ul { padding-left:18px; }
+.quiz-ai-rec li { font-size:0.84rem; color:var(--text-secondary); line-height:1.8; }
+.discussion-case-card { background:linear-gradient(135deg, rgba(26,115,232,0.04), rgba(201,168,76,0.02)); border-radius:12px; padding:20px; margin-bottom:20px; border:1px solid rgba(26,115,232,0.1); }
+.discussion-case-card h4 { font-size:1rem; color:var(--primary); margin-bottom:8px; }
+.discussion-case-card p { font-size:0.86rem; color:var(--text-secondary); line-height:1.7; }
+.socratic-questions { margin:20px 0; }
+.socratic-q { padding:12px 16px; background:rgba(201,168,76,0.05); border-radius:10px; margin-bottom:10px; border-left:3px solid var(--accent); font-size:0.88rem; color:var(--text-primary); line-height:1.6; }
+.socratic-q::before { content:'\1F4A1  '; }
+.group-response-card { padding:14px 18px; background:var(--card-bg); border-radius:10px; margin-bottom:12px; border:1px solid var(--border); }
+.group-response-card h5 { font-size:0.88rem; color:var(--text-primary); margin-bottom:6px; }
+.group-response-card p { font-size:0.84rem; color:var(--text-secondary); line-height:1.6; }
+.ai-comparison { background:linear-gradient(135deg, rgba(201,168,76,0.08), rgba(26,115,232,0.04)); border-radius:12px; padding:20px; margin-top:18px; border:1px solid rgba(201,168,76,0.2); }
+.ai-comparison h4 { font-size:0.95rem; color:var(--accent); margin-bottom:10px; }
+.ai-comparison p { font-size:0.85rem; color:var(--text-secondary); line-height:1.7; margin-bottom:8px; }
+.classroom-action-btn { padding:10px 24px; border:none; border-radius:10px; font-size:0.88rem; font-weight:700; cursor:pointer; transition:all 0.2s; }
+.classroom-action-btn.primary { background:linear-gradient(135deg, var(--primary), #1565c0); color:white; }
+.classroom-action-btn.primary:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(26,115,232,0.3); }
+.classroom-action-btn.secondary { background:var(--card-bg); color:var(--primary); border:1px solid var(--primary); }
+.classroom-action-btn.accent { background:linear-gradient(135deg, var(--accent), #a07830); color:white; }
+.classroom-action-btn.accent:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(201,168,76,0.3); }
+.classroom-status-badge { display:inline-block; padding:4px 12px; border-radius:16px; font-size:0.76rem; font-weight:600; }
+.classroom-status-badge.active { background:rgba(46,125,50,0.12); color:#2e7d32; }
+.classroom-status-badge.closed { background:rgba(158,158,158,0.15); color:#757575; }
+.modal-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:10000; display:flex; align-items:center; justify-content:center; }
+.modal-content { background:var(--card-bg); border-radius:16px; padding:28px; width:90%; max-width:520px; border:1px solid var(--border); }
+.modal-content h3 { font-size:1.15rem; color:var(--text-primary); margin-bottom:18px; }
+.modal-field { margin-bottom:14px; }
+.modal-field label { display:block; font-size:0.84rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px; }
+.modal-field input, .modal-field textarea, .modal-field select { width:100%; padding:10px 14px; border:1px solid var(--border); border-radius:10px; background:var(--card-bg); color:var(--text-primary); font-size:0.88rem; outline:none; box-sizing:border-box; }
+.modal-field textarea { resize:vertical; min-height:100px; }
+.modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; }
+
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -4454,6 +4570,15 @@ button:active:not(:disabled),
       
       
       <div class="page-view" id="page-graph"></div>
+      
+      
+      <div class="page-view" id="page-discussion"></div>
+      
+      
+      <div class="page-view" id="page-video"></div>
+      
+      
+      <div class="page-view" id="page-classroom"></div>
 
 
       <div class="page-view" id="page-profile"></div>
@@ -7403,6 +7528,9 @@ function renderNavbar() {
       <a class="nav-item" data-page="assess" onclick="showPage('assess')">综合能力测评</a>
       <a class="nav-item" data-page="ideology" onclick="showPage('ideology')">涉外法治资鉴</a>
       <a class="nav-item" data-page="graph" onclick="showPage('graph')">🕸️ 知识图谱</a>
+      <a class="nav-item" data-page="classroom" onclick="showPage('classroom')">📡 课堂模式</a>
+      <a class="nav-item" data-page="discussion" onclick="showPage('discussion')">💬 留言板</a>
+      <a class="nav-item" data-page="video" onclick="showPage('video')">🎬 视频学习</a>
       <a class="nav-item" data-page="profile" onclick="showPage('profile')" id="profileNavItem" style="${isGuest ? 'display:none' : ''}">个人空间</a>
     </nav>
     <div class="navbar-user">
@@ -7469,6 +7597,21 @@ function showPage(page) {
   // 教师面板切换时渲染素材管理
   if (page === 'teacher') {
     renderTeacherPanel();
+  }
+  
+  // 留言板
+  if (page === 'discussion') {
+    renderDiscussionPage();
+  }
+  
+  // 视频学习
+  if (page === 'video') {
+    renderVideoPage();
+  }
+  
+  // 课堂模式
+  if (page === 'classroom') {
+    renderClassroomPage();
   }
 }
 
@@ -15007,6 +15150,647 @@ document.addEventListener('DOMContentLoaded', function() {
 window.addEventListener('online', function() {
   setTimeout(function() { _sbFlushQueue(); }, 500);
 });
+
+
+
+// ====== 留言板、视频学习、课堂模式 - 演示数据初始化 ======
+function initNewModulesDemoData() {
+  if (!localStorage.getItem('sanguofa_discussion_posts')) {
+    var demoPosts = [
+      {
+        id: 'post-001',
+        title: '管辖权豁免的适用范围',
+        content: '老师您好，请问外国国家豁免法中的限制豁免原则，在商业合同纠纷中如何适用？',
+        author: '杨雅淇',
+        authorId: 'S2024001',
+        role: 'student',
+        createdAt: '2026-09-24 15:30',
+        replies: [
+          {
+            id: 'reply-001',
+            content: '这个问题很好。限制豁免原则的核心在于区分主权行为和商业行为。在商业合同纠纷中，如果合同属于商业性质，则不适用豁免。',
+            author: '王老师',
+            authorId: 'T2026001',
+            role: 'teacher',
+            createdAt: '2026-09-24 16:00'
+          }
+        ]
+      },
+      {
+        id: 'post-002',
+        title: '国际私法中的反致制度',
+        content: '请问反致制度在我国司法实践中的应用情况如何？有没有典型案例？',
+        author: '田震',
+        authorId: 'S2024002',
+        role: 'student',
+        createdAt: '2026-09-23 14:20',
+        replies: []
+      },
+      {
+        id: 'post-003',
+        title: 'WTO争端解决机制的改革方向',
+        content: '当前WTO上诉机构停摆，未来的改革方向可能是什么？各方立场如何？',
+        author: '陈老师',
+        authorId: 'T2026002',
+        role: 'teacher',
+        createdAt: '2026-09-22 10:15',
+        replies: [
+          {
+            id: 'reply-002',
+            content: '目前主要有两种改革方案：一是恢复上诉机构，二是建立多方临时上诉仲裁安排（MPIA）。中国参与了MPIA。',
+            author: '李老师',
+            authorId: 'T2026003',
+            role: 'teacher',
+            createdAt: '2026-09-22 11:30'
+          },
+          {
+            id: 'reply-003',
+            content: '我比较关注多方临时上诉仲裁安排的实效性，它在实践中能发挥多大作用？',
+            author: '刘思远',
+            authorId: 'S2024003',
+            role: 'student',
+            createdAt: '2026-09-22 12:45'
+          }
+        ]
+      },
+      {
+        id: 'post-004',
+        title: '国际投资仲裁中的最惠国待遇条款',
+        content: '最惠国待遇条款能否用于扩展仲裁庭的管辖权？实践中有争议吗？',
+        author: '赵晓峰',
+        authorId: 'S2024004',
+        role: 'student',
+        createdAt: '2026-09-21 09:00',
+        replies: [
+          {
+            id: 'reply-004',
+            content: '这是一个很有争议的问题。Maffezini案和Plama案的裁决方向完全相反，关键在于MFN条款的具体措辞。',
+            author: '王老师',
+            authorId: 'T2026001',
+            role: 'teacher',
+            createdAt: '2026-09-21 10:30'
+          }
+        ]
+      }
+    ];
+    localStorage.setItem('sanguofa_discussion_posts', JSON.stringify(demoPosts));
+  }
+
+  if (!localStorage.getItem('sanguofa_videos')) {
+    var demoVideos = [
+      {
+        id: 'vid-001',
+        title: '南海仲裁案的法律分析',
+        category: 'pub',
+        categoryText: '国际公法',
+        description: '深入分析2016年南海仲裁案的管辖权问题和法律依据，探讨中国在南海问题上的法律立场',
+        url: 'https://www.bilibili.com/video/BV1xx411c7mD',
+        thumbnail: '',
+        duration: '45分钟',
+        comments: [
+          { author: '杨雅淇', content: '讲得很清楚，对管辖权问题的分析很有帮助', timestamp: '2026-09-20' }
+        ]
+      },
+      {
+        id: 'vid-002',
+        title: '国际私法中的法律适用问题',
+        category: 'pri',
+        categoryText: '国际私法',
+        description: '讲解涉外民事关系中法律适用的基本原则和方法，包括意思自治原则和最密切联系原则',
+        url: 'https://www.bilibili.com/video/BV2yy511d8eF',
+        thumbnail: '',
+        duration: '38分钟',
+        comments: []
+      },
+      {
+        id: 'vid-003',
+        title: 'WTO争端解决机制详解',
+        category: 'eco',
+        categoryText: '国际经济法',
+        description: '系统介绍WTO争端解决机制的程序和规则，分析当前改革困境',
+        url: 'https://www.bilibili.com/video/BV3zz611e9gG',
+        thumbnail: '',
+        duration: '52分钟',
+        comments: [
+          { author: '田震', content: '上诉机构停摆的部分讲得特别好', timestamp: '2026-09-19' },
+          { author: '刘思远', content: '建议补充MPIA的最新进展', timestamp: '2026-09-20' }
+        ]
+      },
+      {
+        id: 'vid-004',
+        title: '联合国海洋法公约解读',
+        category: 'pub',
+        categoryText: '国际公法',
+        description: '解读联合国海洋法公约的核心条款和实践应用，涵盖领海、专属经济区和大陆架制度',
+        url: 'https://www.bilibili.com/video/BV4aa711f0hH',
+        thumbnail: '',
+        duration: '41分钟',
+        comments: []
+      },
+      {
+        id: 'vid-005',
+        title: '国际投资仲裁案例分析',
+        category: 'eco',
+        categoryText: '国际经济法',
+        description: '通过经典案例（Maffezini案、Plama案）分析国际投资仲裁的实践',
+        url: 'https://www.bilibili.com/video/BV5bb811g1iI',
+        thumbnail: '',
+        duration: '36分钟',
+        comments: []
+      }
+    ];
+    localStorage.setItem('sanguofa_videos', JSON.stringify(demoVideos));
+  }
+
+  if (!localStorage.getItem('sanguofa_classroom_sessions')) {
+    var demoSessions = [
+      {
+        id: 'session-001',
+        type: 'qa',
+        topic: '国家管辖权豁免的适用范围',
+        createdBy: 'T2026001',
+        createdAt: '2026-09-24 14:00',
+        status: 'active',
+        responses: [
+          { studentId: 'S2024001', studentName: '杨雅淇', content: '我认为限制豁免原则下，商业行为不享有豁免权，关键是区分行为性质', timestamp: '2026-09-24 14:15' },
+          { studentId: 'S2024002', studentName: '田震', content: '关键是区分主权行为和商业行为的界限，实践中判断标准不统一', timestamp: '2026-09-24 14:18' },
+          { studentId: 'S2024003', studentName: '刘思远', content: '应该根据合同性质和目的综合判断，不能只看单一标准', timestamp: '2026-09-24 14:20' }
+        ],
+        aiSummary: '全班共3人参与讨论。主要观点集中在：区分主权行为和商业行为是核心问题，同学们对判断标准存在分歧。建议教师重点讲解"行为性质说"与"目的说"的区别与联系。'
+      },
+      {
+        id: 'session-002',
+        type: 'quiz',
+        topic: '国际公法基础测验',
+        createdBy: 'T2026001',
+        createdAt: '2026-09-23 10:00',
+        status: 'closed',
+        responses: [],
+        aiSummary: ''
+      },
+      {
+        id: 'session-003',
+        type: 'discussion',
+        topic: '南海仲裁案法律分析',
+        createdBy: 'T2026001',
+        createdAt: '2026-09-22 14:00',
+        status: 'closed',
+        responses: [],
+        aiSummary: ''
+      }
+    ];
+    localStorage.setItem('sanguofa_classroom_sessions', JSON.stringify(demoSessions));
+  }
+}
+initNewModulesDemoData();
+
+// ====== 留言板页面渲染 ======
+function renderDiscussionPage() {
+  var container = document.getElementById('page-discussion');
+  if (!container) return;
+  var posts = JSON.parse(localStorage.getItem('sanguofa_discussion_posts') || '[]');
+  var currentUser = AppState.currentUser || {};
+  var isTeacher = currentUser.role === 'teacher';
+  var userName = currentUser.name || currentUser.email || '访客';
+  var userId = currentUser.id || 'guest';
+
+  posts.sort(function(a, b) { return (b.createdAt > a.createdAt) ? 1 : -1; });
+
+  var html = '<div style="padding:24px;max-width:900px;margin:0 auto">';
+  html += '<div class="discussion-header">';
+  html += '<h2>💬 留言板</h2>';
+  html += '<button class="classroom-action-btn primary" onclick="openNewPostModal()">✏️ 发布新帖</button>';
+  html += '</div>';
+
+  if (posts.length === 0) {
+    html += '<div style="text-align:center;padding:60px 20px;color:var(--text-secondary)">';
+    html += '<div style="font-size:3rem;margin-bottom:12px">📝</div>';
+    html += '<p>还没有帖子，快来发布第一个讨论吧！</p></div>';
+  } else {
+    posts.forEach(function(post) {
+      var roleBadge = post.role === 'teacher' ? '<span class="role-badge teacher">教师</span>' : '<span class="role-badge student">学生</span>';
+      var canDelete = (post.authorId === userId || isTeacher);
+      html += '<div class="post-card">';
+      html += '<div class="post-card-header">';
+      html += '<div class="post-card-title" onclick="togglePostDetail(\'' + post.id + '\')">' + post.title + roleBadge + '</div>';
+      html += '<div class="post-card-meta">' + post.createdAt + '</div>';
+      html += '</div>';
+      html += '<div class="post-card-body">' + post.content + '</div>';
+      html += '<div class="post-card-footer">';
+      html += '<span>👤 ' + post.author + ' · 💬 ' + post.replies.length + ' 条回复</span>';
+      html += '<div class="post-card-actions">';
+      html += '<button onclick="togglePostDetail(\'' + post.id + '\')">查看详情</button>';
+      if (canDelete) { html += '<button onclick="deletePost(\'' + post.id + '\')" style="color:#c62828">删除</button>'; }
+      html += '</div></div>';
+
+      html += '<div class="reply-section" id="replies-' + post.id + '" style="display:none">';
+      post.replies.forEach(function(reply) {
+        var rc = reply.role === 'teacher' ? 'reply-item teacher-reply' : 'reply-item';
+        var rb = reply.role === 'teacher' ? '<span class="role-badge teacher" style="font-size:0.68rem">教师</span>' : '';
+        html += '<div class="' + rc + '">';
+        html += '<div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:4px"><strong>' + reply.author + '</strong>' + rb + ' · ' + reply.createdAt + '</div>';
+        html += '<div>' + reply.content + '</div></div>';
+      });
+      html += '<div class="reply-form">';
+      html += '<input type="text" id="reply-input-' + post.id + '" placeholder="输入回复内容..." onkeypress="if(event.key===\'Enter\')submitReply(\'' + post.id + '\')">';
+      html += '<button onclick="submitReply(\'' + post.id + '\')">回复</button>';
+      html += '</div></div>';
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function togglePostDetail(postId) {
+  var el = document.getElementById('replies-' + postId);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function openNewPostModal() {
+  var cu = AppState.currentUser || {};
+  if (!cu.email) { alert('请先登录'); return; }
+  var m = '<div class="modal-overlay" id="newPostModal" onclick="if(event.target===this)closeNewPostModal()">';
+  m += '<div class="modal-content"><h3>✏️ 发布新帖</h3>';
+  m += '<div class="modal-field"><label>标题</label><input type="text" id="newPostTitle" placeholder="请输入帖子标题"></div>';
+  m += '<div class="modal-field"><label>内容</label><textarea id="newPostContent" placeholder="请输入帖子内容"></textarea></div>';
+  m += '<div class="modal-actions">';
+  m += '<button class="classroom-action-btn secondary" onclick="closeNewPostModal()">取消</button>';
+  m += '<button class="classroom-action-btn primary" onclick="submitNewPost()">发布</button>';
+  m += '</div></div></div>';
+  document.body.insertAdjacentHTML('beforeend', m);
+}
+function closeNewPostModal() { var m = document.getElementById('newPostModal'); if (m) m.remove(); }
+
+function submitNewPost() {
+  var title = document.getElementById('newPostTitle').value.trim();
+  var content = document.getElementById('newPostContent').value.trim();
+  if (!title || !content) { alert('请填写标题和内容'); return; }
+  var cu = AppState.currentUser || {};
+  var posts = JSON.parse(localStorage.getItem('sanguofa_discussion_posts') || '[]');
+  posts.unshift({
+    id: 'post-' + Date.now(), title: title, content: content,
+    author: cu.name || cu.email, authorId: cu.id || 'u' + Date.now(),
+    role: cu.role || 'student',
+    createdAt: new Date().toLocaleString('zh-CN', {hour12:false}).replace(/\//g, '-'),
+    replies: []
+  });
+  localStorage.setItem('sanguofa_discussion_posts', JSON.stringify(posts));
+  closeNewPostModal(); renderDiscussionPage();
+}
+
+function submitReply(postId) {
+  var input = document.getElementById('reply-input-' + postId);
+  var content = input.value.trim();
+  if (!content) { alert('请输入回复内容'); return; }
+  var cu = AppState.currentUser || {};
+  var posts = JSON.parse(localStorage.getItem('sanguofa_discussion_posts') || '[]');
+  var post = posts.find(function(p) { return p.id === postId; });
+  if (post) {
+    post.replies.push({
+      id: 'reply-' + Date.now(), content: content,
+      author: cu.name || cu.email, authorId: cu.id || 'u' + Date.now(),
+      role: cu.role || 'student',
+      createdAt: new Date().toLocaleString('zh-CN', {hour12:false}).replace(/\//g, '-')
+    });
+    localStorage.setItem('sanguofa_discussion_posts', JSON.stringify(posts));
+    renderDiscussionPage();
+  }
+}
+
+function deletePost(postId) {
+  if (!confirm('确定要删除这个帖子吗？')) return;
+  var posts = JSON.parse(localStorage.getItem('sanguofa_discussion_posts') || '[]');
+  posts = posts.filter(function(p) { return p.id !== postId; });
+  localStorage.setItem('sanguofa_discussion_posts', JSON.stringify(posts));
+  renderDiscussionPage();
+}
+
+// ====== 视频学习页面渲染 ======
+function renderVideoPage() {
+  var container = document.getElementById('page-video');
+  if (!container) return;
+  var videos = JSON.parse(localStorage.getItem('sanguofa_videos') || '[]');
+  var html = '<div style="padding:24px;max-width:1200px;margin:0 auto">';
+  html += '<div class="video-page-header"><h2>🎬 视频学习</h2>';
+  html += '<p style="color:var(--text-secondary);margin:8px 0 0 0">精选三国法教学视频，助力深度学习</p></div>';
+  html += '<div class="video-filter-bar">';
+  html += '<button class="video-filter-btn active" onclick="filterVideos(\'all\',this)">全部</button>';
+  html += '<button class="video-filter-btn" onclick="filterVideos(\'pub\',this)">国际公法</button>';
+  html += '<button class="video-filter-btn" onclick="filterVideos(\'pri\',this)">国际私法</button>';
+  html += '<button class="video-filter-btn" onclick="filterVideos(\'eco\',this)">国际经济法</button>';
+  html += '</div>';
+  html += '<div class="video-grid" id="videoGrid">';
+  videos.forEach(function(v) {
+    html += '<div class="video-card" data-category="' + v.category + '">';
+    html += '<div class="video-thumb"><div class="video-thumb-icon">🎥</div>';
+    html += '<div style="font-size:0.85rem;opacity:0.8">' + v.duration + '</div>';
+    html += '<div class="video-thumb-duration">' + v.duration + '</div></div>';
+    html += '<div class="video-card-body">';
+    html += '<div class="video-card-category ' + v.category + '">' + v.categoryText + '</div>';
+    html += '<div class="video-card-title">' + v.title + '</div>';
+    html += '<div class="video-card-desc">' + v.description + '</div>';
+    html += '<div class="video-card-actions">';
+    html += '<button class="classroom-action-btn primary" onclick="openVideoDetail(\'' + v.id + '\')">📺 观看</button>';
+    html += '<button class="classroom-action-btn secondary" onclick="toggleVideoComments(\'' + v.id + '\')">💬 评论</button>';
+    html += '</div>';
+    html += '<div class="video-comment-section" id="vc-' + v.id + '" style="display:none">';
+    if (v.comments && v.comments.length > 0) {
+      v.comments.forEach(function(c) {
+        html += '<div class="video-comment-item"><strong>' + c.author + '</strong>: ' + c.content + '</div>';
+      });
+    } else {
+      html += '<div style="text-align:center;padding:12px;color:var(--text-secondary);font-size:0.85rem">暂无评论</div>';
+    }
+    html += '<div class="reply-form" style="margin-top:10px">';
+    html += '<input type="text" id="vci-' + v.id + '" placeholder="发表评论..." onkeypress="if(event.key===\'Enter\')submitVideoComment(\'' + v.id + '\')">';
+    html += '<button onclick="submitVideoComment(\'' + v.id + '\')">发表</button>';
+    html += '</div></div>';
+    html += '</div></div>';
+  });
+  html += '</div></div>';
+  container.innerHTML = html;
+}
+
+function filterVideos(cat, btn) {
+  document.querySelectorAll('.video-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  document.querySelectorAll('.video-card').forEach(function(c) {
+    c.style.display = (cat === 'all' || c.dataset.category === cat) ? '' : 'none';
+  });
+}
+function openVideoDetail(vid) {
+  var vs = JSON.parse(localStorage.getItem('sanguofa_videos') || '[]');
+  var v = vs.find(function(x) { return x.id === vid; });
+  if (v && v.url) window.open(v.url, '_blank');
+  else alert('视频链接暂不可用');
+}
+function toggleVideoComments(vid) {
+  var s = document.getElementById('vc-' + vid);
+  if (s) s.style.display = s.style.display === 'none' ? 'block' : 'none';
+}
+function submitVideoComment(vid) {
+  var input = document.getElementById('vci-' + vid);
+  var content = input.value.trim();
+  if (!content) return;
+  var cu = AppState.currentUser || {};
+  var vs = JSON.parse(localStorage.getItem('sanguofa_videos') || '[]');
+  var v = vs.find(function(x) { return x.id === vid; });
+  if (v) {
+    if (!v.comments) v.comments = [];
+    v.comments.push({ author: cu.name || cu.email || '匿名', content: content, timestamp: new Date().toLocaleDateString() });
+    localStorage.setItem('sanguofa_videos', JSON.stringify(vs));
+    renderVideoPage();
+  }
+}
+
+// ====== 课堂模式页面渲染 ======
+var classroomCurrentTab = 'qa';
+
+function renderClassroomPage() {
+  var container = document.getElementById('page-classroom');
+  if (!container) return;
+  var sessions = JSON.parse(localStorage.getItem('sanguofa_classroom_sessions') || '[]');
+  var cu = AppState.currentUser || {};
+  var isTeacher = cu.role === 'teacher';
+
+  var html = '<div class="classroom-page" style="padding:24px;max-width:1100px;margin:0 auto">';
+  html += '<div class="classroom-hero">';
+  html += '<div class="hero-badge">🎯 课上实时互动 · 智能教学辅助</div>';
+  html += '<h2>📡 课堂模式</h2>';
+  html += '<p>专为课堂教学设计的智能互动工具。教师可在课上实时调用，即时了解学生学习情况，AI自动分析并生成学情报告，帮助教师精准调整教学策略，显著提升课堂参与度与教学效果。</p>';
+  html += '<p style="margin-top:10px;font-size:0.88rem;opacity:0.7">三大核心模块：💬 即时问答 · 📝 随堂测验 · 🎯 案例讨论引导</p>';
+  html += '</div>';
+
+  html += '<div class="classroom-tabs">';
+  html += '<div class="classroom-tab' + (classroomCurrentTab==='qa'?' active':'') + '" onclick="switchClassroomTab(\'qa\')">';
+  html += '<span class="classroom-tab-icon">💬</span>即时问答</div>';
+  html += '<div class="classroom-tab' + (classroomCurrentTab==='quiz'?' active':'') + '" onclick="switchClassroomTab(\'quiz\')">';
+  html += '<span class="classroom-tab-icon">📝</span>随堂测验</div>';
+  html += '<div class="classroom-tab' + (classroomCurrentTab==='discussion'?' active':'') + '" onclick="switchClassroomTab(\'discussion\')">';
+  html += '<span class="classroom-tab-icon">🎯</span>案例讨论引导</div>';
+  html += '</div>';
+
+  if (classroomCurrentTab === 'qa') html += renderClassroomQA(sessions, isTeacher, cu);
+  else if (classroomCurrentTab === 'quiz') html += renderClassroomQuiz(sessions, isTeacher, cu);
+  else if (classroomCurrentTab === 'discussion') html += renderClassroomDiscussion(sessions, isTeacher, cu);
+
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function switchClassroomTab(tab) { classroomCurrentTab = tab; renderClassroomPage(); }
+
+function renderClassroomQA(sessions, isTeacher, cu) {
+  var qaSessions = sessions.filter(function(s) { return s.type === 'qa'; });
+  var active = qaSessions.find(function(s) { return s.status === 'active'; });
+  var html = '<div class="classroom-panel"><h3>💬 即时问答</h3>';
+  html += '<p style="color:var(--text-secondary);margin-bottom:20px">教师发起课堂话题，学生实时提交观点，AI智能分析全班理解情况，帮助教师即时调整教学节奏。</p>';
+
+  if (isTeacher) {
+    if (active) {
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
+      html += '<h4 style="margin:0;color:var(--primary)">当前进行中的话题</h4>';
+      html += '<span class="classroom-status-badge active">● 进行中</span></div>';
+      html += '<div class="qa-topic-display"><h4>' + active.topic + '</h4>';
+      html += '<p style="font-size:0.82rem;margin:0">' + active.createdAt + '</p></div>';
+      html += '<div class="qa-responses-list"><h4 style="margin:16px 0 12px">学生回答 (' + active.responses.length + ' 人)</h4>';
+      active.responses.forEach(function(r) {
+        html += '<div class="qa-response-item"><div class="qa-response-meta">👤 ' + r.studentName + ' · ' + r.timestamp + '</div>';
+        html += '<div class="qa-response-content">' + r.content + '</div></div>';
+      });
+      html += '</div>';
+      if (active.aiSummary) {
+        html += '<div class="qa-ai-summary"><h4>🤖 AI学情分析报告</h4><p>' + active.aiSummary + '</p></div>';
+      }
+      html += '<div style="margin-top:20px;text-align:right">';
+      html += '<button class="classroom-action-btn secondary" onclick="closeClassroomSession(\'' + active.id + '\')">结束话题</button></div>';
+    } else {
+      html += '<div style="text-align:center;padding:40px 20px">';
+      html += '<div style="font-size:3rem;margin-bottom:16px">💡</div>';
+      html += '<p style="color:var(--text-secondary);margin-bottom:20px">当前没有进行中的话题</p>';
+      html += '<button class="classroom-action-btn primary" onclick="openNewTopicModal()">🚀 发起新话题</button></div>';
+    }
+  } else {
+    if (active) {
+      html += '<div class="qa-topic-display"><h4>📢 当前话题</h4>';
+      html += '<p style="font-size:1.05rem;font-weight:600;color:var(--text-primary);margin:8px 0">' + active.topic + '</p></div>';
+      var responded = active.responses.some(function(r) { return r.studentId === cu.id; });
+      if (!responded) {
+        html += '<div style="margin:20px 0"><h4 style="margin-bottom:12px">提交你的观点</h4>';
+        html += '<textarea id="qaResponseInput" placeholder="请输入你对这个问题的看法..." style="width:100%;min-height:120px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--card-bg);color:var(--text-primary);font-size:0.9rem;outline:none;box-sizing:border-box;resize:vertical"></textarea>';
+        html += '<div style="margin-top:12px;text-align:right"><button class="classroom-action-btn primary" onclick="submitQAResponse(\'' + active.id + '\')">提交回答</button></div></div>';
+      } else {
+        var myR = active.responses.find(function(r) { return r.studentId === cu.id; });
+        html += '<div style="background:rgba(46,125,50,0.08);border:1px solid rgba(46,125,50,0.2);border-radius:10px;padding:16px;margin:16px 0">';
+        html += '<div style="color:#2e7d32;font-weight:600;margin-bottom:8px">✅ 你已提交回答</div>';
+        html += '<div style="color:var(--text-secondary);font-size:0.88rem">' + myR.content + '</div></div>';
+      }
+      if (active.aiSummary) {
+        html += '<div class="qa-ai-summary"><h4>🤖 AI观点摘要</h4><p>' + active.aiSummary + '</p></div>';
+      }
+    } else {
+      html += '<div style="text-align:center;padding:60px 20px"><div style="font-size:3rem;margin-bottom:16px">⏳</div>';
+      html += '<p style="color:var(--text-secondary)">教师尚未发起话题，请耐心等待</p></div>';
+    }
+  }
+
+  var closed = qaSessions.filter(function(s) { return s.status === 'closed'; });
+  if (closed.length > 0) {
+    html += '<div style="margin-top:32px;padding-top:24px;border-top:1px solid var(--border)">';
+    html += '<h4 style="margin-bottom:16px;color:var(--text-secondary)">📚 历史话题</h4>';
+    closed.forEach(function(s) {
+      html += '<div class="post-card" style="padding:14px"><div style="display:flex;justify-content:space-between;align-items:center">';
+      html += '<div><div style="font-weight:600;margin-bottom:4px">' + s.topic + '</div>';
+      html += '<div style="font-size:0.78rem;color:var(--text-secondary)">' + s.createdAt + ' · ' + s.responses.length + ' 人参与</div></div>';
+      html += '<span class="classroom-status-badge closed">已结束</span></div></div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function openNewTopicModal() {
+  var m = '<div class="modal-overlay" id="newTopicModal" onclick="if(event.target===this)closeNewTopicModal()">';
+  m += '<div class="modal-content"><h3>🚀 发起新话题</h3>';
+  m += '<div class="modal-field"><label>话题主题</label><input type="text" id="newTopicInput" placeholder="例如：国家管辖权豁免的适用范围"></div>';
+  m += '<div class="modal-actions"><button class="classroom-action-btn secondary" onclick="closeNewTopicModal()">取消</button>';
+  m += '<button class="classroom-action-btn primary" onclick="createNewTopic()">发起</button></div></div></div>';
+  document.body.insertAdjacentHTML('beforeend', m);
+}
+function closeNewTopicModal() { var m = document.getElementById('newTopicModal'); if (m) m.remove(); }
+function createNewTopic() {
+  var topic = document.getElementById('newTopicInput').value.trim();
+  if (!topic) { alert('请输入话题主题'); return; }
+  var cu = AppState.currentUser || {};
+  var ss = JSON.parse(localStorage.getItem('sanguofa_classroom_sessions') || '[]');
+  ss.forEach(function(s) { if (s.status === 'active') s.status = 'closed'; });
+  ss.push({
+    id: 'session-' + Date.now(), type: 'qa', topic: topic,
+    createdBy: cu.id || 'teacher',
+    createdAt: new Date().toLocaleString('zh-CN',{hour12:false}).replace(/\//g,'-'),
+    status: 'active', responses: [], aiSummary: '等待更多学生回答后生成分析...'
+  });
+  localStorage.setItem('sanguofa_classroom_sessions', JSON.stringify(ss));
+  closeNewTopicModal(); renderClassroomPage();
+}
+function submitQAResponse(sid) {
+  var input = document.getElementById('qaResponseInput');
+  var content = input.value.trim();
+  if (!content) { alert('请输入你的观点'); return; }
+  var cu = AppState.currentUser || {};
+  var ss = JSON.parse(localStorage.getItem('sanguofa_classroom_sessions') || '[]');
+  var s = ss.find(function(x) { return x.id === sid; });
+  if (s) {
+    s.responses.push({
+      studentId: cu.id || 'st' + Date.now(),
+      studentName: cu.name || cu.email || '匿名',
+      content: content,
+      timestamp: new Date().toLocaleString('zh-CN',{hour12:false}).replace(/\//g,'-')
+    });
+    if (s.responses.length >= 2) {
+      var keywords = s.responses.map(function(r) { return r.content.substring(0, 25); }).join('；');
+      s.aiSummary = '全班共 ' + s.responses.length + ' 人参与讨论。主要观点：' + keywords + '。教师可重点关注学生理解差异，进行针对性讲解。';
+    }
+    localStorage.setItem('sanguofa_classroom_sessions', JSON.stringify(ss));
+    renderClassroomPage();
+  }
+}
+function closeClassroomSession(sid) {
+  if (!confirm('确定要结束这个话题吗？')) return;
+  var ss = JSON.parse(localStorage.getItem('sanguofa_classroom_sessions') || '[]');
+  var s = ss.find(function(x) { return x.id === sid; });
+  if (s) { s.status = 'closed'; localStorage.setItem('sanguofa_classroom_sessions', JSON.stringify(ss)); renderClassroomPage(); }
+}
+
+function renderClassroomQuiz(sessions, isTeacher, cu) {
+  var html = '<div class="classroom-panel"><h3>📝 随堂测验</h3>';
+  html += '<p style="color:var(--text-secondary);margin-bottom:20px">教师一键发起选择题测验，学生实时作答。系统自动统计正确率，AI根据答题情况推荐需重点讲解的知识点。</p>';
+
+  html += '<div class="quiz-stats-bar">';
+  html += '<div class="quiz-stat">📊 参与人数: <strong>28</strong></div>';
+  html += '<div class="quiz-stat">✅ 平均正确率: <strong>76%</strong></div>';
+  html += '<div class="quiz-stat">⏱️ 剩余时间: <strong>05:00</strong></div></div>';
+
+  var qs = [
+    { id:'q1', text:'1. 国家管辖权豁免的主要理论依据是什么？', opts:['A. 主权平等原则','B. 国际礼让原则','C. 互惠原则','D. 公平原则'], ans:'A' },
+    { id:'q2', text:'2. 限制豁免原则下，以下哪种行为不享有豁免权？', opts:['A. 外交行为','B. 军事行为','C. 商业行为','D. 立法行为'], ans:'C' },
+    { id:'q3', text:'3. 《联合国国家及其财产管辖豁免公约》的通过年份是？', opts:['A. 2000年','B. 2004年','C. 2008年','D. 2012年'], ans:'B' },
+    { id:'q4', text:'4. 以下哪项不属于国际法院的管辖权类型？', opts:['A. 自愿管辖','B. 协定管辖','C. 强制管辖','D. 专属管辖'], ans:'D' }
+  ];
+
+  qs.forEach(function(q) {
+    html += '<div class="quiz-question-card"><h4>' + q.text + '</h4>';
+    q.opts.forEach(function(o) {
+      html += '<button class="quiz-option" onclick="selectQuizOption(this)">' + o + '</button>';
+    });
+    html += '</div>';
+  });
+
+  html += '<div class="quiz-ai-rec"><h4>🤖 AI智能推荐 - 建议重点讲解</h4>';
+  html += '<p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:10px">根据实时答题数据分析，以下知识点学生掌握薄弱：</p><ul>';
+  html += '<li><strong>限制豁免原则的适用边界</strong> — 错误率32%，建议结合具体案例对比讲解主权行为vs商业行为</li>';
+  html += '<li><strong>国际公约的生效条件</strong> — 错误率28%，学生对公约通过时间和生效要件混淆</li>';
+  html += '<li><strong>管辖权豁免的例外情形</strong> — 错误率25%，建议通过案例分析加深理解</li></ul></div>';
+
+  if (isTeacher) {
+    html += '<div style="margin-top:24px;display:flex;gap:12px;justify-content:flex-end">';
+    html += '<button class="classroom-action-btn primary" onclick="alert(\'测验已发起，学生端将实时收到题目！\')">🚀 发起新测验</button>';
+    html += '<button class="classroom-action-btn accent" onclick="alert(\'答题数据已导出为CSV！\')">📊 导出结果</button></div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function selectQuizOption(btn) {
+  var parent = btn.parentElement;
+  parent.querySelectorAll('.quiz-option').forEach(function(o) { o.classList.remove('selected'); });
+  btn.classList.add('selected');
+}
+
+function renderClassroomDiscussion(sessions, isTeacher, cu) {
+  var html = '<div class="classroom-panel"><h3>🎯 案例讨论引导</h3>';
+  html += '<p style="color:var(--text-secondary);margin-bottom:20px">选择教学案例后，AI自动生成苏格拉底式引导问题，学生分组讨论并提交观点，AI对各组观点进行对比分析，找出争议焦点，辅助教师总结点评。</p>';
+
+  html += '<div class="discussion-case-card"><h4>📋 案例：南海仲裁案的法律分析</h4>';
+  html += '<p>2016年菲律宾单方面提起南海仲裁案。中国政府明确表示"不接受、不参与、不承认"。本案涉及国际公法中的管辖权、海洋法公约解释、历史性权利等多个核心问题，是三国法教学中的经典案例。</p></div>';
+
+  html += '<div class="socratic-questions">';
+  html += '<h4 style="margin-bottom:12px;color:var(--accent)">💡 AI生成的苏格拉底式引导问题</h4>';
+  html += '<div class="socratic-q">仲裁庭的管辖权依据是什么？菲律宾将争端包装为海洋法问题的策略是否合法？</div>';
+  html += '<div class="socratic-q">"九段线"主张的历史性权利与《联合国海洋法公约》制度之间如何协调？是否存在不可调和的冲突？</div>';
+  html += '<div class="socratic-q">如果中国选择参与仲裁程序，应采取怎样的法律策略？这对国际法实践有何启示？</div>';
+  html += '<div class="socratic-q">从国际法治角度看，单边仲裁与多边协商哪种方式更有利于解决海洋争端？为什么？</div>';
+  html += '<div class="socratic-q">本案裁决对国际海洋法秩序的未来发展产生了哪些深远影响？</div></div>';
+
+  html += '<h4 style="margin:24px 0 16px">👥 各小组观点</h4>';
+  var groups = [
+    { name:'第一组 · 国际公法视角', content:'仲裁庭管辖权存在瑕疵。菲律宾将领土主权问题包装为海洋法问题，规避了中国的2006年排除性声明。仲裁庭应更审慎地审查管辖权要件，不应降低审查标准。' },
+    { name:'第二组 · 海洋法视角', content:'应区分不同层面的问题：领土主权争议不属于公约调整范围，但岛礁地位和海洋权利问题可以通过公约机制解决。关键在于准确界定争端的真实性质。' },
+    { name:'第三组 · 国际关系视角', content:'法律分析不能脱离国际政治现实。南海问题涉及复杂的地缘政治博弈，单纯依靠法律手段难以根本解决。应倡导通过对话协商达成共识，法律手段只是工具之一。' }
+  ];
+  groups.forEach(function(g) {
+    html += '<div class="group-response-card"><h5>' + g.name + '</h5><p>' + g.content + '</p></div>';
+  });
+
+  html += '<div class="ai-comparison"><h4>🤖 AI对比分析与争议焦点</h4>';
+  html += '<p><strong>🔍 核心争议焦点：</strong></p>';
+  html += '<p>1. <strong>管辖权 vs 实体问题</strong> — 第一组强调程序正义，第二组侧重实体分析，反映了对国际司法机构角色定位的根本分歧。' ;
+  html += '第三组则跳出了纯法律框架，引入了国际关系视角。</p>';
+  html += '<p>2. <strong>法律与政治的关系</strong> — 各组对"法律能否独立于政治解决争端"存在明显分歧。第一、二组倾向法律主义路径，第三组强调政治协商的必要性。</p>';
+  html += '<p>3. <strong>解决方案的多元性</strong> — 反映了学生对国际争端解决机制多元性的理解程度，但缺乏对具体机制比较的深入分析。</p>';
+  html += '<p style="margin-top:14px;padding:14px;background:rgba(201,168,76,0.08);border-radius:8px"><strong>📌 教师点评建议：</strong>引导学生理解国际法的多维度特征。建议重点：①管辖权与实体问题的区分方法 ②国际司法机构的局限性 ③多边协商与法律机制的互补关系。可结合本案后续发展进行延伸讨论。</p>';
+  html += '</div>';
+
+  if (isTeacher) {
+    html += '<div style="margin-top:24px;display:flex;gap:12px;justify-content:flex-end">';
+    html += '<button class="classroom-action-btn primary" onclick="alert(\'已选择新案例，AI正在生成引导问题...\')">📚 选择新案例</button>';
+    html += '<button class="classroom-action-btn accent" onclick="alert(\'AI已完成各组观点对比分析！\')">🤖 重新生成分析</button></div>';
+  }
+  html += '</div>';
+  return html;
+}
 
 </script>
 
