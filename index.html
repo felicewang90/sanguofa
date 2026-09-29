@@ -4,8 +4,11 @@
 
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>三国法教学智能体</title>
+  <title>三国法教学智能体 · 小际陪你学国际法</title>
   <meta name="description" content="融合国际公法、国际私法、国际经济法三大核心学科，运用AI技术赋能法学教育创新">
+  <link rel="icon" href="assets/xiaoji/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="180x180" href="assets/xiaoji/favicon180.png">
+  <link rel="apple-touch-icon" href="assets/xiaoji/favicon180.png">
   <style>
 /* ========================================
    三国法教学智能体 - 主样式表
@@ -2713,6 +2716,75 @@ input, textarea, select { font-family: inherit; outline: none; }
   30% { opacity: 1; transform: translateY(-4px); }
 }
 
+/* === 小际思考中 === */
+.xiaoji-thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+.xiaoji-thinking img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  animation: xiaoji-bob 1.6s ease-in-out infinite;
+}
+.xiaoji-thinking .xj-txt {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.xiaoji-thinking .xj-dot {
+  animation: xiaoji-fade 1.4s infinite;
+}
+.xiaoji-thinking .xj-dot:nth-child(2) { animation-delay: 0.2s; }
+.xiaoji-thinking .xj-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes xiaoji-bob {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-4px) rotate(2deg); }
+}
+@keyframes xiaoji-fade {
+  0%, 60%, 100% { opacity: 0.3; }
+  30% { opacity: 1; }
+}
+
+/* === 首页迎宾小际 === */
+.hero-xiaoji-mascot {
+  position: absolute;
+  top: 18px;
+  right: 28px;
+  z-index: 5;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.hero-xiaoji-mascot img {
+  width: 76px;
+  height: 76px;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 10px rgba(0,0,0,0.25));
+  animation: xiaoji-float 3s ease-in-out infinite;
+}
+.hero-xiaoji-bubble {
+  background: #fff;
+  color: #1a3a5c;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  padding: 7px 11px;
+  border-radius: 12px 12px 12px 2px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  white-space: nowrap;
+  margin-top: 4px;
+}
+@keyframes xiaoji-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-9px); }
+}
+@media (max-width: 600px) {
+  .hero-xiaoji-mascot { top: 10px; right: 10px; }
+  .hero-xiaoji-mascot img { width: 54px; height: 54px; }
+  .hero-xiaoji-bubble { font-size: 0.68rem; padding: 5px 8px; white-space: normal; max-width: 110px; }
+}
+
 /* === Notification Toast === */
 .toast {
   position: fixed;
@@ -4516,7 +4588,7 @@ button:active:not(:disabled),
     <div class="login-card">
       <button class="login-modal-close" onclick="closeLoginModal()" title="关闭">&times;</button>
       <div style="margin-bottom:16px">
-        <div style="width:56px;height:56px;border-radius:50%;padding:2px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,0.1);display:flex;align-items:center;justify-content:center;font-size:28px">⚖️</div>
+        <div style="width:64px;height:64px;display:flex;align-items:center;justify-content:center"><img src="assets/xiaoji/main256.png" alt="小际" style="width:64px;height:64px;object-fit:contain"></div>
       </div>
       <div class="login-card-title">三国法教学智能体</div>
       <div class="login-card-subtitle">国际公法 · 国际私法 · 国际经济法</div>
@@ -7341,7 +7413,7 @@ function renderProfile() {
   // Build records HTML
   var recordsHtml = '';
   if (records.length === 0) {
-    recordsHtml = '<div style="text-align:center;color:var(--text-secondary);padding:40px 0;font-size:0.9rem">暂无学习记录</div>';
+    recordsHtml = '<div style="text-align:center;color:var(--text-secondary);padding:30px 0"><img src="assets/xiaoji/fighting.png" alt="小际加油" style="width:90px;height:90px;object-fit:contain;display:block;margin:0 auto 8px"><div style="font-size:0.9rem">还没有学习记录，去完成第一次练习吧，小际给你加油！</div></div>';
   } else {
     recordsHtml = records.slice(-10).reverse().map(function(r) {
       return '<div style="padding:12px 16px;border-bottom:1px solid rgba(0,0,0,0.05);display:flex;justify-content:space-between;align-items:center">'
@@ -7355,7 +7427,7 @@ function renderProfile() {
   // Build error book HTML
   var errorsHtml = '';
   if (errors.length === 0) {
-    errorsHtml = '<div style="text-align:center;color:var(--text-secondary);padding:40px 0;font-size:0.9rem">暂无错题记录</div>';
+    errorsHtml = '<div style="text-align:center;color:var(--text-secondary);padding:30px 0"><img src="assets/xiaoji/sad.png" alt="小际" style="width:90px;height:90px;object-fit:contain;display:block;margin:0 auto 8px"><div style="font-size:0.9rem">错题本还是空的，太棒了！继续保持～</div></div>';
   } else {
     errorsHtml = errors.slice(-10).reverse().map(function(e, i) {
       return '<div style="padding:12px 16px;border-bottom:1px solid rgba(0,0,0,0.05)">'
@@ -7540,7 +7612,7 @@ function renderNavbar() {
   
   navbar.innerHTML = `
     <div class="navbar-brand" onclick="showPage('dashboard')" style="cursor:pointer">
-      <div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#1a3a5c,#2c5f8a);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">⚖️</div>
+      <img src="assets/xiaoji/main256.png" alt="小际" style="width:46px;height:46px;object-fit:contain;flex-shrink:0">
       <span>三国法教学智能体</span>
     </div>
     <nav class="navbar-nav">
@@ -7670,6 +7742,10 @@ function renderDashboard() {
         <div class="hero-corner hero-corner-br"><svg viewBox="0 0 40 40"><path d="M0 0 L20 0 L20 3 L3 3 L3 20 L0 20 Z" fill="var(--accent)"/></svg></div>
         
         <div class="hero-content">
+          <div class="hero-xiaoji-mascot">
+            <img src="assets/xiaoji/main.png" alt="小际">
+            <div class="hero-xiaoji-bubble">嗨，我是小际！<br>一起学国际法吧 🕊️</div>
+          </div>
           <div class="hero-title-wrap">
             <h1 class="hero-title">三国法教学智能体</h1>
           </div>
@@ -8106,11 +8182,12 @@ function showTypingIndicator() {
   const chat = document.getElementById('qaChat');
   const html = `
     <div class="chat-message system" id="typingMsg">
-      <div class="chat-avatar">AI</div>
+      <div class="chat-avatar"><img src="assets/xiaoji/thinking.png" alt="小际" style="width:100%;height:100%;object-fit:contain"></div>
       <div>
         <div class="chat-bubble">
-          <div class="typing-indicator">
-            <span></span><span></span><span></span>
+          <div class="xiaoji-thinking">
+            <img src="assets/xiaoji/thinking.png" alt="小际思考中">
+            <span class="xj-txt">小际正在帮你查资料<span class="xj-dot">.</span><span class="xj-dot">.</span><span class="xj-dot">.</span></span>
           </div>
         </div>
       </div>
