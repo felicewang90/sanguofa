@@ -4448,6 +4448,49 @@ button:active:not(:disabled),
 .reply-form { margin-top:12px; display:flex; gap:8px; }
 .reply-form input { flex:1; padding:8px 12px; border:1px solid var(--border); border-radius:8px; background:var(--card-bg); color:var(--text-primary); font-size:0.85rem; outline:none; }
 .reply-form button { padding:8px 16px; border:none; background:var(--primary); color:white; border-radius:8px; font-size:0.82rem; font-weight:600; cursor:pointer; white-space:nowrap; }
+/* 小际茶座增强样式 */
+.tea-hero { text-align:center; padding:32px 20px 20px; background:linear-gradient(135deg,rgba(26,115,232,0.04),rgba(201,168,76,0.06)); border-radius:16px; margin-bottom:24px; }
+.tea-hero h2 { font-size:1.6rem; color:var(--text-primary); margin:0 0 6px 0; }
+.tea-hero p { color:var(--text-secondary); font-size:0.92rem; margin:0; }
+.tea-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:20px; }
+.tea-tag-btn { padding:6px 14px; border-radius:20px; border:1px solid var(--border); background:var(--card-bg); color:var(--text-secondary); font-size:0.8rem; cursor:pointer; transition:all 0.2s; }
+.tea-tag-btn.active, .tea-tag-btn:hover { background:var(--primary); color:white; border-color:var(--primary); }
+.tea-sort-select { padding:6px 12px; border-radius:8px; border:1px solid var(--border); background:var(--card-bg); color:var(--text-primary); font-size:0.82rem; outline:none; }
+.tea-post-type-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:600; margin-right:6px; }
+.tea-post-type-badge.short { background:rgba(26,115,232,0.1); color:var(--primary); }
+.tea-post-type-badge.long { background:rgba(201,168,76,0.12); color:var(--accent); }
+.tea-post-tag { display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.7rem; background:rgba(0,0,0,0.04); color:var(--text-secondary); margin-left:4px; }
+.tea-interact-bar { display:flex; gap:16px; align-items:center; margin-top:10px; font-size:0.8rem; color:var(--text-secondary); }
+.tea-interact-btn { background:none; border:none; cursor:pointer; color:var(--text-secondary); font-size:0.8rem; padding:4px 8px; border-radius:6px; transition:all 0.2s; }
+.tea-interact-btn:hover { background:rgba(26,115,232,0.06); color:var(--primary); }
+.tea-interact-btn.active { color:var(--primary); font-weight:600; }
+.tea-interact-btn.deep-think.active { color:#e65100; }
+.tea-interact-btn.favorite.active { color:var(--accent); }
+.tea-pin-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.68rem; background:rgba(201,168,76,0.15); color:var(--accent); font-weight:600; margin-right:6px; }
+.tea-rec-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.68rem; background:rgba(230,81,0,0.1); color:#e65100; font-weight:600; margin-left:6px; }
+.tea-post-card { background:var(--card-bg); border-radius:12px; padding:18px 20px; margin-bottom:14px; border:1px solid var(--border); transition:all 0.2s; cursor:pointer; }
+.tea-post-card:hover { border-color:var(--primary); box-shadow:0 4px 16px rgba(26,115,232,0.08); }
+.tea-post-card.pinned { border-left:3px solid var(--accent); }
+.tea-post-card-title { font-size:1.05rem; font-weight:700; color:var(--text-primary); margin-bottom:6px; display:flex; align-items:center; flex-wrap:wrap; gap:4px; }
+.tea-post-card-excerpt { font-size:0.88rem; color:var(--text-secondary); line-height:1.6; margin-bottom:8px; }
+.tea-post-card-meta { font-size:0.78rem; color:var(--text-secondary); display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.tea-detail-modal { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:10000; display:flex; align-items:center; justify-content:center; }
+.tea-detail-content { background:var(--card-bg); border-radius:16px; padding:28px; width:92%; max-width:700px; max-height:85vh; overflow-y:auto; border:1px solid var(--border); }
+.tea-comment-item { padding:10px 14px; margin-bottom:8px; background:rgba(26,115,232,0.03); border-radius:8px; border-left:3px solid var(--primary); }
+.tea-comment-item.teacher-comment { border-left-color:var(--accent); background:rgba(201,168,76,0.04); }
+.tea-comment-nested { margin-left:24px; }
+.tea-comment-input { width:100%; padding:10px 14px; border:1px solid var(--border); border-radius:10px; background:var(--card-bg); color:var(--text-primary); font-size:0.85rem; outline:none; box-sizing:border-box; resize:none; min-height:60px; margin-top:10px; }
+.tea-type-selector { display:flex; gap:10px; margin-bottom:14px; }
+.tea-type-option { flex:1; padding:12px; border-radius:10px; border:2px solid var(--border); text-align:center; cursor:pointer; transition:all 0.2s; font-size:0.88rem; }
+.tea-type-option.active { border-color:var(--primary); background:rgba(26,115,232,0.06); }
+.tea-tag-selector { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
+.tea-tag-option { padding:6px 12px; border-radius:16px; border:1px solid var(--border); cursor:pointer; font-size:0.8rem; transition:all 0.2s; }
+.tea-tag-option.active { background:var(--primary); color:white; border-color:var(--primary); }
+.tea-admin-bar { display:flex; gap:8px; margin-top:8px; }
+.tea-admin-btn { padding:4px 10px; border-radius:6px; border:1px solid var(--border); background:var(--card-bg); font-size:0.72rem; cursor:pointer; color:var(--text-secondary); transition:all 0.2s; }
+.tea-admin-btn:hover { border-color:var(--primary); color:var(--primary); }
+.tea-admin-btn.danger:hover { border-color:#c62828; color:#c62828; }
+.tea-points-badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:0.7rem; background:linear-gradient(135deg,rgba(201,168,76,0.15),rgba(201,168,76,0.05)); color:var(--accent); font-weight:600; }
 
 /* ====== Video Learning ====== */
 .video-page-header { margin-bottom:28px; }
@@ -7633,7 +7676,7 @@ function renderNavbar() {
       <a class="nav-item" data-page="ideology" onclick="showPage('ideology')">涉外法治资鉴</a>
       <a class="nav-item" data-page="graph" onclick="showPage('graph')">🕸️ 知识图谱</a>
       <a class="nav-item" data-page="classroom" onclick="showPage('classroom')">📡 课堂模式</a>
-      <a class="nav-item" data-page="discussion" onclick="showPage('discussion')">💬 留言板</a>
+      <a class="nav-item" data-page="discussion" onclick="showPage('discussion')">☕ 小际茶座</a>
       <a class="nav-item" data-page="video" onclick="showPage('video')">🎬 视频学习</a>
       <a class="nav-item" data-page="profile" onclick="showPage('profile')" id="profileNavItem" style="${isGuest ? 'display:none' : ''}">个人空间</a>
     </nav>
@@ -15465,125 +15508,458 @@ function initNewModulesDemoData() {
 }
 initNewModulesDemoData();
 
-// ====== 留言板页面渲染 ======
+// ====== 小际茶座 · 学术社区 ======
+// 数据结构：sanguofa_tea_posts / sanguofa_tea_comments / sanguofa_tea_stats
+// 兼容旧数据：sanguofa_discussion_posts 自动迁移
+
+var TEA_TAGS = ['🌐 国际公法','⚖️ 国际私法','💼 国际经济法','🔥 热点追踪','📚 文献研读','📋 案例评析','💬 随便聊聊'];
+var TEA_POSTS_KEY = 'sanguofa_tea_posts';
+var TEA_COMMENTS_KEY = 'sanguofa_tea_comments';
+var TEA_STATS_KEY = 'sanguofa_tea_stats';
+
+function migrateTeaData() {
+  var oldPosts = JSON.parse(localStorage.getItem('sanguofa_discussion_posts') || '[]');
+  if (oldPosts.length === 0) return;
+  var existing = JSON.parse(localStorage.getItem(TEA_POSTS_KEY) || '[]');
+  if (existing.length > 0) { localStorage.removeItem('sanguofa_discussion_posts'); return; }
+  var migrated = oldPosts.map(function(p) {
+    return {
+      id: p.id || ('post-' + Math.random().toString(36).substr(2,9)),
+      type: 'short', title: p.title || '（无标题）', content: p.content || '',
+      tags: ['💬 随便聊聊'],
+      author: p.author || '匿名', authorId: p.authorId || 'unknown',
+      role: p.role || 'student', createdAt: p.createdAt || new Date().toISOString(),
+      likes: 0, comments: (p.replies||[]).length, favorites: 0, deepThink: 0,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: [], favoritedBy: [], deepThinkBy: []
+    };
+  });
+  localStorage.setItem(TEA_POSTS_KEY, JSON.stringify(migrated));
+  var oldComments = JSON.parse(localStorage.getItem(TEA_COMMENTS_KEY) || '[]');
+  oldPosts.forEach(function(p) {
+    (p.replies||[]).forEach(function(r) {
+      oldComments.push({
+        id: r.id || ('cmt-' + Math.random().toString(36).substr(2,9)),
+        postId: p.id, parentId: null,
+        content: r.content || '', author: r.author || '匿名',
+        authorId: r.authorId || 'unknown', role: r.role || 'student',
+        createdAt: r.createdAt || '', likes: 0, likedBy: []
+      });
+    });
+  });
+  localStorage.setItem(TEA_COMMENTS_KEY, JSON.stringify(oldComments));
+  localStorage.removeItem('sanguofa_discussion_posts');
+}
+migrateTeaData();
+
+function teaGetPosts() { return JSON.parse(localStorage.getItem(TEA_POSTS_KEY) || '[]'); }
+function teaSavePosts(p) { localStorage.setItem(TEA_POSTS_KEY, JSON.stringify(p)); }
+function teaGetComments() { return JSON.parse(localStorage.getItem(TEA_COMMENTS_KEY) || '[]'); }
+function teaSaveComments(c) { localStorage.setItem(TEA_COMMENTS_KEY, JSON.stringify(c)); }
+function teaGetStats() { return JSON.parse(localStorage.getItem(TEA_STATS_KEY) || '{}'); }
+function teaSaveStats(s) { localStorage.setItem(TEA_STATS_KEY, JSON.stringify(s)); }
+
+function teaAddPoints(uid, delta) {
+  var stats = teaGetStats();
+  if (!stats[uid]) stats[uid] = { points:0, badges:[], postsCount:0, likesReceived:0 };
+  stats[uid].points = Math.max(0, stats[uid].points + delta);
+  var b = stats[uid].badges;
+  if (stats[uid].postsCount >= 1 && b.indexOf('茶座新人')===-1) b.push('茶座新人');
+  if (stats[uid].likesReceived >= 10 && b.indexOf('思想火花')===-1) b.push('思想火花');
+  if (stats[uid].points >= 100 && b.indexOf('学术之星')===-1) b.push('学术之星');
+  teaSaveStats(stats);
+}
+
+var teaCurrentFilter = '全部';
+var teaCurrentSort = 'hot';
+var teaCurrentPostType = 'short';
+var teaCurrentTag = '';
+
+function teaFormatDate() {
+  return new Date().toLocaleString('zh-CN', {hour12:false, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit'}).replace(/\//g, '-');
+}
+
 function renderDiscussionPage() {
   var container = document.getElementById('page-discussion');
   if (!container) return;
-  var posts = JSON.parse(localStorage.getItem('sanguofa_discussion_posts') || '[]');
+  var posts = teaGetPosts();
+  var comments = teaGetComments();
   var currentUser = AppState.currentUser || {};
-  var isTeacher = currentUser.role === 'teacher';
-  var userName = currentUser.name || currentUser.email || '访客';
-  var userId = currentUser.id || 'guest';
 
-  posts.sort(function(a, b) { return (b.createdAt > a.createdAt) ? 1 : -1; });
+  var pinned = posts.filter(function(p){return p.isPinned;});
+  var filtered = posts;
+  if (teaCurrentFilter !== '全部') {
+    filtered = filtered.filter(function(p){return (p.tags||[]).indexOf(teaCurrentFilter) !== -1;});
+  }
+  if (teaCurrentSort === 'selected') {
+    filtered = filtered.filter(function(p){return p.isRecommended || (p.deepThink||0) >= 3;});
+  }
+  if (teaCurrentSort === 'hot') {
+    filtered.sort(function(a,b){
+      var sa = (a.likes||0) + (a.comments||0)*2 + (a.deepThink||0)*3 + (a.isRecommended?20:0);
+      var sb = (b.likes||0) + (b.comments||0)*2 + (b.deepThink||0)*3 + (b.isRecommended?20:0);
+      return sb - sa;
+    });
+  } else if (teaCurrentSort === 'latest') {
+    filtered.sort(function(a,b){return (b.createdAt > a.createdAt)?1:-1;});
+  } else if (teaCurrentSort === 'selected') {
+    filtered.sort(function(a,b){return (b.deepThink||0) - (a.deepThink||0);});
+  }
+  var pinnedIds = {};
+  pinned.forEach(function(p){pinnedIds[p.id]=true;});
+  var pinnedF = filtered.filter(function(p){return pinnedIds[p.id];});
+  var normalF = filtered.filter(function(p){return !pinnedIds[p.id];});
+  var finalPosts = pinnedF.concat(normalF);
 
   var html = '<div style="padding:24px;max-width:900px;margin:0 auto">';
-  html += '<div class="discussion-header">';
-  html += '<h2>💬 留言板</h2>';
-  html += '<button class="classroom-action-btn primary" onclick="openNewPostModal()">✏️ 发布新帖</button>';
-  html += '</div>';
+  html += '<div class="tea-hero"><h2>☕ 小际茶座</h2><p>坐下来，聊聊法律那些事</p></div>';
+  html += '<div class="tea-toolbar">';
+  html += '<button class="classroom-action-btn primary" onclick="openNewPostModal()">✏️ 发布</button>';
+  html += '<button class="tea-tag-btn '+(teaCurrentFilter==='全部'?'active':'')+'" onclick="teaFilterTag(\'全部\')">全部</button>';
+  TEA_TAGS.forEach(function(tag) {
+    var esc = tag.replace(/'/g, "\\'");
+    html += '<button class="tea-tag-btn '+(teaCurrentFilter===tag?'active':'')+'" onclick="teaFilterTag(\''+esc+'\')">'+tag+'</button>';
+  });
+  html += '<select class="tea-sort-select" onchange="teaSortBy(this.value)">';
+  html += '<option value="hot"'+(teaCurrentSort==='hot'?' selected':'')+'>🔥 综合热度</option>';
+  html += '<option value="latest"'+(teaCurrentSort==='latest'?' selected':'')+'>🕐 最新</option>';
+  html += '<option value="selected"'+(teaCurrentSort==='selected'?' selected':'')+'>⭐ 精选</option>';
+  html += '</select></div>';
 
-  if (posts.length === 0) {
+  if (finalPosts.length === 0) {
     html += '<div style="text-align:center;padding:60px 20px;color:var(--text-secondary)">';
-    html += '<div style="font-size:3rem;margin-bottom:12px">📝</div>';
-    html += '<p>还没有帖子，快来发布第一个讨论吧！</p></div>';
+    html += '<div style="font-size:3rem;margin-bottom:12px">☕</div>';
+    html += '<p>茶座还没有帖子，快来发布第一个讨论吧！</p></div>';
   } else {
-    posts.forEach(function(post) {
-      var roleBadge = post.role === 'teacher' ? '<span class="role-badge teacher">教师</span>' : '<span class="role-badge student">学生</span>';
-      var canDelete = (post.authorId === userId || isTeacher);
-      html += '<div class="post-card">';
-      html += '<div class="post-card-header">';
-      html += '<div class="post-card-title" onclick="togglePostDetail(\'' + post.id + '\')">' + post.title + roleBadge + '</div>';
-      html += '<div class="post-card-meta">' + post.createdAt + '</div>';
-      html += '</div>';
-      html += '<div class="post-card-body">' + post.content + '</div>';
-      html += '<div class="post-card-footer">';
-      html += '<span>👤 ' + post.author + ' · 💬 ' + post.replies.length + ' 条回复</span>';
-      html += '<div class="post-card-actions">';
-      html += '<button onclick="togglePostDetail(\'' + post.id + '\')">查看详情</button>';
-      if (canDelete) { html += '<button onclick="deletePost(\'' + post.id + '\')" style="color:#c62828">删除</button>'; }
-      html += '</div></div>';
-
-      html += '<div class="reply-section" id="replies-' + post.id + '" style="display:none">';
-      post.replies.forEach(function(reply) {
-        var rc = reply.role === 'teacher' ? 'reply-item teacher-reply' : 'reply-item';
-        var rb = reply.role === 'teacher' ? '<span class="role-badge teacher" style="font-size:0.68rem">教师</span>' : '';
-        html += '<div class="' + rc + '">';
-        html += '<div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:4px"><strong>' + reply.author + '</strong>' + rb + ' · ' + reply.createdAt + '</div>';
-        html += '<div>' + reply.content + '</div></div>';
-      });
-      html += '<div class="reply-form">';
-      html += '<input type="text" id="reply-input-' + post.id + '" placeholder="输入回复内容..." onkeypress="if(event.key===\'Enter\')submitReply(\'' + post.id + '\')">';
-      html += '<button onclick="submitReply(\'' + post.id + '\')">回复</button>';
-      html += '</div></div>';
-      html += '</div>';
-    });
+    finalPosts.forEach(function(post) { html += teaRenderPostCard(post, comments, currentUser); });
   }
   html += '</div>';
   container.innerHTML = html;
 }
 
-function togglePostDetail(postId) {
-  var el = document.getElementById('replies-' + postId);
-  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+function teaRenderPostCard(post, comments, cu) {
+  var userId = cu.id || 'guest';
+  var isTeacher = cu.role === 'teacher';
+  var rb = post.role === 'teacher' ? '<span class="role-badge teacher">教师</span>' : '<span class="role-badge student">学生</span>';
+  var tb = post.type === 'long' ? '<span class="tea-post-type-badge long">长文章</span>' : '<span class="tea-post-type-badge short">短动态</span>';
+  var tagH = (post.tags||[]).map(function(t){return '<span class="tea-post-tag">'+t+'</span>';}).join('');
+  var pinH = post.isPinned ? '<span class="tea-pin-badge">📌 置顶</span>' : '';
+  var recH = post.isRecommended ? '<span class="tea-rec-badge">⭐ 推荐</span>' : '';
+  var cc = comments.filter(function(c){return c.postId===post.id;}).length;
+  var excerpt = post.content || '';
+  if (post.type==='long' && excerpt.length>150) excerpt = excerpt.substring(0,150)+'...';
+  var isLiked = (post.likedBy||[]).indexOf(userId)!==-1;
+  var isFav = (post.favoritedBy||[]).indexOf(userId)!==-1;
+  var isDT = (post.deepThinkBy||[]).indexOf(userId)!==-1;
+
+  var h = '<div class="tea-post-card'+(post.isPinned?' pinned':'')+'">';
+  h += '<div style="margin-bottom:6px">'+pinH+tb+tagH+recH+'</div>';
+  h += '<div style="font-size:1.05rem;font-weight:700;color:var(--text-primary);margin-bottom:6px;cursor:pointer" onclick="openTeaPostDetail(\''+post.id+'\')">'+(post.title||'（无标题）')+rb+'</div>';
+  h += '<div class="tea-post-card-excerpt">'+excerpt+'</div>';
+  h += '<div class="tea-post-card-meta"><span>👤 '+post.author+'</span><span>· '+post.createdAt+'</span></div>';
+  h += '<div class="tea-interact-bar" onclick="event.stopPropagation()">';
+  h += '<button class="tea-interact-btn'+(isLiked?' active':'')+'" onclick="teaToggleLike(\''+post.id+'\')">👍 '+(post.likes||0)+'</button>';
+  h += '<button class="tea-interact-btn" onclick="openTeaPostDetail(\''+post.id+'\')">💬 '+cc+'</button>';
+  h += '<button class="tea-interact-btn favorite'+(isFav?' active':'')+'" onclick="teaToggleFavorite(\''+post.id+'\')">⭐ '+(post.favorites||0)+'</button>';
+  h += '<button class="tea-interact-btn deep-think'+(isDT?' active':'')+'" onclick="teaToggleDeepThink(\''+post.id+'\')">🔥 深思 '+(post.deepThink||0)+'</button>';
+  h += '</div>';
+  if (isTeacher) {
+    h += '<div class="tea-admin-bar">';
+    h += '<button class="tea-admin-btn" onclick="teaTogglePin(\''+post.id+'\')">'+(post.isPinned?'取消置顶':'📌 置顶')+'</button>';
+    h += '<button class="tea-admin-btn" onclick="teaToggleRecommend(\''+post.id+'\')">'+(post.isRecommended?'取消推荐':'⭐ 推荐')+'</button>';
+    h += '<button class="tea-admin-btn" onclick="teaToggleLock(\''+post.id+'\')">'+(post.isLocked?'🔓 解锁':'🔒 锁定')+'</button>';
+    h += '<button class="tea-admin-btn danger" onclick="teaDeletePost(\''+post.id+'\')">🗑️ 删除</button>';
+    h += '</div>';
+  } else if (post.authorId === userId) {
+    h += '<div class="tea-admin-bar"><button class="tea-admin-btn danger" onclick="teaDeletePost(\''+post.id+'\')">🗑️ 删除</button></div>';
+  }
+  h += '</div>';
+  return h;
 }
+
+function teaFilterTag(tag) { teaCurrentFilter = tag; renderDiscussionPage(); }
+function teaSortBy(s) { teaCurrentSort = s; renderDiscussionPage(); }
 
 function openNewPostModal() {
   var cu = AppState.currentUser || {};
   if (!cu.email) { alert('请先登录'); return; }
+  teaCurrentPostType = 'short'; teaCurrentTag = '';
   var m = '<div class="modal-overlay" id="newPostModal" onclick="if(event.target===this)closeNewPostModal()">';
-  m += '<div class="modal-content"><h3>✏️ 发布新帖</h3>';
-  m += '<div class="modal-field"><label>标题</label><input type="text" id="newPostTitle" placeholder="请输入帖子标题"></div>';
-  m += '<div class="modal-field"><label>内容</label><textarea id="newPostContent" placeholder="请输入帖子内容"></textarea></div>';
-  m += '<div class="modal-actions">';
-  m += '<button class="classroom-action-btn secondary" onclick="closeNewPostModal()">取消</button>';
-  m += '<button class="classroom-action-btn primary" onclick="submitNewPost()">发布</button>';
-  m += '</div></div></div>';
+  m += '<div class="modal-content" style="max-width:580px"><h3>✏️ 发布新帖</h3>';
+  m += '<label style="font-size:0.84rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block">帖子类型</label>';
+  m += '<div class="tea-type-selector">';
+  m += '<div class="tea-type-option active" id="teaTypeShort" onclick="teaSelectType(\'short\')">📝 短动态<br><span style="font-size:0.72rem;color:var(--text-secondary)">≤500字，灵感速记</span></div>';
+  m += '<div class="tea-type-option" id="teaTypeLong" onclick="teaSelectType(\'long\')">📄 长文章<br><span style="font-size:0.72rem;color:var(--text-secondary)">无上限，深度分析</span></div>';
+  m += '</div>';
+  m += '<label style="font-size:0.84rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block">主题标签（必选）</label>';
+  m += '<div class="tea-tag-selector" id="teaTagSelector">';
+  TEA_TAGS.forEach(function(tag) {
+    var esc = tag.replace(/'/g, "\\'");
+    m += '<div class="tea-tag-option" onclick="teaSelectTag(this,\''+esc+'\')">'+tag+'</div>';
+  });
+  m += '</div>';
+  m += '<div class="modal-field"><label>标题 <span style="font-size:0.72rem;color:var(--text-secondary)">（短动态可选）</span></label><input type="text" id="newPostTitle" placeholder="请输入帖子标题"></div>';
+  m += '<div class="modal-field"><label>内容 <span id="teaCharCount" style="font-size:0.75rem;color:var(--text-secondary)">0/500</span></label>';
+  m += '<textarea id="newPostContent" placeholder="请输入帖子内容..." oninput="teaUpdateCharCount()" style="min-height:140px"></textarea></div>';
+  m += '<div class="modal-actions"><button class="classroom-action-btn secondary" onclick="closeNewPostModal()">取消</button>';
+  m += '<button class="classroom-action-btn primary" onclick="submitNewPost()">发布</button></div>';
+  m += '</div></div>';
   document.body.insertAdjacentHTML('beforeend', m);
 }
 function closeNewPostModal() { var m = document.getElementById('newPostModal'); if (m) m.remove(); }
+function teaSelectType(t) {
+  teaCurrentPostType = t;
+  document.getElementById('teaTypeShort').classList.toggle('active', t==='short');
+  document.getElementById('teaTypeLong').classList.toggle('active', t==='long');
+  teaUpdateCharCount();
+}
+function teaSelectTag(el, tag) {
+  teaCurrentTag = tag;
+  document.querySelectorAll('#teaTagSelector .tea-tag-option').forEach(function(o){o.classList.remove('active');});
+  el.classList.add('active');
+}
+function teaUpdateCharCount() {
+  var ta = document.getElementById('newPostContent');
+  var ctr = document.getElementById('teaCharCount');
+  if (ta && ctr) {
+    var len = ta.value.length;
+    if (teaCurrentPostType==='short') {
+      ctr.textContent = len+'/500';
+      ctr.style.color = len>500?'#c62828':'var(--text-secondary)';
+    } else { ctr.textContent = len+'字'; ctr.style.color = 'var(--text-secondary)'; }
+  }
+}
 
 function submitNewPost() {
   var title = document.getElementById('newPostTitle').value.trim();
   var content = document.getElementById('newPostContent').value.trim();
-  if (!title || !content) { alert('请填写标题和内容'); return; }
+  if (!content) { alert('请填写内容'); return; }
+  if (teaCurrentPostType==='short' && content.length>500) { alert('短动态不能超过500字'); return; }
+  if (!teaCurrentTag) { alert('请选择一个主题标签'); return; }
+  if (teaCurrentPostType==='long' && !title) { alert('长文章请填写标题'); return; }
   var cu = AppState.currentUser || {};
-  var posts = JSON.parse(localStorage.getItem('sanguofa_discussion_posts') || '[]');
-  posts.unshift({
-    id: 'post-' + Date.now(), title: title, content: content,
-    author: cu.name || cu.email, authorId: cu.id || 'u' + Date.now(),
-    role: cu.role || 'student',
-    createdAt: new Date().toLocaleString('zh-CN', {hour12:false}).replace(/\//g, '-'),
-    replies: []
-  });
-  localStorage.setItem('sanguofa_discussion_posts', JSON.stringify(posts));
+  var posts = teaGetPosts();
+  var ft = title || (content.substring(0,30)+(content.length>30?'...':''));
+  var np = {
+    id:'post-'+Date.now(), type:teaCurrentPostType, title:ft, content:content,
+    tags:[teaCurrentTag], author:cu.name||cu.email||'匿名',
+    authorId:cu.id||'u'+Date.now(), role:cu.role||'student', createdAt:teaFormatDate(),
+    likes:0, comments:0, favorites:0, deepThink:0,
+    isPinned:false, isRecommended:false, isLocked:false,
+    likedBy:[], favoritedBy:[], deepThinkBy:[]
+  };
+  posts.unshift(np); teaSavePosts(posts);
+  teaAddPoints(np.authorId, 2);
+  var stats = teaGetStats();
+  if (stats[np.authorId]) stats[np.authorId].postsCount++;
+  teaSaveStats(stats);
   closeNewPostModal(); renderDiscussionPage();
 }
 
-function submitReply(postId) {
-  var input = document.getElementById('reply-input-' + postId);
+function teaToggleLike(postId) {
+  var uid = (AppState.currentUser||{}).id || 'guest';
+  var posts = teaGetPosts();
+  var post = posts.find(function(p){return p.id===postId;});
+  if (!post) return;
+  if (!post.likedBy) post.likedBy = [];
+  var idx = post.likedBy.indexOf(uid);
+  if (idx===-1) {
+    post.likedBy.push(uid); post.likes=(post.likes||0)+1;
+    teaAddPoints(post.authorId, 1);
+    var stats=teaGetStats();
+    if(stats[post.authorId]) stats[post.authorId].likesReceived=(stats[post.authorId].likesReceived||0)+1;
+    teaSaveStats(stats);
+  } else { post.likedBy.splice(idx,1); post.likes=Math.max(0,(post.likes||0)-1); }
+  teaSavePosts(posts); renderDiscussionPage();
+}
+
+function teaToggleFavorite(postId) {
+  var uid = (AppState.currentUser||{}).id || 'guest';
+  var posts = teaGetPosts();
+  var post = posts.find(function(p){return p.id===postId;});
+  if (!post) return;
+  if (!post.favoritedBy) post.favoritedBy = [];
+  var idx = post.favoritedBy.indexOf(uid);
+  if (idx===-1) { post.favoritedBy.push(uid); post.favorites=(post.favorites||0)+1; }
+  else { post.favoritedBy.splice(idx,1); post.favorites=Math.max(0,(post.favorites||0)-1); }
+  teaSavePosts(posts); renderDiscussionPage();
+}
+
+function teaToggleDeepThink(postId) {
+  var uid = (AppState.currentUser||{}).id || 'guest';
+  var posts = teaGetPosts();
+  var post = posts.find(function(p){return p.id===postId;});
+  if (!post) return;
+  if (!post.deepThinkBy) post.deepThinkBy = [];
+  var idx = post.deepThinkBy.indexOf(uid);
+  if (idx===-1) {
+    post.deepThinkBy.push(uid); post.deepThink=(post.deepThink||0)+1;
+    teaAddPoints(post.authorId, 2);
+    var stats=teaGetStats();
+    if(stats[post.authorId] && post.deepThink>=5) {
+      var b=stats[post.authorId].badges;
+      if(b.indexOf('深度思考者')===-1) b.push('深度思考者');
+      teaSaveStats(stats);
+    }
+  } else { post.deepThinkBy.splice(idx,1); post.deepThink=Math.max(0,(post.deepThink||0)-1); }
+  teaSavePosts(posts); renderDiscussionPage();
+}
+
+function openTeaPostDetail(postId) {
+  var posts = teaGetPosts();
+  var post = posts.find(function(p){return p.id===postId;});
+  if (!post) return;
+  var comments = teaGetComments();
+  var cu = AppState.currentUser || {};
+  var uid = cu.id || 'guest';
+  var isTeacher = cu.role === 'teacher';
+  var isLiked = (post.likedBy||[]).indexOf(uid)!==-1;
+  var isFav = (post.favoritedBy||[]).indexOf(uid)!==-1;
+  var isDT = (post.deepThinkBy||[]).indexOf(uid)!==-1;
+  var pc = comments.filter(function(c){return c.postId===postId;});
+  var tc = pc.filter(function(c){return !c.parentId;});
+  tc.sort(function(a,b){return (b.createdAt>a.createdAt)?1:-1;});
+  var rb = post.role==='teacher'?'<span class="role-badge teacher">教师</span>':'<span class="role-badge student">学生</span>';
+
+  var h = '<div class="tea-detail-modal" id="teaDetailModal" onclick="if(event.target===this)closeTeaPostDetail()">';
+  h += '<div class="tea-detail-content">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px"><div>';
+  h += '<div style="font-size:1.2rem;font-weight:700;color:var(--text-primary);margin-bottom:6px">'+(post.title||'（无标题）')+rb+'</div>';
+  h += '<div style="font-size:0.8rem;color:var(--text-secondary)">👤 '+post.author+' · '+post.createdAt+'</div>';
+  h += '</div><button onclick="closeTeaPostDetail()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--text-secondary)">✕</button></div>';
+  var tb = post.type==='long'?'<span class="tea-post-type-badge long">长文章</span>':'<span class="tea-post-type-badge short">短动态</span>';
+  h += '<div style="margin-bottom:14px">'+tb;
+  (post.tags||[]).forEach(function(t){h+='<span class="tea-post-tag">'+t+'</span>';});
+  if(post.isPinned) h+='<span class="tea-pin-badge">📌 置顶</span>';
+  if(post.isRecommended) h+='<span class="tea-rec-badge">⭐ 推荐</span>';
+  h += '</div>';
+  h += '<div style="font-size:0.95rem;line-height:1.8;color:var(--text-primary);margin-bottom:16px;white-space:pre-wrap">'+post.content+'</div>';
+  h += '<div class="tea-interact-bar" style="border-top:1px solid var(--border);padding-top:12px;margin-bottom:16px">';
+  h += '<button class="tea-interact-btn'+(isLiked?' active':'')+'" onclick="teaToggleLikeDetail(\''+postId+'\')">👍 '+(post.likes||0)+'</button>';
+  h += '<button class="tea-interact-btn favorite'+(isFav?' active':'')+'" onclick="teaToggleFavoriteDetail(\''+postId+'\')">⭐ '+(post.favorites||0)+'</button>';
+  h += '<button class="tea-interact-btn deep-think'+(isDT?' active':'')+'" onclick="teaToggleDeepThinkDetail(\''+postId+'\')">🔥 深思 '+(post.deepThink||0)+'</button>';
+  h += '</div>';
+  h += '<div style="border-top:1px solid var(--border);padding-top:16px">';
+  h += '<h4 style="margin:0 0 12px 0;font-size:0.95rem;color:var(--text-primary)">💬 评论 ('+tc.length+')</h4>';
+  if (!post.isLocked) {
+    h += '<textarea class="tea-comment-input" id="teaCommentInput-'+postId+'" placeholder="写下你的评论..."></textarea>';
+    h += '<div style="text-align:right;margin-top:8px"><button class="classroom-action-btn primary" style="padding:8px 18px;font-size:0.82rem" onclick="teaSubmitComment(\''+postId+'\')">发表评论</button></div>';
+  } else {
+    h += '<div style="padding:10px;background:rgba(201,168,76,0.06);border-radius:8px;font-size:0.82rem;color:var(--text-secondary)">🔒 该帖已被锁定，无法评论</div>';
+  }
+  tc.forEach(function(c){ h += teaRenderComment(c, pc, postId, post.isLocked); });
+  h += '</div>';
+  if (isTeacher) {
+    h += '<div class="tea-admin-bar" style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">';
+    h += '<button class="tea-admin-btn" onclick="teaTogglePin(\''+postId+'\');closeTeaPostDetail()">'+(post.isPinned?'取消置顶':'📌 置顶')+'</button>';
+    h += '<button class="tea-admin-btn" onclick="teaToggleRecommend(\''+postId+'\');closeTeaPostDetail()">'+(post.isRecommended?'取消推荐':'⭐ 推荐')+'</button>';
+    h += '<button class="tea-admin-btn" onclick="teaToggleLock(\''+postId+'\');closeTeaPostDetail()">'+(post.isLocked?'🔓 解锁':'🔒 锁定')+'</button>';
+    h += '<button class="tea-admin-btn danger" onclick="teaDeletePost(\''+postId+'\');closeTeaPostDetail()">🗑️ 删除</button>';
+    h += '</div>';
+  }
+  h += '</div></div>';
+  document.body.insertAdjacentHTML('beforeend', h);
+}
+function closeTeaPostDetail() { var m=document.getElementById('teaDetailModal'); if(m) m.remove(); }
+
+function teaRenderComment(comment, allC, postId, isLocked) {
+  var rb = comment.role==='teacher'?'<span class="role-badge teacher" style="font-size:0.68rem">教师</span>':'';
+  var children = allC.filter(function(c){return c.parentId===comment.id;});
+  var h = '<div class="tea-comment-item'+(comment.role==='teacher'?' teacher-comment':'')+'">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+  h += '<div style="font-size:0.82rem"><strong>'+comment.author+'</strong> '+rb+'</div>';
+  h += '<div style="font-size:0.72rem;color:var(--text-secondary)">'+comment.createdAt+'</div></div>';
+  h += '<div style="font-size:0.88rem;color:var(--text-primary);line-height:1.6">'+comment.content+'</div>';
+  if (!comment.parentId && children.length>0) {
+    h += '<div class="tea-comment-nested" style="margin-top:8px">';
+    children.forEach(function(ch) {
+      var cb = ch.role==='teacher'?'<span class="role-badge teacher" style="font-size:0.65rem">教师</span>':'';
+      h += '<div class="tea-comment-item" style="margin-bottom:6px">';
+      h += '<div style="font-size:0.78rem"><strong>'+ch.author+'</strong> '+cb+'</div>';
+      h += '<div style="font-size:0.85rem;line-height:1.5">'+ch.content+'</div></div>';
+    });
+    h += '</div>';
+  }
+  if (!comment.parentId && !isLocked) {
+    h += '<div style="margin-top:6px"><button class="tea-interact-btn" style="font-size:0.75rem" onclick="teaToggleReplyBox(\''+comment.id+'\')">↩️ 回复</button></div>';
+    h += '<div id="teaReplyBox-'+comment.id+'" style="display:none;margin-top:6px" class="tea-comment-nested">';
+    h += '<textarea class="tea-comment-input" id="teaReplyInput-'+comment.id+'" placeholder="回复 '+comment.author+'..." style="min-height:40px"></textarea>';
+    h += '<div style="text-align:right;margin-top:4px"><button class="tea-interact-btn" style="font-size:0.78rem;color:var(--primary)" onclick="teaSubmitReply(\''+postId+'\',\''+comment.id+'\')">发送</button></div></div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function teaToggleReplyBox(cid) {
+  var box = document.getElementById('teaReplyBox-'+cid);
+  if (box) box.style.display = box.style.display==='none'?'block':'none';
+}
+
+function teaSubmitComment(postId) {
+  var input = document.getElementById('teaCommentInput-'+postId);
+  if (!input) return;
+  var content = input.value.trim();
+  if (!content) { alert('请输入评论内容'); return; }
+  var cu = AppState.currentUser || {};
+  var comments = teaGetComments();
+  comments.push({
+    id:'cmt-'+Date.now(), postId:postId, parentId:null, content:content,
+    author:cu.name||cu.email||'匿名', authorId:cu.id||'u'+Date.now(),
+    role:cu.role||'student', createdAt:teaFormatDate(), likes:0, likedBy:[]
+  });
+  teaSaveComments(comments);
+  var posts = teaGetPosts();
+  var post = posts.find(function(p){return p.id===postId;});
+  if (post) { post.comments=(post.comments||0)+1; teaSavePosts(posts); teaAddPoints(post.authorId,1); }
+  closeTeaPostDetail(); openTeaPostDetail(postId); renderDiscussionPage();
+}
+
+function teaSubmitReply(postId, parentId) {
+  var input = document.getElementById('teaReplyInput-'+parentId);
+  if (!input) return;
   var content = input.value.trim();
   if (!content) { alert('请输入回复内容'); return; }
   var cu = AppState.currentUser || {};
-  var posts = JSON.parse(localStorage.getItem('sanguofa_discussion_posts') || '[]');
-  var post = posts.find(function(p) { return p.id === postId; });
-  if (post) {
-    post.replies.push({
-      id: 'reply-' + Date.now(), content: content,
-      author: cu.name || cu.email, authorId: cu.id || 'u' + Date.now(),
-      role: cu.role || 'student',
-      createdAt: new Date().toLocaleString('zh-CN', {hour12:false}).replace(/\//g, '-')
-    });
-    localStorage.setItem('sanguofa_discussion_posts', JSON.stringify(posts));
-    renderDiscussionPage();
-  }
+  var comments = teaGetComments();
+  comments.push({
+    id:'cmt-'+Date.now(), postId:postId, parentId:parentId, content:content,
+    author:cu.name||cu.email||'匿名', authorId:cu.id||'u'+Date.now(),
+    role:cu.role||'student', createdAt:teaFormatDate(), likes:0, likedBy:[]
+  });
+  teaSaveComments(comments);
+  var posts = teaGetPosts();
+  var post = posts.find(function(p){return p.id===postId;});
+  if (post) { post.comments=(post.comments||0)+1; teaSavePosts(posts); }
+  closeTeaPostDetail(); openTeaPostDetail(postId); renderDiscussionPage();
 }
 
-function deletePost(postId) {
+function teaToggleLikeDetail(pid) { teaToggleLike(pid); closeTeaPostDetail(); openTeaPostDetail(pid); }
+function teaToggleFavoriteDetail(pid) { teaToggleFavorite(pid); closeTeaPostDetail(); openTeaPostDetail(pid); }
+function teaToggleDeepThinkDetail(pid) { teaToggleDeepThink(pid); closeTeaPostDetail(); openTeaPostDetail(pid); }
+
+function teaTogglePin(postId) {
+  var posts = teaGetPosts();
+  var p = posts.find(function(x){return x.id===postId;});
+  if (p) { p.isPinned=!p.isPinned; teaSavePosts(posts); renderDiscussionPage(); }
+}
+function teaToggleRecommend(postId) {
+  var posts = teaGetPosts();
+  var p = posts.find(function(x){return x.id===postId;});
+  if (p) { p.isRecommended=!p.isRecommended; teaSavePosts(posts); if(p.isRecommended) teaAddPoints(p.authorId,10); renderDiscussionPage(); }
+}
+function teaToggleLock(postId) {
+  var posts = teaGetPosts();
+  var p = posts.find(function(x){return x.id===postId;});
+  if (p) { p.isLocked=!p.isLocked; teaSavePosts(posts); renderDiscussionPage(); }
+}
+function teaDeletePost(postId) {
   if (!confirm('确定要删除这个帖子吗？')) return;
-  var posts = JSON.parse(localStorage.getItem('sanguofa_discussion_posts') || '[]');
-  posts = posts.filter(function(p) { return p.id !== postId; });
-  localStorage.setItem('sanguofa_discussion_posts', JSON.stringify(posts));
+  var posts = teaGetPosts();
+  posts = posts.filter(function(p){return p.id!==postId;});
+  teaSavePosts(posts);
+  var comments = teaGetComments();
+  comments = comments.filter(function(c){return c.postId!==postId;});
+  teaSaveComments(comments);
   renderDiscussionPage();
 }
 
