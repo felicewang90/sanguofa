@@ -15460,6 +15460,16 @@ function initNewModulesDemoData() {
     localStorage.setItem('sanguofa_videos_version', VIDEO_DATA_VERSION);
   }
 
+  // 茶座数据版本控制：强制刷新演示数据
+  var TEA_DATA_VERSION = 'v1';
+  var teaVer = localStorage.getItem('sanguofa_tea_version');
+  if (teaVer !== TEA_DATA_VERSION) {
+    localStorage.removeItem('sanguofa_tea_posts');
+    localStorage.removeItem('sanguofa_tea_comments');
+    localStorage.removeItem('sanguofa_tea_stats');
+    localStorage.setItem('sanguofa_tea_version', TEA_DATA_VERSION);
+  }
+
   if (!localStorage.getItem('sanguofa_videos')) {
     localStorage.setItem('sanguofa_videos', '[]');
   } else {
@@ -17360,8 +17370,14 @@ function teaRenderPostCard(post, comments, cu) {
 
   var h = '<div class="tea-post-card'+(post.isPinned?' pinned':'')+'">';
   h += '<div style="margin-bottom:6px">'+pinH+tb+tagH+recH+'</div>';
-  h += '<div style="font-size:1.05rem;font-weight:700;color:var(--text-primary);margin-bottom:6px;cursor:pointer" onclick="openTeaPostDetail(\''+post.id+'\')">'+(post.title||'（无标题）')+rb+'</div>';
-  h += '<div class="tea-post-card-excerpt">'+excerpt+'</div>';
+  h += '<div style="font-size:1.05rem;font-weight:700;color:var(--text-primary);margin-bottom:6px;cursor:pointer" onclick="openTeaPostDetail(\''+post.id+'\')">'+(post.title||(post.type==='long'?'（无标题）':''))+rb+'</div>';
+  if (post.type === 'short' && post.title) {
+    h += '<div class="tea-post-card-excerpt">'+excerpt+'</div>';
+  } else if (post.type === 'short') {
+    h += '<div class="tea-post-card-excerpt" style="font-size:0.95rem;color:var(--text-primary);line-height:1.5">'+excerpt+'</div>';
+  } else {
+    h += '<div class="tea-post-card-excerpt">'+excerpt+'</div>';
+  }
   h += '<div class="tea-post-card-meta"><span>👤 '+post.author+'</span><span>· '+post.createdAt+'</span></div>';
   h += '<div class="tea-interact-bar" onclick="event.stopPropagation()">';
   h += '<button class="tea-interact-btn'+(isLiked?' active':'')+'" onclick="teaToggleLike(\''+post.id+'\')">👍 '+(post.likes||0)+'</button>';
@@ -17530,7 +17546,7 @@ function openTeaPostDetail(postId) {
   var h = '<div class="tea-detail-modal" id="teaDetailModal" onclick="if(event.target===this)closeTeaPostDetail()">';
   h += '<div class="tea-detail-content">';
   h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px"><div>';
-  h += '<div style="font-size:1.2rem;font-weight:700;color:var(--text-primary);margin-bottom:6px">'+(post.title||'（无标题）')+rb+'</div>';
+  h += '<div style="font-size:1.2rem;font-weight:700;color:var(--text-primary);margin-bottom:6px">'+(post.title||(post.type==='long'?'（无标题）':''))+rb+'</div>';
   h += '<div style="font-size:0.8rem;color:var(--text-secondary)">👤 '+post.author+' · '+post.createdAt+'</div>';
   h += '</div><button onclick="closeTeaPostDetail()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--text-secondary)">✕</button></div>';
   var tb = post.type==='long'?'<span class="tea-post-type-badge long">长文章</span>':'<span class="tea-post-type-badge short">短动态</span>';
