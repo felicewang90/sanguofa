@@ -15414,87 +15414,7 @@ function initNewModulesDemoData() {
   }
 
   if (!localStorage.getItem('sanguofa_videos')) {
-    var demoVideos = [
-      {
-        id: 'vid-001',
-        title: '《南海仲裁案裁决不是国际法》',
-        category: 'pub',
-        categoryText: '国际公法',
-        description: '三沙卫视权威发布，系统批驳南海仲裁案裁决的法理谬误与程序硬伤，阐明中国"不接受、不承认"的立场',
-        url: 'https://www.bilibili.com/video/BV1ikNu6PEwe/',
-        bilibiliId: 'BV1ikNu6PEwe',
-        thumbnail: '',
-        duration: '专题纪录片',
-        comments: [
-          { author: '杨雅淇', content: '讲解清晰，对管辖权问题的法理批驳很有说服力', timestamp: '2026-09-20' }
-        ]
-      },
-      {
-        id: 'vid-002',
-        title: '禁止反言与中越南沙领土争议',
-        category: 'pub',
-        categoryText: '国际公法',
-        description: '蒋小翼主讲。结合1958年范文同致函周恩来、1956年雍文谦会见中国领事等史实，讲解国际法"禁止反言"原则与南沙主权归属',
-        url: 'https://www.bilibili.com/video/BV169K8zJEvo/',
-        bilibiliId: 'BV169K8zJEvo',
-        thumbnail: '',
-        duration: '公开课讲座',
-        comments: []
-      },
-      {
-        id: 'vid-003',
-        title: '【西南政法大学】国际私法公开课',
-        category: 'pri',
-        categoryText: '国际私法',
-        description: '梅傲教授主讲，国家精品在线课程。系统讲解冲突规范、涉外民事关系法律适用、反致、识别、公共秩序保留等核心制度',
-        url: 'https://www.bilibili.com/video/BV1cE411K76M',
-        bilibiliId: 'BV1cE411K76M',
-        thumbnail: '',
-        duration: '系列课程',
-        comments: [
-          { author: '田震', content: '冲突规范那几节讲得特别清楚，配合法考一起看效果很好', timestamp: '2026-09-19' },
-          { author: '刘思远', content: '反致、转致、间接反致的例子很生动', timestamp: '2026-09-20' }
-        ]
-      },
-      {
-        id: 'vid-004',
-        title: '涉外知识产权的法律适用',
-        category: 'pri',
-        categoryText: '国际私法',
-        description: '李磊老师司法考试课堂。聚焦涉外知识产权的冲突规范与准据法，对接《法律适用法》第48-50条',
-        url: 'https://m.bilibili.com/video/BV1Ce4y1C7CZ',
-        bilibiliId: 'BV1Ce4y1C7CZ',
-        thumbnail: '',
-        duration: '精讲课堂',
-        comments: []
-      },
-      {
-        id: 'vid-005',
-        title: 'ICSID投资仲裁入门：亚化案解析',
-        category: 'eco',
-        categoryText: '国际经济法',
-        description: '全英podcast讲解ICSID投资仲裁机制，以亚洲化工业案切入，适合法学生+律师双语学习',
-        url: 'https://www.bilibili.com/video/BV1j5mVYZE97/',
-        bilibiliId: 'BV1j5mVYZE97',
-        thumbnail: '',
-        duration: '专题讲解',
-        comments: []
-      },
-      {
-        id: 'vid-006',
-        title: '2025杨帆三国法精讲（瑞达法考）',
-        category: 'pub',
-        categoryText: '三国法综合',
-        description: '杨帆老师法考精讲，配套思维导图覆盖国际公法8章、国际私法6章、国际经济法7章，系统梳理三国法核心考点',
-        url: 'https://m.bilibili.com/video/BV1Z1UPYBE3B',
-        bilibiliId: 'BV1Z1UPYBE3B',
-        thumbnail: '',
-        duration: '系列精讲',
-        comments: [
-          { author: '杨雅淇', content: '国际私法第4章冲突规范制度的思维导图做得超好，配合法考复习很高效', timestamp: '2026-09-22' }
-        ]
-      }
-    ];
+    var demoVideos = [];
     localStorage.setItem('sanguofa_videos', JSON.stringify(demoVideos));
   } else {
     // 迁移：旧版本视频数据若为占位假链接，自动刷新为真实可用资源，同时保留用户已发表的评论
@@ -15718,6 +15638,13 @@ function renderVideoPage() {
   html += '<button class="video-filter-btn" onclick="filterVideos(\'eco\',this)">国际经济法</button>';
   html += '</div>';
   html += '<div class="video-grid" id="videoGrid">';
+  if (!videos || videos.length === 0) {
+    html += '<div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--text-secondary)">';
+    html += '<div style="font-size:4rem;margin-bottom:16px">🎬</div>';
+    html += '<div style="font-size:1.1rem;font-weight:600;color:var(--text-primary);margin-bottom:8px">视频栏目筹备中</div>';
+    html += '<div style="font-size:0.9rem;max-width:480px;margin:0 auto;line-height:1.6">小际正在配合制作系列普法短视频，<br>完成后将第一时间上线，敬请期待～</div>';
+    html += '</div>';
+  } else {
   videos.forEach(function(v) {
     html += '<div class="video-card" data-category="' + v.category + '">';
     html += '<div class="video-thumb"><div class="video-thumb-icon">🎥</div>';
@@ -15745,6 +15672,7 @@ function renderVideoPage() {
     html += '</div></div>';
     html += '</div></div>';
   });
+  } // end if videos
   html += '</div>';
   // 站内播放器容器（首次渲染即挂载）
   html += '<div id="videoPlayerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;align-items:center;justify-content:center;padding:20px">';
