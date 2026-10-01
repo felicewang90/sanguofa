@@ -15505,6 +15505,1712 @@ function initNewModulesDemoData() {
     ];
     localStorage.setItem('sanguofa_classroom_sessions', JSON.stringify(demoSessions));
   }
+
+  // ====== 小际茶座演示数据 ======
+  if (!localStorage.getItem('sanguofa_tea_posts')) {
+    var teaDemoPosts = [
+    {
+      id: 'tea_post_001', type: 'long', title: '📌 【公告】茶座使用指南与版规',
+      content: '欢迎来到小际茶座学术社区！\n\n发帖规范：\n1. 请选择合适的标签分类\n2. 学术讨论请保持理性客观\n3. 鼓励引用法条和案例支撑观点\n4. 欢迎分享学习资源和方法\n\n让我们一起营造良好的学术讨论氛围！🕊️',
+      tags: ['国际公法'],
+      author: '汪文丽', authorId: 'S166', role: 'student',
+      createdAt: '2026-09-16 15:36',
+      likes: 27, comments: 7, favorites: 12, deepThink: 8,
+      isPinned: true, isRecommended: true, isLocked: false,
+      likedBy: ['S023','S002','S028','S144','S124','S015','S153','S162','S067','S101','S138','S046','S004','S114','S139','S064','S144','S008','S137','S038','S136','S117','S043','S032','S205','S214','S090'],
+      favoritedBy: ['S068','S046','S029','S202','S184','S193','S036','S092','S004','S040','S082','S008'],
+      deepThinkBy: ['S051','S156','S189','S189','S040','S092','S153','S115']
+    },
+    {
+      id: 'tea_post_002', type: 'long', title: '📌 【通知】本周六线上学术沙龙：跨境数据流动法律问题',
+      content: '本期学术沙龙将于本周六14:00-16:00在线举行。\n\n主题：跨境数据流动的国际法规则\n主讲：特邀国际经济法方向教授\n\n讨论内容：\n- GDPR数据跨境传输机制\n- 中国数据出境安全评估制度\n- DEPA数字贸易协定中的相关规则\n\n欢迎同学们参加！',
+      tags: ['热点追踪'],
+      author: '卢鸿彬', authorId: 'S025', role: 'student',
+      createdAt: '2026-09-16 17:36',
+      likes: 27, comments: 3, favorites: 15, deepThink: 7,
+      isPinned: true, isRecommended: true, isLocked: false,
+      likedBy: ['S004','S013','S188','S174','S027','S209','S007','S015','S055','S068','S094','S055','S065','S127','S117','S215','S075','S075','S167','S174','S159','S007','S038','S050','S097','S124','S086'],
+      favoritedBy: ['S188','S013','S203','S049','S196','S116','S112','S073','S034','S071','S059','S135','S206','S177','S158'],
+      deepThinkBy: ['S004','S105','S202','S164','S191','S128','S040']
+    },
+    {
+      id: 'tea_post_003', type: 'long', title: '【教师推荐】必读文献清单：国际公法基础理论',
+      content: '为帮助大家系统掌握国际公法基础理论，整理以下必读文献：\n\n1. 王铁崖《国际法》各章导论部分\n2. 邵津主编《国际法》第五版重点章节\n3. Malcolm Shaw《International Law》Chapter 1-3\n4. Brownlie\'s Principles Chapter 1-5\n\n建议阅读顺序：先中文教材打基础，再阅读英文原著拓展视野。每周至少完成一篇，做好读书笔记。',
+      tags: ['文献研读'],
+      author: '王御平', authorId: 'S034', role: 'student',
+      createdAt: '2026-09-22 12:17',
+      likes: 23, comments: 2, favorites: 11, deepThink: 5,
+      isPinned: false, isRecommended: true, isLocked: false,
+      likedBy: ['S087','S010','S160','S047','S101','S033','S211','S107','S068','S018','S153','S063','S161','S008','S017','S172','S212','S175','S015','S041','S035','S032','S072'],
+      favoritedBy: ['S073','S068','S034','S030','S082','S029','S192','S144','S199','S113','S078'],
+      deepThinkBy: ['S170','S087','S115','S102','S193']
+    },
+    {
+      id: 'tea_post_004', type: 'long', title: '【教师推荐】国际法院近期重要判决述评',
+      content: '本期推荐关注ICJ近两年的几个重要判决：\n\n1. 乌克兰诉俄罗斯案（2024初步反对意见）\n2. 尼加拉瓜诉德国案（2024驳回）\n3. 冈比亚诉缅甸案（2022初步反对意见）\n\n这些案件涉及管辖权、国家责任、灭绝种族罪等多个重要议题，对理解当代国际法实践具有重要意义。',
+      tags: ['案例评析'],
+      author: '廖杰梅', authorId: 'S095', role: 'student',
+      createdAt: '2026-09-23 22:42',
+      likes: 28, comments: 6, favorites: 15, deepThink: 6,
+      isPinned: false, isRecommended: true, isLocked: false,
+      likedBy: ['S184','S170','S106','S021','S069','S012','S045','S026','S136','S096','S001','S134','S029','S085','S005','S026','S157','S102','S055','S106','S109','S165','S145','S054','S022','S191','S089','S087'],
+      favoritedBy: ['S083','S136','S139','S075','S194','S048','S125','S022','S019','S110','S138','S024','S176','S144','S084'],
+      deepThinkBy: ['S090','S058','S029','S075','S152','S089']
+    },
+    {
+      id: 'tea_post_005', type: 'long', title: '【教师推荐】ISDS改革最新动态与我国的立场',
+      content: 'UNCITRAL第三工作组正在讨论ISDS改革方案：\n\n1. 上诉机制的设立\n2. 多边投资法院\n3. 调解机制的推广\n4. 第三方资助的规制\n\n我国在改革中采取了务实立场，既支持必要的制度改革，也注重维护国家规制权。建议关注我国BIT实践的新发展。',
+      tags: ['国际经济法'],
+      author: '黄茗睿', authorId: 'S017', role: 'student',
+      createdAt: '2026-09-21 14:27',
+      likes: 21, comments: 2, favorites: 12, deepThink: 8,
+      isPinned: false, isRecommended: true, isLocked: false,
+      likedBy: ['S214','S132','S191','S062','S108','S076','S135','S162','S133','S144','S058','S111','S092','S113','S085','S150','S074','S166','S131','S031','S208'],
+      favoritedBy: ['S190','S214','S152','S042','S173','S001','S203','S118','S019','S177','S114','S039'],
+      deepThinkBy: ['S209','S185','S215','S210','S067','S023','S103','S052']
+    },
+    {
+      id: 'tea_post_006', type: 'short', title: '',
+      content: '期末考试复习计划已制定，每天两章国际公法+一章国际私法，有人一起打卡吗？',
+      tags: ['随便聊聊'],
+      author: '吴芊诺', authorId: 'S216', role: 'student',
+      createdAt: '2026-09-15 22:41',
+      likes: 22, comments: 6, favorites: 11, deepThink: 5,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S177','S111','S058','S075','S059','S087','S126','S191','S067','S144','S173','S143','S005','S141','S012','S018','S061','S044','S151','S049','S057','S187'],
+      favoritedBy: ['S153','S177','S181','S074','S092','S145','S204','S204','S141','S014','S026'],
+      deepThinkBy: ['S215','S046','S207','S173','S106']
+    },
+    {
+      id: 'tea_post_007', type: 'short', title: '',
+      content: '最近的跨境电商税收政策调整影响很大，涉及国际经济法和国际贸易法的交叉领域。',
+      tags: ['热点追踪'],
+      author: '李敏敏', authorId: 'S061', role: 'student',
+      createdAt: '2026-09-25 09:10',
+      likes: 22, comments: 6, favorites: 6, deepThink: 7,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S154','S113','S184','S038','S138','S156','S209','S073','S094','S109','S025','S023','S107','S011','S046','S093','S216','S177','S157','S154','S190','S111'],
+      favoritedBy: ['S215','S160','S065','S203','S057','S040'],
+      deepThinkBy: ['S072','S059','S022','S044','S135','S016','S093']
+    },
+    {
+      id: 'tea_post_008', type: 'short', title: '',
+      content: '条约的保留制度比想象中复杂，维也纳条约法公约第19-23条需要反复看。',
+      tags: ['国际公法'],
+      author: '向梦佳', authorId: 'S109', role: 'student',
+      createdAt: '2026-09-25 10:59',
+      likes: 11, comments: 4, favorites: 4, deepThink: 3,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S038','S080','S047','S051','S001','S009','S045','S149','S055','S217','S070'],
+      favoritedBy: ['S026','S019','S077','S021'],
+      deepThinkBy: ['S215','S125','S155']
+    },
+    {
+      id: 'tea_post_009', type: 'short', title: '',
+      content: '国家承认和政府承认的区别整理了一下，发现溯及既往原则很重要，考试经常出选择题。',
+      tags: ['国际公法'],
+      author: '李柯燃', authorId: 'S092', role: 'student',
+      createdAt: '2026-09-17 17:23',
+      likes: 12, comments: 6, favorites: 10, deepThink: 6,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S072','S006','S194','S090','S154','S169','S076','S111','S175','S049','S189','S215'],
+      favoritedBy: ['S115','S138','S037','S214','S185','S145','S066','S217','S029','S117'],
+      deepThinkBy: ['S087','S210','S042','S065','S148','S146']
+    },
+    {
+      id: 'tea_post_010', type: 'short', title: '',
+      content: '某国宣布退出《巴黎协定》又申请加入，国际条约的退出和重新加入程序引发讨论。',
+      tags: ['热点追踪'],
+      author: '刘雨欣', authorId: 'S134', role: 'student',
+      createdAt: '2026-09-30 09:22',
+      likes: 20, comments: 8, favorites: 9, deepThink: 8,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S141','S041','S103','S106','S156','S142','S140','S133','S083','S034','S190','S037','S035','S173','S072','S102','S031','S124','S010','S194'],
+      favoritedBy: ['S092','S156','S103','S124','S170','S065','S211','S071','S142'],
+      deepThinkBy: ['S005','S035','S138','S032','S189','S007','S094','S164']
+    },
+    {
+      id: 'tea_post_011', type: 'short', title: '',
+      content: '最近AI生成内容的国际版权保护争议很大，各国立场不同，有人关注这个议题吗？',
+      tags: ['热点追踪'],
+      author: '郑淑玲', authorId: 'S194', role: 'student',
+      createdAt: '2026-09-20 08:31',
+      likes: 19, comments: 7, favorites: 6, deepThink: 5,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S182','S034','S009','S041','S167','S008','S161','S080','S135','S171','S125','S067','S134','S149','S196','S155','S018','S006','S030'],
+      favoritedBy: ['S003','S097','S149','S071','S183','S180'],
+      deepThinkBy: ['S076','S014','S188','S061','S085']
+    },
+    {
+      id: 'tea_post_012', type: 'short', title: '',
+      content: '海牙国际私法会议最新的管辖权公约值得关注，对跨境民商事纠纷有重要影响。',
+      tags: ['国际私法'],
+      author: '石梦婕', authorId: 'S029', role: 'student',
+      createdAt: '2026-09-25 22:58',
+      likes: 13, comments: 3, favorites: 11, deepThink: 4,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S169','S101','S179','S024','S095','S154','S016','S197','S049','S118','S073','S033','S074'],
+      favoritedBy: ['S057','S214','S206','S028','S139','S158','S154','S169','S155','S108','S027'],
+      deepThinkBy: ['S208','S120','S117','S123']
+    },
+    {
+      id: 'tea_post_013', type: 'short', title: '',
+      content: '《国际法上的管辖权》这篇文献从Lotus案讲到当代，逻辑线非常清晰，推荐。',
+      tags: ['文献研读'],
+      author: '孙亮亮', authorId: 'S004', role: 'student',
+      createdAt: '2026-09-19 12:27',
+      likes: 11, comments: 2, favorites: 4, deepThink: 8,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S122','S021','S065','S128','S214','S160','S119','S059','S017','S154','S001'],
+      favoritedBy: ['S206','S023','S065','S168'],
+      deepThinkBy: ['S071','S110','S119','S065','S161','S115','S073','S081']
+    },
+    {
+      id: 'tea_post_014', type: 'short', title: '',
+      content: '冲突规范的连结点选择真的好绕，属人法和属地法经常混，有同学能总结一下吗？',
+      tags: ['国际私法'],
+      author: '马欣怡', authorId: 'S026', role: 'student',
+      createdAt: '2026-09-22 12:23',
+      likes: 16, comments: 5, favorites: 12, deepThink: 6,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S125','S158','S087','S121','S193','S016','S098','S013','S070','S194','S037','S067','S063','S189','S092','S102'],
+      favoritedBy: ['S089','S109','S084','S022','S154','S207','S199','S186','S150','S070','S024','S111'],
+      deepThinkBy: ['S121','S144','S180','S161','S089','S135']
+    },
+    {
+      id: 'tea_post_015', type: 'short', title: '',
+      content: '数据跨境传输的监管越来越严，GDPR和我国个人信息保护法的差异值得比较研究。',
+      tags: ['热点追踪'],
+      author: '张洁', authorId: 'S081', role: 'student',
+      createdAt: '2026-09-19 21:16',
+      likes: 24, comments: 4, favorites: 12, deepThink: 7,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S197','S043','S202','S110','S085','S163','S119','S110','S028','S006','S120','S172','S123','S181','S099','S196','S044','S029','S036','S145','S022','S067','S090','S191'],
+      favoritedBy: ['S217','S134','S032','S212','S214','S006','S161','S205','S132','S208','S172','S163'],
+      deepThinkBy: ['S063','S150','S047','S045','S038','S089','S013']
+    },
+    {
+      id: 'tea_post_016', type: 'short', title: '',
+      content: '今天把领土取得方式复习了一遍，先占、时效、添附、割让、征服，每个都要记清楚适用条件。',
+      tags: ['国际公法'],
+      author: '陈一鸣', authorId: 'S189', role: 'student',
+      createdAt: '2026-09-19 17:47',
+      likes: 6, comments: 4, favorites: 10, deepThink: 8,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S098','S145','S157','S051','S145','S001'],
+      favoritedBy: ['S040','S217','S169','S015','S037','S139','S150','S052','S119','S211'],
+      deepThinkBy: ['S042','S183','S075','S002','S133','S107','S109','S122']
+    },
+    {
+      id: 'tea_post_017', type: 'short', title: '',
+      content: '分享一下我的国际法学习笔记方法：画思维导图+案例卡片，效率提升很多！',
+      tags: ['随便聊聊'],
+      author: '王梓璇', authorId: 'S106', role: 'student',
+      createdAt: '2026-09-28 20:52',
+      likes: 24, comments: 5, favorites: 5, deepThink: 4,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S041','S021','S139','S180','S084','S061','S133','S068','S164','S002','S115','S179','S155','S090','S095','S147','S114','S180','S142','S019','S093','S090','S093','S111'],
+      favoritedBy: ['S100','S043','S204','S124','S126'],
+      deepThinkBy: ['S096','S214','S134','S162']
+    },
+    {
+      id: 'tea_post_018', type: 'short', title: '',
+      content: 'Incoterms 2020里FOB和CIF的风险转移点不同，这个太容易出混淆题了。',
+      tags: ['国际经济法'],
+      author: '黄茗睿', authorId: 'S017', role: 'student',
+      createdAt: '2026-09-17 21:59',
+      likes: 15, comments: 6, favorites: 4, deepThink: 6,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S168','S044','S121','S001','S086','S042','S014','S131','S057','S020','S163','S055','S027','S082','S217'],
+      favoritedBy: ['S002','S093','S019','S074'],
+      deepThinkBy: ['S087','S047','S036','S134','S043','S048']
+    },
+    {
+      id: 'tea_post_019', type: 'short', title: '',
+      content: 'CISG的适用范围比想象中窄，服务贸易和知识产权都不在内，要注意区分。',
+      tags: ['国际经济法'],
+      author: '谭宗毅', authorId: 'S102', role: 'student',
+      createdAt: '2026-09-16 17:30',
+      likes: 7, comments: 2, favorites: 6, deepThink: 7,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S133','S072','S128','S121','S057','S137','S057'],
+      favoritedBy: ['S060','S022','S201','S087','S099','S023'],
+      deepThinkBy: ['S156','S015','S189','S198','S018','S146','S079']
+    },
+    {
+      id: 'tea_post_020', type: 'short', title: '',
+      content: '图书馆的国际法书架上新了一批书，有兴趣的同学可以去看看。',
+      tags: ['随便聊聊'],
+      author: '张洁', authorId: 'S081', role: 'student',
+      createdAt: '2026-09-30 13:18',
+      likes: 14, comments: 2, favorites: 12, deepThink: 5,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S034','S106','S007','S143','S129','S040','S014','S022','S004','S085','S134','S075','S089','S065'],
+      favoritedBy: ['S006','S051','S158','S158','S065','S191','S130','S152','S157','S147','S110','S012'],
+      deepThinkBy: ['S012','S120','S196','S035','S198']
+    },
+    {
+      id: 'tea_post_021', type: 'short', title: '',
+      content: '有没有同学组队准备模拟法庭比赛的？需要一个擅长国际经济法方向的队友。',
+      tags: ['随便聊聊'],
+      author: '陆星宇', authorId: 'S185', role: 'student',
+      createdAt: '2026-09-24 15:09',
+      likes: 8, comments: 6, favorites: 8, deepThink: 2,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S110','S107','S016','S044','S080','S123','S173','S196'],
+      favoritedBy: ['S045','S078','S059','S131','S184','S164','S009','S217'],
+      deepThinkBy: ['S049','S050']
+    },
+    {
+      id: 'tea_post_022', type: 'long', title: '【文献研读】《论国际法上的国家管辖权》读后感',
+      content: '从Lotus案确立的客观属地管辖到现代管辖权冲突的多元化解决，本文梳理了管辖权理论的发展脉络。\n\n作者认为，传统管辖权理论以领土为基础，但网络时代带来了新的挑战。数据管辖权、长臂管辖等问题日益突出，需要新的理论框架。\n\n文中提到的\"合理管辖原则\"对我国涉外法治建设有借鉴意义，特别是在\"一带一路\"背景下的法律冲突解决方面。建议大家重点阅读第三部分关于管辖权冲突的案例分析。',
+      tags: ['文献研读'],
+      author: '吴中贤', authorId: 'S037', role: 'student',
+      createdAt: '2026-09-26 11:11',
+      likes: 17, comments: 2, favorites: 7, deepThink: 5,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S036','S101','S086','S042','S184','S036','S042','S022','S018','S072','S136','S162','S053','S032','S058','S145','S167'],
+      favoritedBy: ['S205','S130','S082','S019','S050','S083','S010'],
+      deepThinkBy: ['S114','S152','S109','S061','S209']
+    },
+    {
+      id: 'tea_post_023', type: 'long', title: '【案例评析】Maffezini案与Plama案的对比研究',
+      content: '这两个案件在最惠国待遇条款的适用上给出了截然相反的结论，关键在于MFN条款的具体措辞不同。\n\nMaffezini案：仲裁庭认为西班牙-阿根廷BIT中的MFN条款足够宽泛，可以将第三方BIT中更有利的争端解决条款纳入。\n\nPlama案：仲裁庭则认为MFN条款不能自动扩展至争端解决机制，除非条款明确约定。\n\n启示：条约解释必须严格遵循文义解释原则，同时考虑缔约目的。这对我们理解ISDS机制的演变非常重要。',
+      tags: ['案例评析'],
+      author: '张维歌', authorId: 'S082', role: 'student',
+      createdAt: '2026-09-16 08:51',
+      likes: 12, comments: 6, favorites: 14, deepThink: 9,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S168','S004','S060','S028','S143','S121','S091','S167','S154','S176','S102','S125'],
+      favoritedBy: ['S139','S119','S193','S126','S058','S060','S077','S087','S130','S173','S056','S036','S055','S142'],
+      deepThinkBy: ['S161','S108','S182','S138','S156','S151','S062','S117','S095']
+    },
+    {
+      id: 'tea_post_024', type: 'long', title: '【学习笔记】国家豁免制度的演变与中国实践',
+      content: '从绝对豁免到限制豁免，这一演变反映了国际交往的实际需要。\n\n一、绝对豁免主义时期（19世纪-20世纪中叶）\n二、限制豁免主义兴起（1970s至今）\n三、联合国国家豁免公约（2004）\n四、中国《外国国家豁免法》（2023）\n\n中国从绝对豁免转向限制豁免，这一立法转变值得深入研究。商业行为例外的界定是关键问题，建议结合具体案例理解。',
+      tags: ['国际公法'],
+      author: '潘紫涵', authorId: 'S162', role: 'student',
+      createdAt: '2026-09-17 20:26',
+      likes: 9, comments: 2, favorites: 10, deepThink: 8,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S200','S019','S133','S030','S167','S100','S028','S046','S034'],
+      favoritedBy: ['S136','S141','S183','S079','S068','S006','S087','S077','S137','S171'],
+      deepThinkBy: ['S115','S010','S127','S080','S034','S051','S039','S179']
+    },
+    {
+      id: 'tea_post_025', type: 'long', title: '【专题整理】国际私法中的\"直接适用的法\"理论',
+      content: '\"直接适用的法\"是国际私法中一个重要的例外制度，它允许法院地国在特定情况下排除外国法的适用。\n\n适用条件：\n1. 涉及国家重大社会公共利益\n2. 法律明确规定必须适用\n3. 具有强制性\n\n我国的\"直接适用的法\"主要体现在《涉外民事关系法律适用法》第4条及相关司法解释中。这个制度与公共秩序保留有密切联系但也有区别。',
+      tags: ['国际私法'],
+      author: '胡海丽', authorId: 'S055', role: 'student',
+      createdAt: '2026-09-27 16:46',
+      likes: 18, comments: 5, favorites: 15, deepThink: 8,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S055','S170','S006','S135','S198','S090','S010','S207','S037','S063','S067','S098','S134','S027','S112','S177','S182','S065'],
+      favoritedBy: ['S081','S149','S068','S134','S043','S070','S154','S068','S008','S115','S018','S094','S120','S211','S079'],
+      deepThinkBy: ['S013','S064','S148','S055','S013','S056','S078','S162']
+    },
+    {
+      id: 'tea_post_026', type: 'long', title: '【热点分析】RCEP框架下的原产地规则对区域供应链的影响',
+      content: 'RCEP原产地规则的核心创新在于区域累积制度，允许将成员国原材料视为区域内生产。\n\n主要特点：\n1. 区域价值成分标准（40%）\n2. 税则归类改变标准\n3. 加工工序标准\n4. 选择性适用\n\n这一制度将显著降低企业享受关税优惠的门槛，有利于区域内产业链的整合。对于我国出口企业而言，需要充分了解规则以最大化利用优惠。',
+      tags: ['国际经济法'],
+      author: '时韩', authorId: 'S215', role: 'student',
+      createdAt: '2026-09-20 15:40',
+      likes: 27, comments: 4, favorites: 10, deepThink: 4,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S080','S205','S041','S198','S117','S082','S069','S169','S139','S197','S003','S142','S217','S012','S004','S125','S036','S025','S017','S206','S153','S206','S079','S034','S133','S015','S144'],
+      favoritedBy: ['S169','S195','S133','S020','S085','S024','S004','S064','S128','S056'],
+      deepThinkBy: ['S053','S186','S217','S104']
+    },
+    {
+      id: 'tea_post_027', type: 'long', title: '【前沿关注】AI时代的国际法挑战：从自动驾驶到自主武器',
+      content: '人工智能技术的快速发展对现有国际法体系提出了多重挑战：\n\n1. 自主武器系统与国际人道法：区分原则、比例原则如何适用？\n2. 自动驾驶与跨境责任：管辖权冲突和准据法选择\n3. AI生成内容的知识产权：国际版权公约的适用困境\n4. 数据主权与全球治理：数据跨境流动的规制分歧\n\n建议关注联合国CCW框架下的LAWS讨论进展。',
+      tags: ['热点追踪'],
+      author: '袁诺', authorId: 'S176', role: 'student',
+      createdAt: '2026-09-28 12:13',
+      likes: 10, comments: 6, favorites: 5, deepThink: 5,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S184','S157','S056','S046','S149','S057','S185','S170','S112','S209'],
+      favoritedBy: ['S149','S136','S171','S153','S053'],
+      deepThinkBy: ['S044','S064','S023','S001','S173']
+    },
+    {
+      id: 'tea_post_028', type: 'long', title: '【经典案例】Barcelona Traction案中的外交保护与公司国籍',
+      content: 'ICJ在本案中确立的规则至今仍有重要影响：\n\n1. 公司国籍的认定：以注册地和实际管理中心为准\n2. 外交保护的行使主体：原则上由公司注册国行使\n3. 股东国籍国一般不享有外交保护权\n\n但法院也留下了例外情形的空间，即当公司已经不存在或注册国无力行使保护时。这个判例对理解国际法上的法人制度非常重要。',
+      tags: ['案例评析'],
+      author: '吴再渤', authorId: 'S172', role: 'student',
+      createdAt: '2026-09-29 13:22',
+      likes: 23, comments: 7, favorites: 10, deepThink: 6,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S172','S150','S096','S125','S081','S143','S083','S016','S005','S074','S118','S200','S102','S038','S038','S060','S001','S188','S175','S077','S121','S062','S125'],
+      favoritedBy: ['S041','S203','S021','S073','S214','S095','S139','S168','S036','S142'],
+      deepThinkBy: ['S062','S125','S091','S180','S051','S069']
+    },
+    {
+      id: 'tea_post_029', type: 'long', title: '【读书报告】《国际法碎片化：一个 imaginary 的问题？》',
+      content: ' Koskenniemi 的报告深入分析了国际法碎片化现象的根源与应对。\n\n核心观点：\n1. 碎片化不仅是制度重叠，更是价值冲突\n2. 不同法律体系间的冲突需要协调而非统一\n3. 一般国际法作为\"共同语言\"的重要性\n\n对我国而言，在国际法碎片化背景下如何维护自身利益、推动规则协调是值得思考的问题。',
+      tags: ['文献研读'],
+      author: '李思琴', authorId: 'S158', role: 'student',
+      createdAt: '2026-09-27 13:33',
+      likes: 8, comments: 3, favorites: 15, deepThink: 7,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S155','S188','S149','S028','S077','S193','S196','S101'],
+      favoritedBy: ['S137','S109','S041','S082','S074','S139','S034','S157','S193','S060','S047','S129','S193','S075','S025'],
+      deepThinkBy: ['S193','S045','S195','S127','S092','S125','S041']
+    },
+    {
+      id: 'tea_post_030', type: 'long', title: '【深度分析】联合国安理会改革困境与国际法视角',
+      content: '安理会改革的法律障碍主要来自《联合国宪章》的修改程序（第108-109条）。\n\n争议焦点：\n1. 新增常任理事国是否拥有否决权？\n2. 区域代表如何分配？\n3. 修宪门槛过高（2/3会员国批准+五常全部批准）\n\n从国际法角度看，安理会改革不仅是政治问题，更涉及宪章解释、国际组织法等多个法律维度。',
+      tags: ['国际公法'],
+      author: '萧诗宇', authorId: 'S200', role: 'student',
+      createdAt: '2026-09-19 21:49',
+      likes: 21, comments: 4, favorites: 15, deepThink: 9,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S127','S043','S160','S047','S208','S134','S006','S121','S049','S018','S012','S099','S186','S073','S094','S122','S055','S156','S041','S045','S022'],
+      favoritedBy: ['S060','S069','S075','S093','S016','S003','S178','S186','S203','S145','S217','S043','S059','S102','S037'],
+      deepThinkBy: ['S137','S175','S033','S118','S200','S168','S080','S172','S210']
+    },
+    {
+      id: 'tea_post_031', type: 'long', title: '【比较研究】CPTPP与USMCA数字贸易规则的比较',
+      content: '两大协定在数字贸易规则上既有相似也有差异：\n\n相似之处：\n- 禁止对电子传输征收关税\n- 保护在线消费者权益\n- 促进电子签名互认\n\n差异之处：\n- 数据跨境流动：CPTPP允许\"合法公共政策\"例外，USMCA限制更严格\n- 源代码保护：USMCA明确禁止强制转让源代码\n- 个人信息保护标准不同\n\n这些差异反映了不同国家在数字主权与贸易自由化之间的权衡。',
+      tags: ['国际经济法'],
+      author: '周清鄂', authorId: 'S116', role: 'student',
+      createdAt: '2026-09-25 10:01',
+      likes: 24, comments: 6, favorites: 8, deepThink: 3,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S184','S150','S192','S085','S136','S168','S120','S007','S082','S209','S194','S007','S118','S047','S166','S144','S208','S008','S015','S139','S025','S168','S172','S056'],
+      favoritedBy: ['S107','S032','S130','S131','S123','S075','S121','S111'],
+      deepThinkBy: ['S127','S056','S102']
+    },
+    {
+      id: 'tea_post_032', type: 'long', title: '【学习心得】如何高效阅读国际法案例',
+      content: '分享一下我的案例阅读方法：\n\n第一步：快速浏览案件事实，抓住核心争议点\n第二步：阅读法院/仲裁庭的推理过程，标记关键论证\n第三步：分析判决的多数意见与异议意见\n第四步：思考该案在整体规则体系中的位置\n第五步：用自己的话总结裁判要旨\n\n坚持这样做笔记，虽然慢但理解会深很多。',
+      tags: ['随便聊聊'],
+      author: '何蓉', authorId: 'S089', role: 'student',
+      createdAt: '2026-09-16 19:34',
+      likes: 13, comments: 7, favorites: 5, deepThink: 8,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S085','S140','S017','S031','S192','S064','S164','S210','S155','S206','S181','S135','S212'],
+      favoritedBy: ['S049','S092','S087','S039','S097'],
+      deepThinkBy: ['S162','S103','S163','S048','S028','S058','S208','S208']
+    },
+    {
+      id: 'tea_post_033', type: 'long', title: '【制度比较】中国与新加坡国际商事法庭的比较',
+      content: 'CICC和SICC都是专门处理国际商事纠纷的机构，但制度设计有明显差异：\n\n1. 法官构成：CICC以中国法官为主，SICC允许外国法官\n2. 法律适用：CICC适用中国冲突法规则，SICC可选择适用外国法\n3. 判决执行：CICC判决通过海牙判决公约执行，SICC依托新加坡的广泛条约网络\n4. 语言：两者均支持中英文\n\n对我国建设国际商事争端解决中心有重要借鉴意义。',
+      tags: ['国际私法'],
+      author: '张恬畅', authorId: 'S177', role: 'student',
+      createdAt: '2026-09-19 08:48',
+      likes: 21, comments: 3, favorites: 14, deepThink: 6,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S073','S089','S147','S017','S070','S161','S093','S020','S118','S056','S097','S015','S077','S168','S054','S176','S056','S151','S198','S074','S041'],
+      favoritedBy: ['S008','S112','S087','S047','S214','S216','S172','S103','S140','S151','S012','S171','S185','S008'],
+      deepThinkBy: ['S204','S019','S180','S101','S090','S142']
+    },
+    {
+      id: 'tea_post_034', type: 'short', title: '',
+      content: '国际法院的咨询管辖权和诉讼管辖权总是搞混，有没有简洁的区分方法？',
+      tags: ['国际公法'],
+      author: '邹妮彤', authorId: 'S182', role: 'student',
+      createdAt: '2026-09-28 11:21',
+      likes: 18, comments: 2, favorites: 7, deepThink: 4,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S188','S082','S192','S106','S171','S110','S048','S115','S089','S028','S005','S179','S060','S025','S165','S073','S010','S118'],
+      favoritedBy: ['S137','S074','S135','S210','S160','S183','S010'],
+      deepThinkBy: ['S150','S201','S049','S183']
+    },
+    {
+      id: 'tea_post_035', type: 'short', title: '',
+      content: '《法律适用法》第41条的合同最密切联系原则，和罗马I条例的比较很有意思。',
+      tags: ['国际私法'],
+      author: '邹巧熳', authorId: 'S188', role: 'student',
+      createdAt: '2026-09-23 12:54',
+      likes: 9, comments: 5, favorites: 6, deepThink: 5,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S033','S149','S129','S123','S129','S084','S010','S068','S159'],
+      favoritedBy: ['S134','S100','S031','S033','S032','S036'],
+      deepThinkBy: ['S072','S098','S204','S209','S201']
+    },
+    {
+      id: 'tea_post_036', type: 'short', title: '',
+      content: 'TRIPS协定第31条bis关于药品专利强制许可的规定，对公共健康很重要。',
+      tags: ['国际经济法'],
+      author: '周培培', authorId: 'S205', role: 'student',
+      createdAt: '2026-09-20 18:56',
+      likes: 17, comments: 8, favorites: 5, deepThink: 3,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S091','S058','S190','S067','S113','S077','S073','S087','S141','S207','S180','S051','S168','S041','S059','S043','S053'],
+      favoritedBy: ['S145','S079','S184','S085','S172'],
+      deepThinkBy: ['S106','S094','S097']
+    },
+    {
+      id: 'tea_post_037', type: 'short', title: '',
+      content: '刚参加完国际法模拟法庭校内选拔，受益匪浅，明年还要参加！',
+      tags: ['随便聊聊'],
+      author: '董伟豪', authorId: 'S052', role: 'student',
+      createdAt: '2026-09-20 22:28',
+      likes: 16, comments: 5, favorites: 7, deepThink: 2,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S103','S001','S180','S022','S189','S168','S091','S062','S092','S052','S174','S155','S126','S098','S049','S025'],
+      favoritedBy: ['S031','S146','S090','S130','S008','S125','S040'],
+      deepThinkBy: ['S009','S204']
+    }
+    ];
+    localStorage.setItem('sanguofa_tea_posts', JSON.stringify(teaDemoPosts));
+  }
+
+  if (!localStorage.getItem('sanguofa_tea_comments')) {
+    var teaDemoComments = [
+    {
+      id: 'tea_cmt_001', postId: 'tea_post_001', parentId: null,
+      content: '说得太好了，这种对比分析的方法很值得学习。',
+      author: '李辰羲', authorId: 'S020', role: 'student',
+      createdAt: '2026-09-23 20:43', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_002', postId: 'tea_post_001', parentId: null,
+      content: '补充一点，国家责任在这一点上的论述也很精彩，推荐大家阅读。',
+      author: '吴思睿', authorId: 'S204', role: 'student',
+      createdAt: '2026-09-24 13:56', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_003', postId: 'tea_post_001', parentId: null,
+      content: '这个议题最近很热门，各国立场差异确实很大。',
+      author: '卢鸿彬', authorId: 'S025', role: 'student',
+      createdAt: '2026-09-19 21:59', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_004', postId: 'tea_post_001', parentId: null,
+      content: '读完受益匪浅，期待更多这样的讨论！',
+      author: '姚远香', authorId: 'S145', role: 'student',
+      createdAt: '2026-09-19 19:40', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_005', postId: 'tea_post_001', parentId: null,
+      content: '补充一个细节：反致制度在最新的修订中有了新变化。',
+      author: '廖杰梅', authorId: 'S095', role: 'student',
+      createdAt: '2026-09-21 14:54', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_006', postId: 'tea_post_001', parentId: null,
+      content: '请问管辖权问题的具体法条依据是什么？想深入了解。',
+      author: '谢宜颖', authorId: 'S110', role: 'student',
+      createdAt: '2026-09-21 21:58', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_007', postId: 'tea_post_001', parentId: null,
+      content: '这个案例我之前也研究过，和你的结论一致。',
+      author: '陈敏', authorId: 'S047', role: 'student',
+      createdAt: '2026-09-25 09:08', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_008', postId: 'tea_post_002', parentId: null,
+      content: '能不能详细说说条约解释的部分？感觉这块最容易混淆。',
+      author: '谭宗毅', authorId: 'S102', role: 'student',
+      createdAt: '2026-09-16 20:28', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_009', postId: 'tea_post_002', parentId: 'tea_cmt_008',
+      content: '这个问题涉及国际法和国内法的互动，比较复杂。',
+      author: '谢宜颖', authorId: 'S110', role: 'student',
+      createdAt: '2026-09-23 19:05', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_010', postId: 'tea_post_002', parentId: null,
+      content: '同意你的观点，这个确实需要重点关注。',
+      author: '梅佳琪', authorId: 'S097', role: 'student',
+      createdAt: '2026-09-16 14:37', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_011', postId: 'tea_post_003', parentId: null,
+      content: '补充一个细节：条约解释在最新的修订中有了新变化。',
+      author: '余东航', authorId: 'S214', role: 'student',
+      createdAt: '2026-09-26 19:21', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_012', postId: 'tea_post_003', parentId: 'tea_cmt_011',
+      content: '能不能详细说说反致制度的部分？感觉这块最容易混淆。',
+      author: '李辰羲', authorId: 'S020', role: 'student',
+      createdAt: '2026-09-16 23:56', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_013', postId: 'tea_post_004', parentId: null,
+      content: '学到了！收藏了，考试前复习用。',
+      author: '李志伟', authorId: 'S022', role: 'student',
+      createdAt: '2026-09-29 16:09', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_014', postId: 'tea_post_004', parentId: null,
+      content: '这个观点很有启发性，不过我觉得法律适用方面还值得进一步讨论。',
+      author: '唐欣', authorId: 'S071', role: 'student',
+      createdAt: '2026-09-24 20:52', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_015', postId: 'tea_post_004', parentId: null,
+      content: '这个案例我之前也研究过，和你的结论一致。',
+      author: '胡海丽', authorId: 'S055', role: 'student',
+      createdAt: '2026-09-18 10:55', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_016', postId: 'tea_post_004', parentId: 'tea_cmt_015',
+      content: '我有一个不同的看法：豁免制度这个问题其实可以从另一个角度理解。',
+      author: '王兴雨', authorId: 'S033', role: 'student',
+      createdAt: '2026-09-22 19:29', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_017', postId: 'tea_post_004', parentId: null,
+      content: '很有价值的分享，建议置顶让更多人看到。',
+      author: '田雨蕙', authorId: 'S131', role: 'student',
+      createdAt: '2026-09-16 10:17', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_018', postId: 'tea_post_004', parentId: 'tea_cmt_017',
+      content: '学到了！收藏了，考试前复习用。',
+      author: '邓帆', authorId: 'S086', role: 'student',
+      createdAt: '2026-09-16 14:12', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_019', postId: 'tea_post_005', parentId: null,
+      content: '补充一个细节：法律适用在最新的修订中有了新变化。',
+      author: '何天', authorId: 'S154', role: 'student',
+      createdAt: '2026-09-19 17:07', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_020', postId: 'tea_post_005', parentId: null,
+      content: '补充一点，管辖权问题在这一点上的论述也很精彩，推荐大家阅读。',
+      author: '刘子含', authorId: 'S161', role: 'student',
+      createdAt: '2026-09-16 09:07', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_021', postId: 'tea_post_006', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '刘雅雯', authorId: 'S064', role: 'student',
+      createdAt: '2026-09-30 19:25', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_022', postId: 'tea_post_006', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '张慧', authorId: 'S217', role: 'student',
+      createdAt: '2026-09-27 15:00', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_023', postId: 'tea_post_006', parentId: null,
+      content: '这个观点很有启发性，不过我觉得豁免制度方面还值得进一步讨论。',
+      author: '郭子涵', authorId: 'S053', role: 'student',
+      createdAt: '2026-09-29 15:31', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_024', postId: 'tea_post_006', parentId: 'tea_cmt_022',
+      content: '补充一个细节：条约解释在最新的修订中有了新变化。',
+      author: '王蕾', authorId: 'S030', role: 'student',
+      createdAt: '2026-09-19 10:21', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_025', postId: 'tea_post_006', parentId: null,
+      content: '能不能详细说说最惠国待遇的部分？感觉这块最容易混淆。',
+      author: '党珮瑜', authorId: 'S013', role: 'student',
+      createdAt: '2026-09-27 18:31', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_026', postId: 'tea_post_006', parentId: null,
+      content: '这让我想到了法律适用案，情况有些类似。',
+      author: '尹创', authorId: 'S002', role: 'student',
+      createdAt: '2026-09-16 15:27', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_027', postId: 'tea_post_007', parentId: null,
+      content: '同意你的观点，这个确实需要重点关注。',
+      author: '李欣蕊', authorId: 'S062', role: 'student',
+      createdAt: '2026-09-25 11:17', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_028', postId: 'tea_post_007', parentId: 'tea_cmt_027',
+      content: '这让我想到了反致制度案，情况有些类似。',
+      author: '王思彤', authorId: 'S168', role: 'student',
+      createdAt: '2026-09-16 18:07', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_029', postId: 'tea_post_007', parentId: 'tea_cmt_027',
+      content: '我有一个不同的看法：国家责任这个问题其实可以从另一个角度理解。',
+      author: '熊粤', authorId: 'S078', role: 'student',
+      createdAt: '2026-09-29 15:31', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_030', postId: 'tea_post_007', parentId: null,
+      content: '补充一个细节：国家责任在最新的修订中有了新变化。',
+      author: '吴思睿', authorId: 'S204', role: 'student',
+      createdAt: '2026-09-25 15:52', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_031', postId: 'tea_post_007', parentId: null,
+      content: '这个观点很有启发性，不过我觉得法律适用方面还值得进一步讨论。',
+      author: '何蓉', authorId: 'S089', role: 'student',
+      createdAt: '2026-09-23 14:07', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_032', postId: 'tea_post_007', parentId: 'tea_cmt_028',
+      content: '补充一点，法律适用在这一点上的论述也很精彩，推荐大家阅读。',
+      author: '张维歌', authorId: 'S082', role: 'student',
+      createdAt: '2026-09-22 11:35', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_033', postId: 'tea_post_008', parentId: null,
+      content: '补充一点，国家责任在这一点上的论述也很精彩，推荐大家阅读。',
+      author: '刘雨欣', authorId: 'S134', role: 'student',
+      createdAt: '2026-09-20 11:43', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_034', postId: 'tea_post_008', parentId: null,
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '张棋', authorId: 'S115', role: 'student',
+      createdAt: '2026-09-28 17:32', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_035', postId: 'tea_post_008', parentId: 'tea_cmt_034',
+      content: '这个问题涉及国际法和国内法的互动，比较复杂。',
+      author: '邓婉莹', authorId: 'S014', role: 'student',
+      createdAt: '2026-09-26 20:48', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_036', postId: 'tea_post_008', parentId: 'tea_cmt_033',
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '李依', authorId: 'S094', role: 'student',
+      createdAt: '2026-09-22 18:29', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_037', postId: 'tea_post_009', parentId: null,
+      content: '请问法律适用的具体法条依据是什么？想深入了解。',
+      author: '谭沁', authorId: 'S165', role: 'student',
+      createdAt: '2026-09-25 19:45', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_038', postId: 'tea_post_009', parentId: null,
+      content: '学到了！收藏了，考试前复习用。',
+      author: '周清鄂', authorId: 'S116', role: 'student',
+      createdAt: '2026-09-21 08:24', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_039', postId: 'tea_post_009', parentId: null,
+      content: '分析得很到位，特别是关于最惠国待遇的部分。',
+      author: '钟诗杭', authorId: 'S207', role: 'student',
+      createdAt: '2026-09-30 12:17', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_040', postId: 'tea_post_009', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '王梦媛', authorId: 'S121', role: 'student',
+      createdAt: '2026-09-18 14:44', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_041', postId: 'tea_post_009', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '王赛文', authorId: 'S032', role: 'student',
+      createdAt: '2026-09-22 14:16', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_042', postId: 'tea_post_009', parentId: 'tea_cmt_039',
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '王傅之', authorId: 'S075', role: 'student',
+      createdAt: '2026-09-16 18:11', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_043', postId: 'tea_post_010', parentId: null,
+      content: '回复：反致制度这个补充很好，我之前忽略了这个角度。',
+      author: '李敏敏', authorId: 'S061', role: 'student',
+      createdAt: '2026-09-19 14:46', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_044', postId: 'tea_post_010', parentId: null,
+      content: '补充一个细节：公共秩序保留在最新的修订中有了新变化。',
+      author: '黄茗睿', authorId: 'S017', role: 'student',
+      createdAt: '2026-09-26 17:46', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_045', postId: 'tea_post_010', parentId: 'tea_cmt_043',
+      content: '这个议题最近很热门，各国立场差异确实很大。',
+      author: '刘宛彤', authorId: 'S024', role: 'student',
+      createdAt: '2026-09-27 11:06', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_046', postId: 'tea_post_010', parentId: 'tea_cmt_043',
+      content: '学到了！收藏了，考试前复习用。',
+      author: '黄江', authorId: 'S139', role: 'student',
+      createdAt: '2026-09-18 22:22', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_047', postId: 'tea_post_010', parentId: null,
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '贺嘉乐', authorId: 'S016', role: 'student',
+      createdAt: '2026-09-27 23:47', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_048', postId: 'tea_post_010', parentId: null,
+      content: '很有价值的分享，建议置顶让更多人看到。',
+      author: '吴眉', authorId: 'S036', role: 'student',
+      createdAt: '2026-09-30 18:44', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_049', postId: 'tea_post_010', parentId: 'tea_cmt_048',
+      content: '赞一个！逻辑清晰，论证有力。',
+      author: '刘雨萌', authorId: 'S096', role: 'student',
+      createdAt: '2026-09-28 08:06', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_050', postId: 'tea_post_010', parentId: null,
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '吴金洁', authorId: 'S199', role: 'student',
+      createdAt: '2026-09-18 16:48', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_051', postId: 'tea_post_011', parentId: null,
+      content: '补充一点，公共秩序保留在这一点上的论述也很精彩，推荐大家阅读。',
+      author: '周文希', authorId: 'S117', role: 'student',
+      createdAt: '2026-09-20 16:51', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_052', postId: 'tea_post_011', parentId: null,
+      content: '同意你的观点，这个确实需要重点关注。',
+      author: '田佳怡', authorId: 'S125', role: 'student',
+      createdAt: '2026-09-21 10:40', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_053', postId: 'tea_post_011', parentId: null,
+      content: '同意，实务中这个点的争议确实很大。',
+      author: '张棋', authorId: 'S115', role: 'student',
+      createdAt: '2026-09-16 16:56', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_054', postId: 'tea_post_011', parentId: null,
+      content: '说得太好了，这种对比分析的方法很值得学习。',
+      author: '毛义书', authorId: 'S066', role: 'student',
+      createdAt: '2026-09-20 23:33', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_055', postId: 'tea_post_011', parentId: null,
+      content: '补充一点，反致制度在这一点上的论述也很精彩，推荐大家阅读。',
+      author: '梅炎鑫', authorId: 'S067', role: 'student',
+      createdAt: '2026-09-27 12:22', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_056', postId: 'tea_post_011', parentId: 'tea_cmt_054',
+      content: '回复：管辖权问题这个补充很好，我之前忽略了这个角度。',
+      author: '蒋晨晨', authorId: 'S019', role: 'student',
+      createdAt: '2026-09-20 08:09', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_057', postId: 'tea_post_011', parentId: null,
+      content: '分析得很到位，特别是关于管辖权问题的部分。',
+      author: '陈林佳', authorId: 'S009', role: 'student',
+      createdAt: '2026-09-27 10:23', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_058', postId: 'tea_post_012', parentId: null,
+      content: '读完受益匪浅，期待更多这样的讨论！',
+      author: '黄恺馨', authorId: 'S156', role: 'student',
+      createdAt: '2026-09-29 23:16', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_059', postId: 'tea_post_012', parentId: null,
+      content: '很有价值的分享，建议置顶让更多人看到。',
+      author: '汪文丽', authorId: 'S166', role: 'student',
+      createdAt: '2026-09-30 20:00', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_060', postId: 'tea_post_012', parentId: null,
+      content: '好文推荐！正好最近在研究这个方向。',
+      author: '潘云昊', authorId: 'S027', role: 'student',
+      createdAt: '2026-09-29 22:52', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_061', postId: 'tea_post_013', parentId: null,
+      content: '这个议题最近很热门，各国立场差异确实很大。',
+      author: '罗思雨', authorId: 'S197', role: 'student',
+      createdAt: '2026-09-16 13:16', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_062', postId: 'tea_post_013', parentId: null,
+      content: '我有一个不同的看法：公共秩序保留这个问题其实可以从另一个角度理解。',
+      author: '王晓', authorId: 'S203', role: 'student',
+      createdAt: '2026-09-30 14:48', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_063', postId: 'tea_post_014', parentId: null,
+      content: '这个议题最近很热门，各国立场差异确实很大。',
+      author: '宋佳诚', authorId: 'S100', role: 'student',
+      createdAt: '2026-09-30 15:54', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_064', postId: 'tea_post_014', parentId: null,
+      content: '我觉得关键还是在于条约解释的方法论问题。',
+      author: '谭沁', authorId: 'S165', role: 'student',
+      createdAt: '2026-09-17 23:22', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_065', postId: 'tea_post_014', parentId: 'tea_cmt_063',
+      content: '回复：法律适用这个补充很好，我之前忽略了这个角度。',
+      author: '莫正阳', authorId: 'S130', role: 'student',
+      createdAt: '2026-09-16 10:54', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_066', postId: 'tea_post_014', parentId: 'tea_cmt_064',
+      content: '这个议题最近很热门，各国立场差异确实很大。',
+      author: '张先语', authorId: 'S178', role: 'student',
+      createdAt: '2026-09-29 16:32', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_067', postId: 'tea_post_014', parentId: 'tea_cmt_064',
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '陆星宇', authorId: 'S185', role: 'student',
+      createdAt: '2026-09-19 17:18', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_068', postId: 'tea_post_015', parentId: null,
+      content: '这个知识点在往年考试中确实考过，你的总结很到位。',
+      author: '吴眉', authorId: 'S036', role: 'student',
+      createdAt: '2026-09-18 22:56', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_069', postId: 'tea_post_015', parentId: null,
+      content: '这个知识点在往年考试中确实考过，你的总结很到位。',
+      author: '曾晓楠', authorId: 'S129', role: 'student',
+      createdAt: '2026-09-26 18:06', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_070', postId: 'tea_post_015', parentId: 'tea_cmt_068',
+      content: '同意，实务中这个点的争议确实很大。',
+      author: '肖安琪', authorId: 'S173', role: 'student',
+      createdAt: '2026-09-16 15:16', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_071', postId: 'tea_post_015', parentId: null,
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '王傅之', authorId: 'S075', role: 'student',
+      createdAt: '2026-09-19 08:28', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_072', postId: 'tea_post_016', parentId: null,
+      content: '分析得很到位，特别是关于争端解决的部分。',
+      author: '黄茗睿', authorId: 'S017', role: 'student',
+      createdAt: '2026-09-26 18:11', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_073', postId: 'tea_post_016', parentId: null,
+      content: '同意，实务中这个点的争议确实很大。',
+      author: '邓婉莹', authorId: 'S014', role: 'student',
+      createdAt: '2026-09-22 14:45', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_074', postId: 'tea_post_016', parentId: null,
+      content: '请问法律适用的具体法条依据是什么？想深入了解。',
+      author: '张棋', authorId: 'S115', role: 'student',
+      createdAt: '2026-09-28 12:54', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_075', postId: 'tea_post_016', parentId: 'tea_cmt_074',
+      content: '回复：国民待遇这个补充很好，我之前忽略了这个角度。',
+      author: '陆星宇', authorId: 'S185', role: 'student',
+      createdAt: '2026-09-25 20:15', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_076', postId: 'tea_post_017', parentId: null,
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '韦欣宇', authorId: 'S035', role: 'student',
+      createdAt: '2026-09-22 10:39', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_077', postId: 'tea_post_017', parentId: 'tea_cmt_076',
+      content: '好文推荐！正好最近在研究这个方向。',
+      author: '周祯琰', authorId: 'S128', role: 'student',
+      createdAt: '2026-09-24 20:50', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_078', postId: 'tea_post_017', parentId: null,
+      content: '同意你的观点，这个确实需要重点关注。',
+      author: '徐芊', authorId: 'S079', role: 'student',
+      createdAt: '2026-09-21 10:12', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_079', postId: 'tea_post_017', parentId: null,
+      content: '很有价值的分享，建议置顶让更多人看到。',
+      author: '台俊皓', authorId: 'S001', role: 'student',
+      createdAt: '2026-09-28 21:19', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_080', postId: 'tea_post_017', parentId: null,
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '李辰羲', authorId: 'S020', role: 'student',
+      createdAt: '2026-09-19 15:44', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_081', postId: 'tea_post_018', parentId: null,
+      content: '这个问题涉及国际法和国内法的互动，比较复杂。',
+      author: '李辰羲', authorId: 'S020', role: 'student',
+      createdAt: '2026-09-18 18:45', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_082', postId: 'tea_post_018', parentId: null,
+      content: '感谢分享！正好在准备相关的课程论文。',
+      author: '程诺', authorId: 'S085', role: 'student',
+      createdAt: '2026-09-28 08:57', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_083', postId: 'tea_post_018', parentId: null,
+      content: '这个知识点在往年考试中确实考过，你的总结很到位。',
+      author: '罗思雨', authorId: 'S197', role: 'student',
+      createdAt: '2026-09-22 18:27', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_084', postId: 'tea_post_018', parentId: null,
+      content: '分析得很到位，特别是关于公共秩序保留的部分。',
+      author: '徐芊', authorId: 'S079', role: 'student',
+      createdAt: '2026-09-18 23:30', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_085', postId: 'tea_post_018', parentId: null,
+      content: '说得太好了，这种对比分析的方法很值得学习。',
+      author: '胡昊月', authorId: 'S136', role: 'student',
+      createdAt: '2026-09-22 09:39', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_086', postId: 'tea_post_018', parentId: 'tea_cmt_083',
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '袁诺', authorId: 'S176', role: 'student',
+      createdAt: '2026-09-29 17:24', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_087', postId: 'tea_post_019', parentId: null,
+      content: '这个知识点在往年考试中确实考过，你的总结很到位。',
+      author: '张莹莹', authorId: 'S044', role: 'student',
+      createdAt: '2026-09-22 09:51', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_088', postId: 'tea_post_019', parentId: 'tea_cmt_087',
+      content: '这个问题涉及国际法和国内法的互动，比较复杂。',
+      author: '张维歌', authorId: 'S082', role: 'student',
+      createdAt: '2026-09-19 10:47', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_089', postId: 'tea_post_020', parentId: null,
+      content: '这个观点很有启发性，不过我觉得管辖权问题方面还值得进一步讨论。',
+      author: '王敏静', authorId: 'S031', role: 'student',
+      createdAt: '2026-09-19 17:03', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_090', postId: 'tea_post_020', parentId: 'tea_cmt_089',
+      content: '赞一个！逻辑清晰，论证有力。',
+      author: '陆星宇', authorId: 'S185', role: 'student',
+      createdAt: '2026-09-28 13:20', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_091', postId: 'tea_post_021', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '王贵愈', authorId: 'S167', role: 'student',
+      createdAt: '2026-09-29 19:54', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_092', postId: 'tea_post_021', parentId: 'tea_cmt_091',
+      content: '感谢分享！正好在准备相关的课程论文。',
+      author: '王梓璇', authorId: 'S106', role: 'student',
+      createdAt: '2026-09-19 12:27', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_093', postId: 'tea_post_021', parentId: null,
+      content: '好文推荐！正好最近在研究这个方向。',
+      author: '肖仁燮', authorId: 'S005', role: 'student',
+      createdAt: '2026-09-23 16:17', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_094', postId: 'tea_post_021', parentId: 'tea_cmt_092',
+      content: '我觉得关键还是在于条约解释的方法论问题。',
+      author: '谭宗毅', authorId: 'S102', role: 'student',
+      createdAt: '2026-09-27 22:08', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_095', postId: 'tea_post_021', parentId: null,
+      content: '这让我想到了管辖权问题案，情况有些类似。',
+      author: '李欣蕊', authorId: 'S062', role: 'student',
+      createdAt: '2026-09-24 16:09', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_096', postId: 'tea_post_021', parentId: null,
+      content: '这个问题涉及国际法和国内法的互动，比较复杂。',
+      author: '代阳', authorId: 'S150', role: 'student',
+      createdAt: '2026-09-17 08:10', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_097', postId: 'tea_post_022', parentId: null,
+      content: '我觉得关键还是在于条约解释的方法论问题。',
+      author: '李玉豪', authorId: 'S159', role: 'student',
+      createdAt: '2026-09-27 19:15', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_098', postId: 'tea_post_022', parentId: 'tea_cmt_097',
+      content: '补充一个细节：豁免制度在最新的修订中有了新变化。',
+      author: '高敏', authorId: 'S153', role: 'student',
+      createdAt: '2026-09-19 23:58', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_099', postId: 'tea_post_023', parentId: null,
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '董伟豪', authorId: 'S052', role: 'student',
+      createdAt: '2026-09-20 08:15', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_100', postId: 'tea_post_023', parentId: 'tea_cmt_099',
+      content: '这个问题涉及国际法和国内法的互动，比较复杂。',
+      author: '刘子含', authorId: 'S161', role: 'student',
+      createdAt: '2026-09-27 18:06', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_101', postId: 'tea_post_023', parentId: null,
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '高敏', authorId: 'S153', role: 'student',
+      createdAt: '2026-09-18 11:09', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_102', postId: 'tea_post_023', parentId: null,
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '王敏', authorId: 'S143', role: 'student',
+      createdAt: '2026-09-28 17:12', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_103', postId: 'tea_post_023', parentId: 'tea_cmt_100',
+      content: '能不能详细说说最惠国待遇的部分？感觉这块最容易混淆。',
+      author: '徐芊', authorId: 'S079', role: 'student',
+      createdAt: '2026-09-29 11:58', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_104', postId: 'tea_post_023', parentId: null,
+      content: '回复：国民待遇这个补充很好，我之前忽略了这个角度。',
+      author: '陈胜希', authorId: 'S083', role: 'student',
+      createdAt: '2026-09-20 16:27', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_105', postId: 'tea_post_024', parentId: null,
+      content: '同意你的观点，这个确实需要重点关注。',
+      author: '马欣怡', authorId: 'S026', role: 'student',
+      createdAt: '2026-09-30 23:43', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_106', postId: 'tea_post_024', parentId: 'tea_cmt_105',
+      content: '这个观点很有启发性，不过我觉得争端解决方面还值得进一步讨论。',
+      author: '曾智宇', authorId: 'S146', role: 'student',
+      createdAt: '2026-09-23 13:10', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_107', postId: 'tea_post_025', parentId: null,
+      content: '这个案例我之前也研究过，和你的结论一致。',
+      author: '邹德翔', authorId: 'S118', role: 'student',
+      createdAt: '2026-09-23 23:47', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_108', postId: 'tea_post_025', parentId: null,
+      content: '回复：管辖权问题这个补充很好，我之前忽略了这个角度。',
+      author: '陈文轩', authorId: 'S010', role: 'student',
+      createdAt: '2026-09-26 21:25', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_109', postId: 'tea_post_025', parentId: null,
+      content: '回复：国民待遇这个补充很好，我之前忽略了这个角度。',
+      author: '潘紫涵', authorId: 'S162', role: 'student',
+      createdAt: '2026-09-27 23:54', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_110', postId: 'tea_post_025', parentId: null,
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '尹创', authorId: 'S002', role: 'student',
+      createdAt: '2026-09-21 20:32', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_111', postId: 'tea_post_025', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '周清鄂', authorId: 'S116', role: 'student',
+      createdAt: '2026-09-23 08:47', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_112', postId: 'tea_post_026', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '沈园林', authorId: 'S163', role: 'student',
+      createdAt: '2026-09-22 09:36', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_113', postId: 'tea_post_026', parentId: 'tea_cmt_112',
+      content: '说得太好了，这种对比分析的方法很值得学习。',
+      author: '李欣蕊', authorId: 'S062', role: 'student',
+      createdAt: '2026-09-23 20:12', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_114', postId: 'tea_post_026', parentId: 'tea_cmt_113',
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '周雨佳', authorId: 'S142', role: 'student',
+      createdAt: '2026-09-21 12:23', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_115', postId: 'tea_post_026', parentId: 'tea_cmt_113',
+      content: '赞一个！逻辑清晰，论证有力。',
+      author: '潘云昊', authorId: 'S027', role: 'student',
+      createdAt: '2026-09-23 20:42', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_116', postId: 'tea_post_027', parentId: null,
+      content: '我觉得关键还是在于条约解释的方法论问题。',
+      author: '王傅之', authorId: 'S075', role: 'student',
+      createdAt: '2026-09-28 17:27', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_117', postId: 'tea_post_027', parentId: null,
+      content: '学到了！收藏了，考试前复习用。',
+      author: '肖安琪', authorId: 'S173', role: 'student',
+      createdAt: '2026-09-16 22:48', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_118', postId: 'tea_post_027', parentId: 'tea_cmt_116',
+      content: '同意你的观点，这个确实需要重点关注。',
+      author: '吴眉', authorId: 'S036', role: 'student',
+      createdAt: '2026-09-17 10:16', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_119', postId: 'tea_post_027', parentId: 'tea_cmt_116',
+      content: '这让我想到了反致制度案，情况有些类似。',
+      author: '邓可云', authorId: 'S151', role: 'student',
+      createdAt: '2026-09-28 09:57', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_120', postId: 'tea_post_027', parentId: 'tea_cmt_117',
+      content: '这个观点很有启发性，不过我觉得反致制度方面还值得进一步讨论。',
+      author: '王贵愈', authorId: 'S167', role: 'student',
+      createdAt: '2026-09-18 14:55', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_121', postId: 'tea_post_027', parentId: 'tea_cmt_117',
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '杨琴', authorId: 'S112', role: 'student',
+      createdAt: '2026-09-30 14:35', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_122', postId: 'tea_post_028', parentId: null,
+      content: '赞一个！逻辑清晰，论证有力。',
+      author: '何思淇', authorId: 'S208', role: 'student',
+      createdAt: '2026-09-29 21:32', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_123', postId: 'tea_post_028', parentId: null,
+      content: '分析得很到位，特别是关于公共秩序保留的部分。',
+      author: '宋卓越', authorId: 'S164', role: 'student',
+      createdAt: '2026-09-16 10:11', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_124', postId: 'tea_post_028', parentId: null,
+      content: '感谢分享！正好在准备相关的课程论文。',
+      author: '陈祎玮', authorId: 'S084', role: 'student',
+      createdAt: '2026-09-26 09:59', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_125', postId: 'tea_post_028', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '王梦媛', authorId: 'S121', role: 'student',
+      createdAt: '2026-09-22 13:16', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_126', postId: 'tea_post_028', parentId: null,
+      content: '我觉得关键还是在于条约解释的方法论问题。',
+      author: '姚远香', authorId: 'S145', role: 'student',
+      createdAt: '2026-09-29 08:03', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_127', postId: 'tea_post_028', parentId: null,
+      content: '赞一个！逻辑清晰，论证有力。',
+      author: '邓畅', authorId: 'S050', role: 'student',
+      createdAt: '2026-09-29 15:13', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_128', postId: 'tea_post_028', parentId: 'tea_cmt_125',
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '胡昊月', authorId: 'S136', role: 'student',
+      createdAt: '2026-09-16 12:59', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_129', postId: 'tea_post_029', parentId: null,
+      content: '这个观点很有启发性，不过我觉得反致制度方面还值得进一步讨论。',
+      author: '王紫湛', authorId: 'S107', role: 'student',
+      createdAt: '2026-09-26 17:46', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_130', postId: 'tea_post_029', parentId: null,
+      content: '读完受益匪浅，期待更多这样的讨论！',
+      author: '袁诺', authorId: 'S176', role: 'student',
+      createdAt: '2026-09-28 21:15', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_131', postId: 'tea_post_029', parentId: null,
+      content: '感谢分享！正好在准备相关的课程论文。',
+      author: '肖吴佩奇', authorId: 'S038', role: 'student',
+      createdAt: '2026-09-24 19:39', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_132', postId: 'tea_post_030', parentId: null,
+      content: '请问争端解决的具体法条依据是什么？想深入了解。',
+      author: '姚远香', authorId: 'S145', role: 'student',
+      createdAt: '2026-09-23 23:24', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_133', postId: 'tea_post_030', parentId: null,
+      content: '赞一个！逻辑清晰，论证有力。',
+      author: '廖一寰', authorId: 'S184', role: 'student',
+      createdAt: '2026-09-16 23:24', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_134', postId: 'tea_post_030', parentId: 'tea_cmt_132',
+      content: '这个知识点在往年考试中确实考过，你的总结很到位。',
+      author: '党珮瑜', authorId: 'S013', role: 'student',
+      createdAt: '2026-09-29 17:20', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_135', postId: 'tea_post_030', parentId: 'tea_cmt_133',
+      content: '这让我想到了公共秩序保留案，情况有些类似。',
+      author: '成艺', authorId: 'S049', role: 'student',
+      createdAt: '2026-09-20 18:04', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_136', postId: 'tea_post_031', parentId: null,
+      content: '我觉得关键还是在于条约解释的方法论问题。',
+      author: '潘紫涵', authorId: 'S162', role: 'student',
+      createdAt: '2026-09-25 23:03', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_137', postId: 'tea_post_031', parentId: 'tea_cmt_136',
+      content: '学到了！收藏了，考试前复习用。',
+      author: '董伟豪', authorId: 'S052', role: 'student',
+      createdAt: '2026-09-22 08:51', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_138', postId: 'tea_post_031', parentId: 'tea_cmt_137',
+      content: '补充一点，管辖权问题在这一点上的论述也很精彩，推荐大家阅读。',
+      author: '尹创', authorId: 'S002', role: 'student',
+      createdAt: '2026-09-18 12:55', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_139', postId: 'tea_post_031', parentId: 'tea_cmt_136',
+      content: '这个观点很有启发性，不过我觉得法律适用方面还值得进一步讨论。',
+      author: '岳金慧', authorId: 'S042', role: 'student',
+      createdAt: '2026-09-23 14:56', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_140', postId: 'tea_post_031', parentId: null,
+      content: '感谢分享！正好在准备相关的课程论文。',
+      author: '党珮瑜', authorId: 'S013', role: 'student',
+      createdAt: '2026-09-21 22:23', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_141', postId: 'tea_post_031', parentId: null,
+      content: '能不能详细说说管辖权问题的部分？感觉这块最容易混淆。',
+      author: '何思淇', authorId: 'S208', role: 'student',
+      createdAt: '2026-09-28 12:27', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_142', postId: 'tea_post_032', parentId: null,
+      content: '补充一个细节：国家责任在最新的修订中有了新变化。',
+      author: '胡金平', authorId: 'S090', role: 'student',
+      createdAt: '2026-09-28 19:30', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_143', postId: 'tea_post_032', parentId: 'tea_cmt_142',
+      content: '赞一个！逻辑清晰，论证有力。',
+      author: '王昕妤', authorId: 'S074', role: 'student',
+      createdAt: '2026-09-25 09:31', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_144', postId: 'tea_post_032', parentId: 'tea_cmt_143',
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '陈胜希', authorId: 'S083', role: 'student',
+      createdAt: '2026-09-16 18:04', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_145', postId: 'tea_post_032', parentId: null,
+      content: '同意你的观点，这个确实需要重点关注。',
+      author: '何思淇', authorId: 'S208', role: 'student',
+      createdAt: '2026-09-20 23:38', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_146', postId: 'tea_post_032', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '王御平', authorId: 'S034', role: 'student',
+      createdAt: '2026-09-30 11:59', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_147', postId: 'tea_post_032', parentId: null,
+      content: '赞一个！逻辑清晰，论证有力。',
+      author: '乔子凌', authorId: 'S132', role: 'student',
+      createdAt: '2026-09-30 21:01', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_148', postId: 'tea_post_032', parentId: null,
+      content: '感谢分享！正好在准备相关的课程论文。',
+      author: '潘晶晶', authorId: 'S098', role: 'student',
+      createdAt: '2026-09-19 20:35', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_149', postId: 'tea_post_033', parentId: null,
+      content: '这个案例我之前也研究过，和你的结论一致。',
+      author: '宋佳诚', authorId: 'S100', role: 'student',
+      createdAt: '2026-09-20 14:16', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_150', postId: 'tea_post_033', parentId: null,
+      content: '同意，实务中这个点的争议确实很大。',
+      author: '陈林佳', authorId: 'S009', role: 'student',
+      createdAt: '2026-09-21 18:58', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_151', postId: 'tea_post_033', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '何思淇', authorId: 'S208', role: 'student',
+      createdAt: '2026-09-18 18:55', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_152', postId: 'tea_post_034', parentId: null,
+      content: '这个知识点在往年考试中确实考过，你的总结很到位。',
+      author: '王傅之', authorId: 'S075', role: 'student',
+      createdAt: '2026-09-27 23:54', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_153', postId: 'tea_post_034', parentId: null,
+      content: '学到了！收藏了，考试前复习用。',
+      author: '马欣怡', authorId: 'S026', role: 'student',
+      createdAt: '2026-09-24 10:46', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_154', postId: 'tea_post_035', parentId: null,
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '赵静', authorId: 'S179', role: 'student',
+      createdAt: '2026-09-24 21:49', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_155', postId: 'tea_post_035', parentId: null,
+      content: '同意，实务中这个点的争议确实很大。',
+      author: '余芷萱', authorId: 'S080', role: 'student',
+      createdAt: '2026-09-21 17:19', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_156', postId: 'tea_post_035', parentId: null,
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '徐长征', authorId: 'S111', role: 'student',
+      createdAt: '2026-09-29 23:20', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_157', postId: 'tea_post_035', parentId: 'tea_cmt_154',
+      content: '感谢分享！正好在准备相关的课程论文。',
+      author: '谭宗毅', authorId: 'S102', role: 'student',
+      createdAt: '2026-09-30 19:29', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_158', postId: 'tea_post_035', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '熊粤', authorId: 'S078', role: 'student',
+      createdAt: '2026-09-27 15:11', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_159', postId: 'tea_post_036', parentId: null,
+      content: '我有一个不同的看法：管辖权问题这个问题其实可以从另一个角度理解。',
+      author: '李志伟', authorId: 'S022', role: 'student',
+      createdAt: '2026-09-17 14:06', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_160', postId: 'tea_post_036', parentId: null,
+      content: '这让我想到了国民待遇案，情况有些类似。',
+      author: '李欣蕊', authorId: 'S062', role: 'student',
+      createdAt: '2026-09-21 10:23', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_161', postId: 'tea_post_036', parentId: null,
+      content: '好文推荐！正好最近在研究这个方向。',
+      author: '胡海丽', authorId: 'S055', role: 'student',
+      createdAt: '2026-09-25 21:28', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_162', postId: 'tea_post_036', parentId: 'tea_cmt_161',
+      content: '很有价值的分享，建议置顶让更多人看到。',
+      author: '童湖景', authorId: 'S126', role: 'student',
+      createdAt: '2026-09-30 21:23', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_163', postId: 'tea_post_036', parentId: 'tea_cmt_161',
+      content: '补充一个细节：豁免制度在最新的修订中有了新变化。',
+      author: '童湖景', authorId: 'S126', role: 'student',
+      createdAt: '2026-09-21 16:14', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_164', postId: 'tea_post_036', parentId: null,
+      content: '能不能详细说说管辖权问题的部分？感觉这块最容易混淆。',
+      author: '陆星宇', authorId: 'S185', role: 'student',
+      createdAt: '2026-09-24 23:21', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_165', postId: 'tea_post_036', parentId: 'tea_cmt_164',
+      content: '这个议题最近很热门，各国立场差异确实很大。',
+      author: '吴眉', authorId: 'S036', role: 'student',
+      createdAt: '2026-09-29 08:03', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_166', postId: 'tea_post_036', parentId: null,
+      content: '赞一个！逻辑清晰，论证有力。',
+      author: '张文轩', authorId: 'S127', role: 'student',
+      createdAt: '2026-09-23 22:47', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_167', postId: 'tea_post_037', parentId: null,
+      content: '请问国民待遇的具体法条依据是什么？想深入了解。',
+      author: '罗思雨', authorId: 'S197', role: 'student',
+      createdAt: '2026-09-20 12:03', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_168', postId: 'tea_post_037', parentId: null,
+      content: '这个议题最近很热门，各国立场差异确实很大。',
+      author: '王梦媛', authorId: 'S121', role: 'student',
+      createdAt: '2026-09-18 16:10', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_169', postId: 'tea_post_037', parentId: 'tea_cmt_168',
+      content: '能不能详细说说争端解决的部分？感觉这块最容易混淆。',
+      author: '刘子含', authorId: 'S161', role: 'student',
+      createdAt: '2026-09-30 09:19', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_170', postId: 'tea_post_037', parentId: null,
+      content: '分析得很到位，特别是关于国家责任的部分。',
+      author: '黄茗睿', authorId: 'S017', role: 'student',
+      createdAt: '2026-09-18 21:18', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_171', postId: 'tea_post_037', parentId: null,
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '谭宗毅', authorId: 'S102', role: 'student',
+      createdAt: '2026-09-29 15:12', likes: 1, likedBy: []
+    }
+    ];
+    localStorage.setItem('sanguofa_tea_comments', JSON.stringify(teaDemoComments));
+  }
+
+  if (!localStorage.getItem('sanguofa_tea_stats')) {
+    var teaDemoStats = {
+    'S001': { points: 48, badges: ['茶座新人'], postsCount: 3, likesReceived: 24 },
+    'S002': { points: 58, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 28 },
+    'S003': { points: 27, badges: ['茶座新人'], postsCount: 3, likesReceived: 13 },
+    'S004': { points: 66, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 1, likesReceived: 22 },
+    'S005': { points: 76, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 18 },
+    'S006': { points: 42, badges: ['茶座新人','文献达人'], postsCount: 3, likesReceived: 8 },
+    'S007': { points: 51, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 25 },
+    'S008': { points: 35, badges: ['茶座新人'], postsCount: 5, likesReceived: 24 },
+    'S009': { points: 36, badges: ['茶座新人'], postsCount: 4, likesReceived: 21 },
+    'S010': { points: 20, badges: ['茶座新人','文献达人'], postsCount: 1, likesReceived: 0 },
+    'S011': { points: 77, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 3, likesReceived: 7 },
+    'S012': { points: 13, badges: ['茶座新人','热心助人'], postsCount: 2, likesReceived: 11 },
+    'S013': { points: 44, badges: ['茶座新人'], postsCount: 1, likesReceived: 20 },
+    'S014': { points: 28, badges: ['茶座新人'], postsCount: 4, likesReceived: 14 },
+    'S015': { points: 65, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 14 },
+    'S016': { points: 75, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 28 },
+    'S017': { points: 68, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 1, likesReceived: 0 },
+    'S018': { points: 101, badges: ['茶座新人','活跃讨论者','学术达人','深度思考者'], postsCount: 3, likesReceived: 24 },
+    'S019': { points: 35, badges: ['茶座新人'], postsCount: 2, likesReceived: 0 },
+    'S020': { points: 41, badges: ['茶座新人'], postsCount: 3, likesReceived: 11 },
+    'S021': { points: 61, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 8 },
+    'S022': { points: 76, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 15 },
+    'S023': { points: 79, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 1 },
+    'S024': { points: 55, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 13 },
+    'S025': { points: 13, badges: ['茶座新人'], postsCount: 4, likesReceived: 10 },
+    'S026': { points: 55, badges: ['茶座新人','活跃讨论者','深度思考者'], postsCount: 3, likesReceived: 2 },
+    'S027': { points: 75, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 3 },
+    'S028': { points: 70, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 6 },
+    'S029': { points: 69, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 3, likesReceived: 3 },
+    'S030': { points: 15, badges: ['茶座新人'], postsCount: 3, likesReceived: 8 },
+    'S031': { points: 66, badges: ['茶座新人','活跃讨论者'], postsCount: 2, likesReceived: 28 },
+    'S032': { points: 61, badges: ['茶座新人','活跃讨论者','深度思考者'], postsCount: 2, likesReceived: 6 },
+    'S033': { points: 41, badges: ['茶座新人'], postsCount: 4, likesReceived: 6 },
+    'S034': { points: 20, badges: ['茶座新人','热心助人'], postsCount: 2, likesReceived: 2 },
+    'S035': { points: 42, badges: ['茶座新人'], postsCount: 0, likesReceived: 5 },
+    'S036': { points: 43, badges: ['茶座新人'], postsCount: 0, likesReceived: 30 },
+    'S037': { points: 70, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 14 },
+    'S038': { points: 60, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 17 },
+    'S039': { points: 40, badges: ['茶座新人'], postsCount: 5, likesReceived: 7 },
+    'S040': { points: 26, badges: ['茶座新人'], postsCount: 4, likesReceived: 12 },
+    'S041': { points: 67, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 19 },
+    'S042': { points: 74, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 2, likesReceived: 24 },
+    'S043': { points: 69, badges: ['茶座新人','活跃讨论者','深度思考者'], postsCount: 5, likesReceived: 17 },
+    'S044': { points: 68, badges: ['茶座新人','活跃讨论者','深度思考者'], postsCount: 0, likesReceived: 30 },
+    'S045': { points: 59, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 7 },
+    'S046': { points: 31, badges: ['茶座新人','深度思考者'], postsCount: 4, likesReceived: 18 },
+    'S047': { points: 20, badges: ['茶座新人'], postsCount: 0, likesReceived: 0 },
+    'S048': { points: 65, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 5, likesReceived: 18 },
+    'S049': { points: 64, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 4, likesReceived: 15 },
+    'S050': { points: 80, badges: ['茶座新人','活跃讨论者'], postsCount: 0, likesReceived: 14 },
+    'S051': { points: 26, badges: ['茶座新人','深度思考者'], postsCount: 2, likesReceived: 19 },
+    'S052': { points: 68, badges: ['茶座新人','活跃讨论者'], postsCount: 0, likesReceived: 19 },
+    'S053': { points: 79, badges: ['茶座新人','活跃讨论者'], postsCount: 0, likesReceived: 1 },
+    'S054': { points: 67, badges: ['茶座新人','活跃讨论者'], postsCount: 4, likesReceived: 21 },
+    'S055': { points: 32, badges: ['茶座新人'], postsCount: 3, likesReceived: 27 },
+    'S056': { points: 28, badges: ['茶座新人'], postsCount: 2, likesReceived: 16 },
+    'S057': { points: 29, badges: ['茶座新人'], postsCount: 5, likesReceived: 0 },
+    'S058': { points: 65, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 5, likesReceived: 17 },
+    'S059': { points: 117, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 4, likesReceived: 28 },
+    'S060': { points: 37, badges: ['茶座新人'], postsCount: 0, likesReceived: 25 },
+    'S061': { points: 15, badges: ['茶座新人'], postsCount: 3, likesReceived: 17 },
+    'S062': { points: 196, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 1, likesReceived: 6 },
+    'S063': { points: 47, badges: ['茶座新人'], postsCount: 1, likesReceived: 25 },
+    'S064': { points: 69, badges: ['茶座新人','活跃讨论者'], postsCount: 0, likesReceived: 22 },
+    'S065': { points: 35, badges: ['茶座新人'], postsCount: 0, likesReceived: 20 },
+    'S066': { points: 117, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 3, likesReceived: 9 },
+    'S067': { points: 17, badges: ['茶座新人'], postsCount: 5, likesReceived: 28 },
+    'S068': { points: 25, badges: ['茶座新人'], postsCount: 3, likesReceived: 14 },
+    'S069': { points: 27, badges: ['茶座新人'], postsCount: 3, likesReceived: 3 },
+    'S070': { points: 39, badges: ['茶座新人'], postsCount: 0, likesReceived: 0 },
+    'S071': { points: 165, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 3, likesReceived: 11 },
+    'S072': { points: 15, badges: ['茶座新人','深度思考者'], postsCount: 4, likesReceived: 23 },
+    'S073': { points: 29, badges: ['茶座新人'], postsCount: 5, likesReceived: 20 },
+    'S074': { points: 32, badges: ['茶座新人','文献达人'], postsCount: 5, likesReceived: 1 },
+    'S075': { points: 54, badges: ['茶座新人','活跃讨论者'], postsCount: 2, likesReceived: 4 },
+    'S076': { points: 43, badges: ['茶座新人','文献达人'], postsCount: 3, likesReceived: 13 },
+    'S077': { points: 13, badges: ['茶座新人'], postsCount: 4, likesReceived: 4 },
+    'S078': { points: 47, badges: ['茶座新人'], postsCount: 3, likesReceived: 4 },
+    'S079': { points: 172, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 3, likesReceived: 0 },
+    'S080': { points: 52, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 0, likesReceived: 0 },
+    'S081': { points: 74, badges: ['茶座新人','活跃讨论者'], postsCount: 4, likesReceived: 16 },
+    'S082': { points: 75, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 1, likesReceived: 9 },
+    'S083': { points: 80, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 0, likesReceived: 19 },
+    'S084': { points: 49, badges: ['茶座新人'], postsCount: 2, likesReceived: 20 },
+    'S085': { points: 29, badges: ['茶座新人'], postsCount: 2, likesReceived: 13 },
+    'S086': { points: 44, badges: ['茶座新人','热心助人'], postsCount: 1, likesReceived: 13 },
+    'S087': { points: 26, badges: ['茶座新人'], postsCount: 3, likesReceived: 27 },
+    'S088': { points: 26, badges: ['茶座新人','热心助人'], postsCount: 4, likesReceived: 14 },
+    'S089': { points: 37, badges: ['茶座新人'], postsCount: 4, likesReceived: 21 },
+    'S090': { points: 69, badges: ['茶座新人','活跃讨论者'], postsCount: 4, likesReceived: 13 },
+    'S091': { points: 63, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 22 },
+    'S092': { points: 67, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 20 },
+    'S093': { points: 32, badges: ['茶座新人'], postsCount: 4, likesReceived: 25 },
+    'S094': { points: 37, badges: ['茶座新人','热心助人'], postsCount: 5, likesReceived: 30 },
+    'S095': { points: 77, badges: ['茶座新人','活跃讨论者'], postsCount: 2, likesReceived: 27 },
+    'S096': { points: 52, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 14 },
+    'S097': { points: 43, badges: ['茶座新人','文献达人'], postsCount: 0, likesReceived: 23 },
+    'S098': { points: 17, badges: ['茶座新人','热心助人'], postsCount: 1, likesReceived: 1 },
+    'S099': { points: 120, badges: ['茶座新人','活跃讨论者','学术达人','深度思考者'], postsCount: 4, likesReceived: 4 },
+    'S100': { points: 19, badges: ['茶座新人','文献达人'], postsCount: 1, likesReceived: 20 },
+    'S101': { points: 21, badges: ['茶座新人'], postsCount: 1, likesReceived: 29 },
+    'S102': { points: 36, badges: ['茶座新人'], postsCount: 2, likesReceived: 28 },
+    'S103': { points: 57, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 1, likesReceived: 25 },
+    'S104': { points: 54, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 3, likesReceived: 27 },
+    'S105': { points: 29, badges: ['茶座新人'], postsCount: 5, likesReceived: 14 },
+    'S106': { points: 54, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 1, likesReceived: 27 },
+    'S107': { points: 20, badges: ['茶座新人'], postsCount: 3, likesReceived: 27 },
+    'S108': { points: 24, badges: ['茶座新人','热心助人'], postsCount: 4, likesReceived: 1 },
+    'S109': { points: 43, badges: ['茶座新人','热心助人'], postsCount: 4, likesReceived: 4 },
+    'S110': { points: 19, badges: ['茶座新人'], postsCount: 0, likesReceived: 10 },
+    'S111': { points: 62, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 19 },
+    'S112': { points: 32, badges: ['茶座新人','热心助人'], postsCount: 4, likesReceived: 30 },
+    'S113': { points: 55, badges: ['茶座新人','活跃讨论者'], postsCount: 4, likesReceived: 30 },
+    'S114': { points: 57, badges: ['茶座新人','活跃讨论者'], postsCount: 2, likesReceived: 2 },
+    'S115': { points: 23, badges: ['茶座新人'], postsCount: 1, likesReceived: 20 },
+    'S116': { points: 47, badges: ['茶座新人','热心助人'], postsCount: 3, likesReceived: 0 },
+    'S117': { points: 69, badges: ['茶座新人','活跃讨论者'], postsCount: 0, likesReceived: 12 },
+    'S118': { points: 35, badges: ['茶座新人'], postsCount: 1, likesReceived: 29 },
+    'S119': { points: 19, badges: ['茶座新人'], postsCount: 5, likesReceived: 20 },
+    'S120': { points: 54, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 4, likesReceived: 26 },
+    'S121': { points: 12, badges: ['茶座新人','文献达人'], postsCount: 5, likesReceived: 7 },
+    'S122': { points: 29, badges: ['茶座新人'], postsCount: 1, likesReceived: 8 },
+    'S123': { points: 36, badges: ['茶座新人'], postsCount: 1, likesReceived: 18 },
+    'S124': { points: 61, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 8 },
+    'S125': { points: 54, badges: ['茶座新人','活跃讨论者'], postsCount: 2, likesReceived: 20 },
+    'S126': { points: 72, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 26 },
+    'S127': { points: 38, badges: ['茶座新人','文献达人'], postsCount: 1, likesReceived: 24 },
+    'S128': { points: 36, badges: ['茶座新人'], postsCount: 5, likesReceived: 24 },
+    'S129': { points: 62, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 19 },
+    'S130': { points: 11, badges: ['茶座新人'], postsCount: 5, likesReceived: 0 },
+    'S131': { points: 65, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 8 },
+    'S132': { points: 56, badges: ['茶座新人','活跃讨论者'], postsCount: 0, likesReceived: 7 },
+    'S133': { points: 20, badges: ['茶座新人'], postsCount: 3, likesReceived: 13 },
+    'S134': { points: 14, badges: ['茶座新人','热心助人'], postsCount: 1, likesReceived: 8 },
+    'S135': { points: 20, badges: ['茶座新人'], postsCount: 5, likesReceived: 18 },
+    'S136': { points: 69, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 24 },
+    'S137': { points: 65, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 3 },
+    'S138': { points: 18, badges: ['茶座新人'], postsCount: 5, likesReceived: 17 },
+    'S139': { points: 18, badges: ['茶座新人'], postsCount: 3, likesReceived: 17 },
+    'S140': { points: 21, badges: ['茶座新人','文献达人'], postsCount: 3, likesReceived: 3 },
+    'S141': { points: 22, badges: ['茶座新人'], postsCount: 5, likesReceived: 22 },
+    'S142': { points: 39, badges: ['茶座新人','热心助人'], postsCount: 2, likesReceived: 22 },
+    'S143': { points: 77, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 27 },
+    'S144': { points: 34, badges: ['茶座新人'], postsCount: 5, likesReceived: 3 },
+    'S145': { points: 37, badges: ['茶座新人'], postsCount: 3, likesReceived: 29 },
+    'S146': { points: 10, badges: ['茶座新人','热心助人'], postsCount: 3, likesReceived: 2 },
+    'S147': { points: 51, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 16 },
+    'S148': { points: 40, badges: ['茶座新人','深度思考者'], postsCount: 3, likesReceived: 6 },
+    'S149': { points: 52, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 0, likesReceived: 1 },
+    'S150': { points: 10, badges: ['茶座新人','热心助人'], postsCount: 1, likesReceived: 4 },
+    'S151': { points: 17, badges: ['茶座新人','热心助人'], postsCount: 1, likesReceived: 24 },
+    'S152': { points: 183, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 5, likesReceived: 16 },
+    'S153': { points: 112, badges: ['茶座新人','活跃讨论者','学术达人','文献达人'], postsCount: 2, likesReceived: 28 },
+    'S154': { points: 30, badges: ['茶座新人','深度思考者'], postsCount: 4, likesReceived: 30 },
+    'S155': { points: 31, badges: ['茶座新人'], postsCount: 3, likesReceived: 27 },
+    'S156': { points: 23, badges: ['茶座新人'], postsCount: 3, likesReceived: 8 },
+    'S157': { points: 54, badges: ['茶座新人','活跃讨论者'], postsCount: 0, likesReceived: 23 },
+    'S158': { points: 15, badges: ['茶座新人'], postsCount: 4, likesReceived: 2 },
+    'S159': { points: 38, badges: ['茶座新人'], postsCount: 1, likesReceived: 7 },
+    'S160': { points: 156, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 5, likesReceived: 3 },
+    'S161': { points: 28, badges: ['茶座新人','文献达人'], postsCount: 3, likesReceived: 13 },
+    'S162': { points: 46, badges: ['茶座新人'], postsCount: 1, likesReceived: 14 },
+    'S163': { points: 38, badges: ['茶座新人'], postsCount: 2, likesReceived: 0 },
+    'S164': { points: 74, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 3, likesReceived: 12 },
+    'S165': { points: 52, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 1, likesReceived: 23 },
+    'S166': { points: 35, badges: ['茶座新人'], postsCount: 0, likesReceived: 27 },
+    'S167': { points: 61, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 5 },
+    'S168': { points: 43, badges: ['茶座新人'], postsCount: 5, likesReceived: 12 },
+    'S169': { points: 58, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 4, likesReceived: 14 },
+    'S170': { points: 67, badges: ['茶座新人','活跃讨论者','深度思考者'], postsCount: 2, likesReceived: 10 },
+    'S171': { points: 75, badges: ['茶座新人','活跃讨论者'], postsCount: 0, likesReceived: 28 },
+    'S172': { points: 116, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 4, likesReceived: 20 },
+    'S173': { points: 62, badges: ['茶座新人','活跃讨论者'], postsCount: 2, likesReceived: 27 },
+    'S174': { points: 45, badges: ['茶座新人'], postsCount: 1, likesReceived: 1 },
+    'S175': { points: 77, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 1, likesReceived: 21 },
+    'S176': { points: 14, badges: ['茶座新人'], postsCount: 5, likesReceived: 16 },
+    'S177': { points: 64, badges: ['茶座新人','活跃讨论者'], postsCount: 4, likesReceived: 14 },
+    'S178': { points: 56, badges: ['茶座新人','活跃讨论者','深度思考者'], postsCount: 5, likesReceived: 2 },
+    'S179': { points: 55, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 0 },
+    'S180': { points: 174, badges: ['茶座新人','活跃讨论者','学术达人','热心助人'], postsCount: 3, likesReceived: 0 },
+    'S181': { points: 64, badges: ['茶座新人','活跃讨论者','深度思考者'], postsCount: 2, likesReceived: 13 },
+    'S182': { points: 27, badges: ['茶座新人'], postsCount: 4, likesReceived: 30 },
+    'S183': { points: 147, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 3, likesReceived: 18 },
+    'S184': { points: 14, badges: ['茶座新人'], postsCount: 2, likesReceived: 18 },
+    'S185': { points: 73, badges: ['茶座新人','活跃讨论者'], postsCount: 2, likesReceived: 11 },
+    'S186': { points: 72, badges: ['茶座新人','活跃讨论者'], postsCount: 4, likesReceived: 9 },
+    'S187': { points: 36, badges: ['茶座新人','文献达人'], postsCount: 1, likesReceived: 22 },
+    'S188': { points: 71, badges: ['茶座新人','活跃讨论者','深度思考者'], postsCount: 3, likesReceived: 27 },
+    'S189': { points: 155, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 4, likesReceived: 11 },
+    'S190': { points: 20, badges: ['茶座新人','深度思考者'], postsCount: 4, likesReceived: 5 },
+    'S191': { points: 50, badges: ['茶座新人'], postsCount: 5, likesReceived: 2 },
+    'S192': { points: 44, badges: ['茶座新人','深度思考者'], postsCount: 5, likesReceived: 12 },
+    'S193': { points: 38, badges: ['茶座新人','深度思考者'], postsCount: 3, likesReceived: 16 },
+    'S194': { points: 43, badges: ['茶座新人'], postsCount: 1, likesReceived: 28 },
+    'S195': { points: 66, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 0 },
+    'S196': { points: 54, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 3, likesReceived: 5 },
+    'S197': { points: 54, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 0 },
+    'S198': { points: 199, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 3, likesReceived: 21 },
+    'S199': { points: 60, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 12 },
+    'S200': { points: 56, badges: ['茶座新人','活跃讨论者'], postsCount: 0, likesReceived: 20 },
+    'S201': { points: 28, badges: ['茶座新人','文献达人'], postsCount: 2, likesReceived: 29 },
+    'S202': { points: 70, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 0 },
+    'S203': { points: 46, badges: ['茶座新人'], postsCount: 0, likesReceived: 16 },
+    'S204': { points: 15, badges: ['茶座新人'], postsCount: 3, likesReceived: 30 },
+    'S205': { points: 34, badges: ['茶座新人','文献达人'], postsCount: 5, likesReceived: 10 },
+    'S206': { points: 35, badges: ['茶座新人'], postsCount: 5, likesReceived: 23 },
+    'S207': { points: 13, badges: ['茶座新人','深度思考者'], postsCount: 1, likesReceived: 20 },
+    'S208': { points: 28, badges: ['茶座新人'], postsCount: 0, likesReceived: 18 },
+    'S209': { points: 45, badges: ['茶座新人'], postsCount: 3, likesReceived: 17 },
+    'S210': { points: 194, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 2, likesReceived: 18 },
+    'S211': { points: 15, badges: ['茶座新人'], postsCount: 1, likesReceived: 24 },
+    'S212': { points: 47, badges: ['茶座新人','文献达人'], postsCount: 1, likesReceived: 21 },
+    'S213': { points: 61, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 3, likesReceived: 10 },
+    'S214': { points: 75, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 23 },
+    'S215': { points: 33, badges: ['茶座新人'], postsCount: 4, likesReceived: 27 },
+    'S216': { points: 103, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 0, likesReceived: 10 },
+    'S217': { points: 109, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 0, likesReceived: 20 }
+    };
+    localStorage.setItem('sanguofa_tea_stats', JSON.stringify(teaDemoStats));
+  }
 }
 initNewModulesDemoData();
 
