@@ -2747,44 +2747,6 @@ input, textarea, select { font-family: inherit; outline: none; }
   30% { opacity: 1; }
 }
 
-/* === 首页迎宾小际（相对整个 hero 横幅右上角定位，不遮挡居中标题）=== */
-.hero-xiaoji-mascot {
-  position: absolute;
-  top: 24px;
-  right: 32px;
-  left: auto;
-  z-index: 5;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-.hero-xiaoji-mascot img {
-  width: 72px;
-  height: 72px;
-  object-fit: contain;
-  filter: drop-shadow(0 6px 10px rgba(0,0,0,0.3));
-  animation: xiaoji-float 3s ease-in-out infinite;
-}
-.hero-xiaoji-bubble {
-  background: #fff;
-  color: #1a3a5c;
-  font-size: 0.76rem;
-  line-height: 1.35;
-  padding: 6px 10px;
-  border-radius: 12px 12px 12px 2px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.18);
-  white-space: nowrap;
-  margin-top: 6px;
-}
-@keyframes xiaoji-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-8px); }
-}
-@media (max-width: 600px) {
-  .hero-xiaoji-mascot { top: 10px; right: 10px; }
-  .hero-xiaoji-mascot img { width: 46px; height: 46px; }
-  .hero-xiaoji-bubble { font-size: 0.62rem; padding: 4px 7px; white-space: normal; max-width: 100px; }
-}
 
 /* === Notification Toast === */
 .toast {
@@ -7790,10 +7752,6 @@ function renderDashboard() {
         <div class="hero-corner hero-corner-br"><svg viewBox="0 0 40 40"><path d="M0 0 L20 0 L20 3 L3 3 L3 20 L0 20 Z" fill="var(--accent)"/></svg></div>
         
         <div class="hero-content">
-          <div class="hero-xiaoji-mascot">
-            <img src="assets/xiaoji/main.png" alt="小际">
-            <div class="hero-xiaoji-bubble">嗨，我是小际！<br>一起学国际法吧 🕊️</div>
-          </div>
           <div class="hero-title-wrap">
             <h1 class="hero-title">三国法教学智能体</h1>
           </div>
