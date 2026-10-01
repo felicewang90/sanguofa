@@ -12153,6 +12153,53 @@ function showToast(message) {
 // === 启动应用 ===
 document.addEventListener('DOMContentLoaded', function() { initApp(); });
 
+// ====== Supabase 免费项目保活心跳（防7天无活动自动暂停）=====
+// 策略：页面加载后每23小时调用一次轻量 API 重置计时器，
+// 同一浏览器每天最多1次，避免浪费请求。
+(function(){
+  var HEARTBEAT_KEY = 'sanguofa_supabase_heartbeat_last';
+  var HEARTBEAT_INTERVAL_MS = 23 * 60 * 60 * 1000; // 23 小时
+  function doHeartbeat(){
+    try {
+      var url = SUPABASE_URL + '/rest/v1/';
+      var opts = {
+        method: 'GET',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+          'Prefer': 'count=exact'
+        },
+        mode: 'no-cors'
+      };
+      fetch(url, opts).then(function(){
+        localStorage.setItem(HEARTBEAT_KEY, String(Date.now()));
+      }).catch(function(){ /* 忽略网络错误 */ });
+    } catch(e) {}
+  }
+  function scheduleHeartbeat(){
+    var last = parseInt(localStorage.getItem(HEARTBEAT_KEY) || '0', 10) || 0;
+    var elapsed = Date.now() - last;
+    if (elapsed >= HEARTBEAT_INTERVAL_MS) {
+      doHeartbeat();
+    } else {
+      var wait = HEARTBEAT_INTERVAL_MS - elapsed;
+      setTimeout(function(){ doHeartbeat(); }, wait);
+    }
+    // 每日再检查一次，覆盖长时间开着页面的情况
+    setInterval(function(){
+      var last2 = parseInt(localStorage.getItem(HEARTBEAT_KEY) || '0', 10) || 0;
+      if (Date.now() - last2 >= HEARTBEAT_INTERVAL_MS) doHeartbeat();
+    }, 60 * 60 * 1000); // 每小时检查，到点才打
+  }
+  // SDK 加载后启动
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(scheduleHeartbeat, 1500);
+  } else {
+    window.addEventListener('load', function(){ setTimeout(scheduleHeartbeat, 1500); });
+  }
+})();
+
 
 // ========================================
 // 知识库问答 - 真实BM25搜索
