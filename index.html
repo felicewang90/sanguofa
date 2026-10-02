@@ -7266,9 +7266,8 @@ async function handleSupabaseLogin(e) {
   }
   localStorage.setItem('sanguofa_student_registry', JSON.stringify(registry));
 
-  
-  // Close login modal
-  _sbTrackEvent('login', '系统', { name: name, role: role });
+  // Close login modal and switch to main app
+  try { _sbTrackEvent('login', '系统', { name: currentUser.name, role: currentUser.role }); } catch(e) { console.warn('[Track] login event error:', e); }
   closeLoginModal();
   startApp();
   return false;
