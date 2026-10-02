@@ -6993,12 +6993,13 @@ function switchAuthTab(tab) {
 
 // === Initialize demo data for demo accounts ===
 function initDemoData(user) {
+  try {
   if (!user || !user.studentId) return;
   var sid = user.studentId;
   
   // 版本升级时清除旧缓存，确保重新生成演示数据
   var initVer = localStorage.getItem('sanguofa_init_version') || '';
-  if (initVer !== 'v6') {
+  if (initVer !== 'v7') {
     localStorage.removeItem('sanguofa_debate_debates');
     localStorage.removeItem('sanguofa_teacher_materials');
     localStorage.removeItem('sanguofa_student_S2024001_records');
@@ -7006,7 +7007,7 @@ function initDemoData(user) {
     localStorage.removeItem('sanguofa_student_S2024001_quiz');
     localStorage.removeItem('demo_data_loaded');
     AppState.errorBook = [];
-    localStorage.setItem('sanguofa_init_version', 'v6');
+    localStorage.setItem('sanguofa_init_version', 'v7');
   }
   
   var favKey = 'sanguofa_student_' + sid + '_favorites';
@@ -7078,7 +7079,9 @@ function initDemoData(user) {
       {id:9005,name:'CISG根本违约',sideA:'买方：主张根本违约，有权宣告合同无效',sideB:'卖方：主张不构成根本违约，可通过补救措施解决'},
       {id:9006,name:'WTO争端解决',sideA:'申诉方：反倾销措施违反WTO规则',sideB:'被诉方：反倾销调查程序合法'}
     ];
-    var allIds = []; for (var di = 1; di <= 20; di++) allIds.push('DEMO2024' + String(di).padStart(3,'0'));
+    var allIds = [];
+    for (var di = 1; di <= 20; di++) allIds.push('DEMO2024' + String(di).padStart(3,'0'));
+    for (var di = 21; di <= 217; di++) allIds.push('S' + String(di).padStart(3,'0'));
     var bt = 1784304000000;
     for (var di = 0; di < dCases.length; di++) {
       var dc = dCases[di], dt = bt + di * 86400000 * 12;
@@ -7156,6 +7159,8 @@ function initDemoData(user) {
         {question:'关于反补贴，根据SCM协定第3条的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'A',explanation:'禁止性补贴包括出口补贴和进口替代补贴。本题考查反补贴的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'反补贴',subject:'economic'},
         {question:'关于条约解释，根据VCLT第31条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'D',explanation:'条约应依其用语按上下文并参照条约目的和宗旨善意解释。',knowledgePoint:'条约解释',subject:'public'}
       ];
+      // 持久化错题本到localStorage
+      localStorage.setItem('sanguofa_student_S2024001_errors', JSON.stringify(AppState.errorBook));
     }
 
     // 初始化学习记录
@@ -7231,6 +7236,7 @@ function initDemoData(user) {
       if (updated) localStorage.setItem(debateKey, JSON.stringify(debates));
     }
   }
+  } catch(e) { console.warn('[initDemoData] error:', e); }
 }
 
 // Supabase 登录
@@ -7282,7 +7288,7 @@ async function handleSupabaseLogin(e) {
   AppState.isTeacherMode = (currentUser.role === 'teacher');
 
   // Initialize demo data (favorites, debates) for demo accounts
-  initDemoData(currentUser);
+  try { initDemoData(currentUser); } catch(e) { console.warn('[DemoData] init error in login:', e); }
 
   // Record in teacher students registry
   var registry = [];
@@ -7491,6 +7497,13 @@ function renderProfile() {
   
   // Read error book
   var errors = AppState.errorBook || [];
+  if (!errors || errors.length === 0) {
+    try {
+      var errRaw = localStorage.getItem('sanguofa_student_' + studentId + '_errors');
+      if (errRaw) errors = JSON.parse(errRaw);
+    } catch(e) {}
+  }
+  if (!errors) errors = [];
   
   // Read favorites count
   var favCount = getFavorites().length;
@@ -10845,12 +10858,12 @@ function getAllStudentsData() {
   
   // 1. Always ensure demo students exist
   var demoVersion = localStorage.getItem('sanguofa_demo_version') || '';
-  if (demoVersion !== 'v4') {
+  if (demoVersion !== 'v5') {
     localStorage.removeItem('sanguofa_demo_students');
     localStorage.removeItem('sanguofa_debate_debates');
     localStorage.removeItem('sanguofa_teacher_materials');
     localStorage.removeItem('sanguofa_tea_posts');
-    localStorage.setItem('sanguofa_demo_version', 'v4');
+    localStorage.setItem('sanguofa_demo_version', 'v5');
   }
   // Always regenerate to ensure latest names
   var genStudents = generateMockStudents();
