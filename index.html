@@ -6999,7 +6999,7 @@ function initDemoData(user) {
   
   // 版本升级时清除旧缓存，确保重新生成演示数据
   var initVer = localStorage.getItem('sanguofa_init_version') || '';
-  if (initVer !== 'v8') {
+  if (initVer !== 'v9') {
     localStorage.removeItem('sanguofa_debate_debates');
     localStorage.removeItem('sanguofa_teacher_materials');
     localStorage.removeItem('sanguofa_student_S2024001_records');
@@ -7007,7 +7007,7 @@ function initDemoData(user) {
     localStorage.removeItem('sanguofa_student_S2024001_quiz');
     localStorage.removeItem('demo_data_loaded');
     AppState.errorBook = [];
-    localStorage.setItem('sanguofa_init_version', 'v8');
+    localStorage.setItem('sanguofa_init_version', 'v9');
   }
   
   var favKey = 'sanguofa_student_' + sid + '_favorites';
@@ -7105,59 +7105,13 @@ function initDemoData(user) {
 
   // === 为学生账号初始化学习记录、错题本、进度数据 ===
   if (sid === 'S2024001') {
-    // 初始化错题本（50条）
+    // 初始化错题本（4条精选）
     if (!AppState.errorBook || AppState.errorBook.length === 0) {
       AppState.errorBook = [
-        {question:'关于条约保留制度，根据VCLT第19条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'C',explanation:'根据《维也纳条约法公约》第19条，保留与条约目的和宗旨不符时无效。本题考查条约保留制度的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'条约保留制度',subject:'public'},
-        {question:'关于海洋法，根据UNCLOS第57条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'B',explanation:'根据UNCLOS第57条，专属经济区从领海基线量起不超过200海里。本题考查海洋法的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'海洋法',subject:'public'},
-        {question:'关于国家主权，根据联合国宪章第2条的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'D',explanation:'国家主权平等原则是国际法基本原则的核心。本题考查国家主权的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国家主权',subject:'public'},
-        {question:'关于外交特权，根据维也纳外交关系公约的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'B',explanation:'外交代表享有刑事管辖豁免和人身不可侵犯权。本题考查外交特权的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'外交特权',subject:'public'},
-        {question:'关于领海制度，根据UNCLOS第2-3条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'A',explanation:'领海宽度不超过12海里，外国船舶享有无害通过权。本题考查领海制度的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'领海制度',subject:'public'},
-        {question:'关于国际法渊源，根据国际法院规约第38条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'C',explanation:'国际条约、国际习惯和一般法律原则是国际法主要渊源。本题考查国际法渊源的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际法渊源',subject:'public'},
-        {question:'关于国家责任，根据国家责任条款草案的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'A',explanation:'国家对其国际不法行为承担国际责任。本题考查国家责任的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国家责任',subject:'public'},
-        {question:'关于领土制度，根据国际法基本理论的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'D',explanation:'领土取得方式包括先占、时效、添附、割让和征服。本题考查领土制度的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'领土制度',subject:'public'},
-        {question:'关于联合国制度，根据联合国宪章第24条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'B',explanation:'安理会对维持国际和平与安全负主要责任。本题考查联合国制度的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'联合国制度',subject:'public'},
-        {question:'关于条约法，根据VCLT第34条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'D',explanation:'条约对第三方不创设权利义务。本题考查条约法的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'条约法',subject:'public'},
-        {question:'关于管辖权，根据国际法管辖权理论的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'B',explanation:'属地管辖是最基本的管辖权形式。本题考查管辖权的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'管辖权',subject:'public'},
-        {question:'关于国际争端，根据联合国宪章第33条的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'D',explanation:'和平解决国际争端是国际法基本原则。本题考查国际争端的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际争端',subject:'public'},
-        {question:'关于海洋划界，根据国际法院判例的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'B',explanation:'等距离/相关情况原则是海洋划界的重要方法。本题考查海洋划界的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'海洋划界',subject:'public'},
-        {question:'关于外层空间，根据外层空间条约第1-2条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'A',explanation:'外层空间不得据为己有，为全人类利益服务。本题考查外层空间的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'外层空间',subject:'public'},
-        {question:'关于国际人权法，根据ICCPR的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'C',explanation:'公民权利和政治权利国际公约保障基本人权。本题考查国际人权法的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际人权法',subject:'public'},
-        {question:'关于国际环境法，根据里约宣言原则7的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'A',explanation:'共同但有区别的责任原则是国际环境法基本原则。本题考查国际环境法的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际环境法',subject:'public'},
-        {question:'关于武装冲突法，根据日内瓦公约体系的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'D',explanation:'区分原则是国际人道法核心原则。本题考查武装冲突法的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'武装冲突法',subject:'public'},
-        {question:'关于国际私法冲突规范，根据涉外民事关系法律适用法第41条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'B',explanation:'最密切联系原则是当事人未选择准据法时的补充规则。本题考查国际私法冲突规范的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际私法冲突规范',subject:'private'},
-        {question:'关于国际商事仲裁，根据纽约公约的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'D',explanation:'纽约公约要求各缔约国承认和执行外国仲裁裁决。本题考查国际商事仲裁的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际商事仲裁',subject:'private'},
-        {question:'关于法律适用，根据法律适用法第36条的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'C',explanation:'不动产物权适用不动产所在地法律。本题考查法律适用的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'法律适用',subject:'private'},
-        {question:'关于管辖权，根据民事诉讼法第34条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'B',explanation:'协议管辖需满足书面形式和实际联系要求。本题考查管辖权的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'管辖权',subject:'private'},
-        {question:'关于外国法查明，根据法律适用法第10条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'D',explanation:'外国法律不能查明时适用中华人民共和国法律。本题考查外国法查明的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'外国法查明',subject:'private'},
-        {question:'关于司法协助，根据民事诉讼法第276条的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'C',explanation:'司法协助应基于条约或互惠原则。本题考查司法协助的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'司法协助',subject:'private'},
-        {question:'关于婚姻法律适用，根据法律适用法第21条的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'A',explanation:'结婚条件适用当事人共同经常居所地法律。本题考查婚姻法律适用的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'婚姻法律适用',subject:'private'},
-        {question:'关于合同法律适用，根据法律适用法第41条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'C',explanation:'当事人可以协议选择合同适用的法律。本题考查合同法律适用的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'合同法律适用',subject:'private'},
-        {question:'关于反致制度，根据法律适用法第9条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'B',explanation:'我国原则上不接受反致。本题考查反致制度的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'反致制度',subject:'private'},
-        {question:'关于知识产权，根据法律适用法第48条的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'D',explanation:'知识产权的归属和保护适用被请求保护地法律。本题考查知识产权的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'知识产权',subject:'private'},
-        {question:'关于继承法律适用，根据法律适用法第31条的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'B',explanation:'法定继承适用被继承人死亡时经常居所地法律。本题考查继承法律适用的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'继承法律适用',subject:'private'},
-        {question:'关于代理法律适用，根据法律适用法第16条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'A',explanation:'代理适用代理行为地法律。本题考查代理法律适用的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'代理法律适用',subject:'private'},
-        {question:'关于信托法律适用，根据法律适用法第17条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'C',explanation:'当事人可以协议选择信托适用的法律。本题考查信托法律适用的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'信托法律适用',subject:'private'},
-        {question:'关于票据法律适用，根据票据法第97条的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'B',explanation:'票据行为适用行为地法律。本题考查票据法律适用的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'票据法律适用',subject:'private'},
-        {question:'关于运输合同，根据法律适用法第41条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'A',explanation:'运输合同适用承运人经常居所地法律。本题考查运输合同的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'运输合同',subject:'private'},
-        {question:'关于产品责任，根据法律适用法第45条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'C',explanation:'产品责任适用被侵权人经常居所地法律。本题考查产品责任的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'产品责任',subject:'private'},
-        {question:'关于WTO反倾销规则，根据反倾销协定第2.4.2条的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'A',explanation:'加权平均对加权平均法是确定倾销幅度的正常方法。本题考查WTO反倾销规则的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'WTO反倾销规则',subject:'economic'},
-        {question:'关于WTO国民待遇，根据GATT第3条的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'D',explanation:'进口产品在国内税方面应享受不低于国内产品的待遇。本题考查WTO国民待遇的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'WTO国民待遇',subject:'economic'},
-        {question:'关于CISG根本违约，根据CISG第25条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'B',explanation:'根本违约实质上剥夺另一方依合同有权期待得到的东西。本题考查CISG根本违约的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'CISG根本违约',subject:'economic'},
-        {question:'关于投资保护，根据习惯国际法的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'D',explanation:'征收应给予及时充分有效补偿。本题考查投资保护的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'投资保护',subject:'economic'},
-        {question:'关于知识产权TRIPS，根据TRIPS协定的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'C',explanation:'TRIPS协定最低保护标准包括版权商标专利等。本题考查知识产权TRIPS的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'知识产权TRIPS',subject:'economic'},
-        {question:'关于WTO最惠国待遇，根据GATT第1条的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'A',explanation:'成员应无条件给予其他成员最惠国待遇。本题考查WTO最惠国待遇的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'WTO最惠国待遇',subject:'economic'},
-        {question:'关于争端解决，根据DSU第16条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'C',explanation:'WTO争端解决机制实行反向协商一致原则。本题考查争端解决的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'争端解决',subject:'economic'},
-        {question:'关于服务贸易，根据GATS第2条的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'C',explanation:'GATS最惠国待遇允许成员列出豁免清单。本题考查服务贸易的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'服务贸易',subject:'economic'},
-        {question:'关于国际支付，根据UCP600的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'A',explanation:'信用证独立性原则要求银行独立审查单据。本题考查国际支付的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际支付',subject:'economic'},
-        {question:'关于国际贸易术语，根据Incoterms 2020的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'C',explanation:'FOB术语下风险在货物越过船舷时转移。本题考查国际贸易术语的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际贸易术语',subject:'economic'},
-        {question:'关于国际税法，根据OECD范本的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'B',explanation:'避免双重征税的主要方法是税收协定。本题考查国际税法的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际税法',subject:'economic'},
-        {question:'关于海上保险，根据海上保险法的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'D',explanation:'海上保险适用最大诚信原则。本题考查海上保险的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'海上保险',subject:'economic'},
-        {question:'关于国际运输，根据海牙规则的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'B',explanation:'承运人对货物灭失损害的赔偿限额按件或重量计算。本题考查国际运输的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际运输',subject:'economic'},
-        {question:'关于国际融资，根据国际融资法的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'A',explanation:'国际银团贷款中各贷款人按份额承担责任。本题考查国际融资的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际融资',subject:'economic'},
-        {question:'关于出口管制，根据GATT第21条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'C',explanation:'出口管制措施应符合WTO安全例外条款。本题考查出口管制的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'出口管制',subject:'economic'},
-        {question:'关于反补贴，根据SCM协定第3条的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'A',explanation:'禁止性补贴包括出口补贴和进口替代补贴。本题考查反补贴的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'反补贴',subject:'economic'},
-        {question:'关于条约解释，根据VCLT第31条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'D',explanation:'条约应依其用语按上下文并参照条约目的和宗旨善意解释。',knowledgePoint:'条约解释',subject:'public'}
+        {question:'关于条约保留制度，根据VCLT第19条，缔约国在签署条约时提出保留，其他缔约国反对该保留但未反对条约在两国间生效，该保留的法律效果是什么？',yourAnswer:'保留自动生效，无需其他国家同意',correctAnswer:'C. 在保留国与反对国之间，保留所涉条款在保留范围内不适用',explanation:'根据VCLT第20-21条，一国反对保留但未反对条约生效时，保留所涉条款在两国间不适用。这体现了条约保留的"相互性"原则——保留改变的是条款在两国间的适用，而非条约整体效力。',knowledgePoint:'条约保留制度',subject:'public'},
+        {question:'在涉外合同纠纷中，当事人未协议选择合同准据法，根据《涉外民事关系法律适用法》第41条，应如何确定适用的法律？',yourAnswer:'适用合同签订地法律',correctAnswer:'B. 适用履行义务最能体现该合同特征的一方当事人经常居所地法律或者其他与该合同有最密切联系的法律',explanation:'最密切联系原则是我国国际私法的核心连结点。对于合同纠纷，当事人未选择准据法时，适用最密切联系原则确定，具体表现为"特征性履行方"的经常居所地法。这比"合同签订地"更能体现合同的本质特征。',knowledgePoint:'国际私法冲突规范',subject:'private'},
+        {question:'根据CISG第25条，下列哪种情形构成"根本违约"？',yourAnswer:'卖方延迟交货3天',correctAnswer:'D. 卖方交付的货物与合同约定严重不符，买方无法实现合同目的',explanation:'CISG第25条规定，根本违约是指一方违反合同的结果使另一方蒙受损害，以致实质上剥夺了其依合同有权期待得到的东西。延迟3天通常不构成根本违约，而货物严重不符致使合同目的落空则属于典型根本违约。',knowledgePoint:'CISG根本违约',subject:'economic'},
+        {question:'根据UNCLOS第57条关于专属经济区(EEZ)的制度，沿海国在EEZ内享有的主权权利不包括下列哪项？',yourAnswer:'对人工岛屿建造的管辖权',correctAnswer:'C. 对其他国家铺设海底电缆的禁止权',explanation:'UNCLOS第58条规定，在EEZ内所有国家享有铺设海底电缆和管道的自由。沿海国在EEZ享有的是对自然资源（生物和非生物）的主权权利，以及对人工岛屿、海洋科研、环保的管辖权，但不得妨碍他国航行和铺设电缆的自由。',knowledgePoint:'海洋法',subject:'public'}
       ];
       // 持久化错题本到localStorage
       localStorage.setItem('sanguofa_student_S2024001_errors', JSON.stringify(AppState.errorBook));
@@ -7495,15 +7449,20 @@ function renderProfile() {
     if (rawRecords) records = JSON.parse(rawRecords);
   } catch(e) {}
   
-  // Read error book
-  var errors = AppState.errorBook || [];
-  if (!errors || errors.length === 0) {
+  // 每次渲染时尝试从localStorage恢复错题本（防止页面刷新后AppState丢失）
+  if (!AppState.errorBook || AppState.errorBook.length === 0) {
+    var currentStudentId = AppState.currentStudent || 'S2024001';
     try {
-      var errRaw = localStorage.getItem('sanguofa_student_' + studentId + '_errors');
-      if (errRaw) errors = JSON.parse(errRaw);
+      var stored = localStorage.getItem('sanguofa_student_' + currentStudentId + '_errors');
+      if (stored) {
+        var parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          AppState.errorBook = parsed;
+        }
+      }
     } catch(e) {}
   }
-  if (!errors) errors = [];
+  var errors = AppState.errorBook || [];
   
   // Read favorites count
   var favCount = getFavorites().length;
@@ -10858,12 +10817,12 @@ function getAllStudentsData() {
   
   // 1. Always ensure demo students exist
   var demoVersion = localStorage.getItem('sanguofa_demo_version') || '';
-  if (demoVersion !== 'v6') {
+  if (demoVersion !== 'v7') {
     localStorage.removeItem('sanguofa_demo_students');
     localStorage.removeItem('sanguofa_debate_debates');
     localStorage.removeItem('sanguofa_teacher_materials');
     localStorage.removeItem('sanguofa_tea_posts');
-    localStorage.setItem('sanguofa_demo_version', 'v6');
+    localStorage.setItem('sanguofa_demo_version', 'v7');
   }
   // Always regenerate to ensure latest names
   var genStudents = generateMockStudents();
