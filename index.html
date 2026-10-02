@@ -4703,7 +4703,6 @@ button:active:not(:disabled),
       <div class="page-view" id="page-discussion"></div>
       
       
-      <div class="page-view" id="page-video"></div>
       
       
       <div class="page-view" id="page-classroom"></div>
@@ -6999,7 +6998,7 @@ function initDemoData(user) {
   
   // 版本升级时清除旧缓存，确保重新生成演示数据
   var initVer = localStorage.getItem('sanguofa_init_version') || '';
-  if (initVer !== 'v5') {
+  if (initVer !== 'v6') {
     localStorage.removeItem('sanguofa_debate_debates');
     localStorage.removeItem('sanguofa_teacher_materials');
     localStorage.removeItem('sanguofa_student_S2024001_records');
@@ -7007,7 +7006,7 @@ function initDemoData(user) {
     localStorage.removeItem('sanguofa_student_S2024001_quiz');
     localStorage.removeItem('demo_data_loaded');
     AppState.errorBook = [];
-    localStorage.setItem('sanguofa_init_version', 'v5');
+    localStorage.setItem('sanguofa_init_version', 'v6');
   }
   
   var favKey = 'sanguofa_student_' + sid + '_favorites';
@@ -7103,14 +7102,59 @@ function initDemoData(user) {
 
   // === 为学生账号初始化学习记录、错题本、进度数据 ===
   if (sid === 'S2024001') {
-    // 初始化错题本
+    // 初始化错题本（50条）
     if (!AppState.errorBook || AppState.errorBook.length === 0) {
       AppState.errorBook = [
-        {question:'根据《维也纳条约法公约》第19条，下列哪项不属于条约保留无效的情形？',yourAnswer:'C',correctAnswer:'D',explanation:'根据VCLT第19条，保留无效的情形包括：(a)条约明文禁止保留；(b)保留不在条约允许的保留范围内；(c)保留与条约目的和宗旨不符。D选项"与国际惯例法冲突"不是VCLT规定的保留无效情形。',knowledgePoint:'条约保留制度',subject:'public'},
-        {question:'在国际民事关系中，关于"最密切联系原则"的适用，下列说法正确的是？',yourAnswer:'B',correctAnswer:'A',explanation:'最密切联系原则是当事人未选择准据法时的补充规则。根据《涉外民事关系法律适用法》第41条，没有选择的，适用履行义务最能体现该合同特征的一方当事人经常居所地法律或其他与该合同有最密切联系的法律。',knowledgePoint:'国际私法冲突规范',subject:'private'},
-        {question:'根据WTO《反倾销协定》，下列哪项属于确定倾销幅度的正确方法？',yourAnswer:'D',correctAnswer:'A',explanation:'根据《反倾销协定》第2.4.2条，正常情况下应当将加权平均出口价格与加权平均国内价格进行比较（即"加权平均对加权平均"法）。"归零法"已被上诉机构在US—Zeroing案中裁定违法。',knowledgePoint:'WTO反倾销规则',subject:'economic'},
-        {question:'根据《联合国海洋法公约》，专属经济区的宽度从领海基线量起不超过多少海里？',yourAnswer:'C',correctAnswer:'B',explanation:'根据UNCLOS第57条，专属经济区从领海基线量起不超过200海里。领海宽度不超过12海里，专属经济区是在领海之外并邻接领海的区域。',knowledgePoint:'海洋法',subject:'public'},
-        {question:'《承认及执行外国仲裁裁决公约》（纽约公约）的核心内容是什么？',yourAnswer:'B',correctAnswer:'A',explanation:'纽约公约的核心内容是要求各缔约国承认和执行在其他缔约国作出的仲裁裁决，除非存在公约第5条规定的有限拒绝执行的情形。这为国际商事仲裁裁决的跨国执行提供了统一的法律框架。',knowledgePoint:'国际商事仲裁',subject:'private'}
+        {question:'关于条约保留制度，根据VCLT第19条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'C',explanation:'根据《维也纳条约法公约》第19条，保留与条约目的和宗旨不符时无效。本题考查条约保留制度的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'条约保留制度',subject:'public'},
+        {question:'关于海洋法，根据UNCLOS第57条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'B',explanation:'根据UNCLOS第57条，专属经济区从领海基线量起不超过200海里。本题考查海洋法的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'海洋法',subject:'public'},
+        {question:'关于国家主权，根据联合国宪章第2条的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'D',explanation:'国家主权平等原则是国际法基本原则的核心。本题考查国家主权的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国家主权',subject:'public'},
+        {question:'关于外交特权，根据维也纳外交关系公约的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'B',explanation:'外交代表享有刑事管辖豁免和人身不可侵犯权。本题考查外交特权的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'外交特权',subject:'public'},
+        {question:'关于领海制度，根据UNCLOS第2-3条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'A',explanation:'领海宽度不超过12海里，外国船舶享有无害通过权。本题考查领海制度的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'领海制度',subject:'public'},
+        {question:'关于国际法渊源，根据国际法院规约第38条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'C',explanation:'国际条约、国际习惯和一般法律原则是国际法主要渊源。本题考查国际法渊源的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际法渊源',subject:'public'},
+        {question:'关于国家责任，根据国家责任条款草案的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'A',explanation:'国家对其国际不法行为承担国际责任。本题考查国家责任的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国家责任',subject:'public'},
+        {question:'关于领土制度，根据国际法基本理论的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'D',explanation:'领土取得方式包括先占、时效、添附、割让和征服。本题考查领土制度的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'领土制度',subject:'public'},
+        {question:'关于联合国制度，根据联合国宪章第24条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'B',explanation:'安理会对维持国际和平与安全负主要责任。本题考查联合国制度的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'联合国制度',subject:'public'},
+        {question:'关于条约法，根据VCLT第34条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'D',explanation:'条约对第三方不创设权利义务。本题考查条约法的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'条约法',subject:'public'},
+        {question:'关于管辖权，根据国际法管辖权理论的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'B',explanation:'属地管辖是最基本的管辖权形式。本题考查管辖权的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'管辖权',subject:'public'},
+        {question:'关于国际争端，根据联合国宪章第33条的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'D',explanation:'和平解决国际争端是国际法基本原则。本题考查国际争端的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际争端',subject:'public'},
+        {question:'关于海洋划界，根据国际法院判例的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'B',explanation:'等距离/相关情况原则是海洋划界的重要方法。本题考查海洋划界的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'海洋划界',subject:'public'},
+        {question:'关于外层空间，根据外层空间条约第1-2条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'A',explanation:'外层空间不得据为己有，为全人类利益服务。本题考查外层空间的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'外层空间',subject:'public'},
+        {question:'关于国际人权法，根据ICCPR的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'C',explanation:'公民权利和政治权利国际公约保障基本人权。本题考查国际人权法的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际人权法',subject:'public'},
+        {question:'关于国际环境法，根据里约宣言原则7的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'A',explanation:'共同但有区别的责任原则是国际环境法基本原则。本题考查国际环境法的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际环境法',subject:'public'},
+        {question:'关于武装冲突法，根据日内瓦公约体系的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'D',explanation:'区分原则是国际人道法核心原则。本题考查武装冲突法的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'武装冲突法',subject:'public'},
+        {question:'关于国际私法冲突规范，根据涉外民事关系法律适用法第41条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'B',explanation:'最密切联系原则是当事人未选择准据法时的补充规则。本题考查国际私法冲突规范的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际私法冲突规范',subject:'private'},
+        {question:'关于国际商事仲裁，根据纽约公约的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'D',explanation:'纽约公约要求各缔约国承认和执行外国仲裁裁决。本题考查国际商事仲裁的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际商事仲裁',subject:'private'},
+        {question:'关于法律适用，根据法律适用法第36条的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'C',explanation:'不动产物权适用不动产所在地法律。本题考查法律适用的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'法律适用',subject:'private'},
+        {question:'关于管辖权，根据民事诉讼法第34条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'B',explanation:'协议管辖需满足书面形式和实际联系要求。本题考查管辖权的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'管辖权',subject:'private'},
+        {question:'关于外国法查明，根据法律适用法第10条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'D',explanation:'外国法律不能查明时适用中华人民共和国法律。本题考查外国法查明的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'外国法查明',subject:'private'},
+        {question:'关于司法协助，根据民事诉讼法第276条的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'C',explanation:'司法协助应基于条约或互惠原则。本题考查司法协助的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'司法协助',subject:'private'},
+        {question:'关于婚姻法律适用，根据法律适用法第21条的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'A',explanation:'结婚条件适用当事人共同经常居所地法律。本题考查婚姻法律适用的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'婚姻法律适用',subject:'private'},
+        {question:'关于合同法律适用，根据法律适用法第41条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'C',explanation:'当事人可以协议选择合同适用的法律。本题考查合同法律适用的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'合同法律适用',subject:'private'},
+        {question:'关于反致制度，根据法律适用法第9条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'B',explanation:'我国原则上不接受反致。本题考查反致制度的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'反致制度',subject:'private'},
+        {question:'关于知识产权，根据法律适用法第48条的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'D',explanation:'知识产权的归属和保护适用被请求保护地法律。本题考查知识产权的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'知识产权',subject:'private'},
+        {question:'关于继承法律适用，根据法律适用法第31条的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'B',explanation:'法定继承适用被继承人死亡时经常居所地法律。本题考查继承法律适用的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'继承法律适用',subject:'private'},
+        {question:'关于代理法律适用，根据法律适用法第16条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'A',explanation:'代理适用代理行为地法律。本题考查代理法律适用的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'代理法律适用',subject:'private'},
+        {question:'关于信托法律适用，根据法律适用法第17条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'C',explanation:'当事人可以协议选择信托适用的法律。本题考查信托法律适用的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'信托法律适用',subject:'private'},
+        {question:'关于票据法律适用，根据票据法第97条的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'B',explanation:'票据行为适用行为地法律。本题考查票据法律适用的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'票据法律适用',subject:'private'},
+        {question:'关于运输合同，根据法律适用法第41条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'A',explanation:'运输合同适用承运人经常居所地法律。本题考查运输合同的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'运输合同',subject:'private'},
+        {question:'关于产品责任，根据法律适用法第45条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'C',explanation:'产品责任适用被侵权人经常居所地法律。本题考查产品责任的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'产品责任',subject:'private'},
+        {question:'关于WTO反倾销规则，根据反倾销协定第2.4.2条的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'A',explanation:'加权平均对加权平均法是确定倾销幅度的正常方法。本题考查WTO反倾销规则的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'WTO反倾销规则',subject:'economic'},
+        {question:'关于WTO国民待遇，根据GATT第3条的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'D',explanation:'进口产品在国内税方面应享受不低于国内产品的待遇。本题考查WTO国民待遇的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'WTO国民待遇',subject:'economic'},
+        {question:'关于CISG根本违约，根据CISG第25条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'B',explanation:'根本违约实质上剥夺另一方依合同有权期待得到的东西。本题考查CISG根本违约的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'CISG根本违约',subject:'economic'},
+        {question:'关于投资保护，根据习惯国际法的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'D',explanation:'征收应给予及时充分有效补偿。本题考查投资保护的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'投资保护',subject:'economic'},
+        {question:'关于知识产权TRIPS，根据TRIPS协定的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'C',explanation:'TRIPS协定最低保护标准包括版权商标专利等。本题考查知识产权TRIPS的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'知识产权TRIPS',subject:'economic'},
+        {question:'关于WTO最惠国待遇，根据GATT第1条的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'A',explanation:'成员应无条件给予其他成员最惠国待遇。本题考查WTO最惠国待遇的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'WTO最惠国待遇',subject:'economic'},
+        {question:'关于争端解决，根据DSU第16条的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'C',explanation:'WTO争端解决机制实行反向协商一致原则。本题考查争端解决的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'争端解决',subject:'economic'},
+        {question:'关于服务贸易，根据GATS第2条的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'C',explanation:'GATS最惠国待遇允许成员列出豁免清单。本题考查服务贸易的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'服务贸易',subject:'economic'},
+        {question:'关于国际支付，根据UCP600的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'A',explanation:'信用证独立性原则要求银行独立审查单据。本题考查国际支付的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际支付',subject:'economic'},
+        {question:'关于国际贸易术语，根据Incoterms 2020的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'C',explanation:'FOB术语下风险在货物越过船舷时转移。本题考查国际贸易术语的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际贸易术语',subject:'economic'},
+        {question:'关于国际税法，根据OECD范本的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'B',explanation:'避免双重征税的主要方法是税收协定。本题考查国际税法的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际税法',subject:'economic'},
+        {question:'关于海上保险，根据海上保险法的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'D',explanation:'海上保险适用最大诚信原则。本题考查海上保险的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'海上保险',subject:'economic'},
+        {question:'关于国际运输，根据海牙规则的相关规定，下列说法正确的是？',yourAnswer:'C',correctAnswer:'B',explanation:'承运人对货物灭失损害的赔偿限额按件或重量计算。本题考查国际运输的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际运输',subject:'economic'},
+        {question:'关于国际融资，根据国际融资法的相关规定，下列说法正确的是？',yourAnswer:'D',correctAnswer:'A',explanation:'国际银团贷款中各贷款人按份额承担责任。本题考查国际融资的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'国际融资',subject:'economic'},
+        {question:'关于出口管制，根据GATT第21条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'C',explanation:'出口管制措施应符合WTO安全例外条款。本题考查出口管制的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'出口管制',subject:'economic'},
+        {question:'关于反补贴，根据SCM协定第3条的相关规定，下列说法正确的是？',yourAnswer:'B',correctAnswer:'A',explanation:'禁止性补贴包括出口补贴和进口替代补贴。本题考查反补贴的核心要点，需要结合相关法条进行深入理解。',knowledgePoint:'反补贴',subject:'economic'},
+        {question:'关于条约解释，根据VCLT第31条的相关规定，下列说法正确的是？',yourAnswer:'A',correctAnswer:'D',explanation:'条约应依其用语按上下文并参照条约目的和宗旨善意解释。',knowledgePoint:'条约解释',subject:'public'}
       ];
     }
 
@@ -7141,7 +7185,7 @@ function initDemoData(user) {
     // 初始化学习进度
     var progressKey = 'sanguofa_student_S2024001_progress';
     if (!localStorage.getItem(progressKey)) {
-      var progress = {};
+      var progress = {knowledgePoints:86,caseCount:15,accuracy:91,studyHours:136};
       var caseList = typeof FIXED_CASES !== 'undefined' ? FIXED_CASES : [];
       var scoresList = [91,92,88,95,90,87,93,96,91,85,94,89,86,88,82];
       var baseDate = new Date('2026-09-28T23:59:00+08:00').getTime();
@@ -7685,7 +7729,6 @@ function renderNavbar() {
       <a class="nav-item" data-page="graph" onclick="showPage('graph')">🕸️ 知识图谱</a>
       <a class="nav-item" data-page="classroom" onclick="showPage('classroom')">📡 课堂模式</a>
       <a class="nav-item" data-page="discussion" onclick="showPage('discussion')">☕ 小际茶座</a>
-      <a class="nav-item" data-page="video" onclick="showPage('video')">🎬 视频学习</a>
       <a class="nav-item" data-page="profile" onclick="showPage('profile')" id="profileNavItem" style="${isGuest ? 'display:none' : ''}">个人空间</a>
     </nav>
     <div class="navbar-user">
@@ -10706,23 +10749,67 @@ async function exportSupabaseCSV() {
 
 // === Generate demo students data for teacher panel ===
 function generateMockStudents() {
-  var names = ['田震', '王晓', '谭沁', '张宇康', '杨雅淇', '郑淑玲', '刘莉', '肖吴佩奇', '台俊皓', '顾孔垚',
-               '贺敏', '程行龙', '王诗雨', '王昕妤', '李国', '邓畅', '李敏敏', '熊粤', '时韩', '朱颜'];
+  var names = [
+               '台俊皓', '尹创', '谭金玲', '孙亮亮', '肖仁燮', '喻睿萌', '陈薇', '周奕汝', '陈林佳', '陈文轩',
+               '陈欣悦', '程行龙', '党珮瑜', '邓婉莹', '顾孔垚', '贺嘉乐', '黄茗睿', '黄易', '蒋晨晨', '李辰羲',
+               '李婉婷', '李志伟', '刘莉', '刘宛彤', '卢鸿彬', '马欣怡', '潘云昊', '彭灿', '石梦婕', '王蕾',
+               '王敏静', '王赛文', '王兴雨', '王御平', '韦欣宇', '吴眉', '吴中贤', '肖吴佩奇', '杨书源', '杨翔茹',
+               '杨子璐', '岳金慧', '张叶', '张莹莹', '朱颜', '陈美妮', '陈敏', '陈相诗语', '成艺', '邓畅',
+               '丁载媛', '董伟豪', '郭子涵', '何磊', '胡海丽', '黄裕舒', '解诗画', '柯煊', '李国', '李金娥',
+               '李敏敏', '李欣蕊', '林文辉', '刘雅雯', '罗慧博', '毛义书', '梅炎鑫', '牟春燕', '彭羽洁', '谭莉',
+               '唐欣', '王诗雨', '王舒君', '王昕妤', '王傅之', '王子越', '吴雨萱', '熊粤', '徐芊', '余芷萱',
+               '张洁', '张维歌', '陈胜希', '陈祎玮', '程诺', '邓帆', '方紫嫣', '付祥海', '何蓉', '胡金平',
+               '金妍', '李柯燃', '李商浩', '李依', '廖杰梅', '刘雨萌', '梅佳琪', '潘晶晶', '钱馨怡', '宋佳诚',
+               '谭倩', '谭宗毅', '唐怡倩', '汪梦瑶', '王希瑶', '王梓璇', '王紫湛', '魏晨旭', '向梦佳', '谢宜颖',
+               '徐长征', '杨琴', '喻路凌', '张路', '张棋', '周清鄂', '周文希', '邹德翔', '张思恒', '郑智慧',
+               '王梦媛', '陈美玲', '董依婷', '刘鑫玉', '田佳怡', '童湖景', '张文轩', '周祯琰', '曾晓楠', '莫正阳',
+               '田雨蕙', '乔子凌', '童高聖', '刘雨欣', '姚水根', '胡昊月', '李菲', '周明明', '黄江', '黄琪淇',
+               '肖智楠', '周雨佳', '王敏', '严文谨', '姚远香', '曾智宇', '陈柏霏', '陈诗怡', '陈子健', '代阳',
+               '邓可云', '冯琦智', '高敏', '何天', '贺敏', '黄恺馨', '库欣娓', '李思琴', '李玉豪', '刘黎萌',
+               '刘子含', '潘紫涵', '沈园林', '宋卓越', '谭沁', '汪文丽', '王贵愈', '王思彤', '王颖', '魏久茗',
+               '吴锦仪', '吴再渤', '肖安琪', '薛涵枢', '杨雅淇', '袁诺', '张恬畅', '张先语', '赵静', '郑婧',
+               '朱圣萌', '邹妮彤', '李天媛', '廖一寰', '陆星宇', '王磊', '张航', '邹巧熳', '陈一鸣', '罗丹丹',
+               '田震', '金瑞熙', '杨雅文', '郑淑玲', '乐姝', '张睿涵', '罗思雨', '贺心可', '吴金洁', '萧诗宇',
+               '杨孟广', '彭昱翔', '王晓', '吴思睿', '周培培', '张宇康', '钟诗杭', '何思淇', '向玉桃', '高小斌',
+               '周妍', '江欣雨', '刘子莹', '余东航', '时韩', '吴芊诺', '张慧'
+  ];
   var students = [];
+  
+  // Pseudo-random number generator based on seed
+  function pseudoRandom(seed, min, max) {
+    var h = 0;
+    for (var ci = 0; ci < seed.length; ci++) {
+      h = ((h << 5) - h + seed.charCodeAt(ci)) | 0;
+    }
+    h = Math.abs(h);
+    return min + (h % (max - min + 1));
+  }
+  function pseudoRandomDate(seed) {
+    var h = 0;
+    for (var ci = 0; ci < seed.length; ci++) {
+      h = ((h << 5) - h + seed.charCodeAt(ci) * 3) | 0;
+    }
+    h = Math.abs(h);
+    var baseDate = new Date('2026-09-28T23:59:00+08:00').getTime();
+    var offsetDays = h % 7;
+    var offsetHours = (h >> 3) % 14;
+    return new Date(baseDate - offsetDays * 86400000 - offsetHours * 3600000).toISOString();
+  }
   
   names.forEach(function(name, i) {
     var studentId = 'DEMO' + String(2024000 + i + 1);
-    // 杨雅淇(DEMO2024005)学习进度突出
-    var isYang = (studentId === 'DEMO2024005');
-    var completedCases = isYang ? 10 : Math.floor(Math.random() * 5);
-    // 所有学生最近活跃时间统一为9.30，但时间有差异
-    var activeDate = new Date('2026-09-28T' + String(8 + ((i * 3) % 12)).padStart(2,'0') + ':' + String((i * 17) % 60).padStart(2,'0') + ':00').toISOString();
+    var seed = studentId + name;
+    // 杨雅淇 special data
+    var isYang = (studentId === 'DEMO2024175');
+    var completedCases = isYang ? 10 : pseudoRandom(seed + 'cc', 2, 8);
+    var activeDate = pseudoRandomDate(seed + 'ad');
     var scores = {};
     var caseNames = FIXED_CASES.map(function(c) { return c.name; });
     
     for (var j = 0; j < completedCases && j < caseNames.length; j++) {
       var cName = caseNames[j] || ('案例' + (j + 1));
-      scores[cName] = { score: isYang ? (Math.floor(Math.random() * 15) + 85) : (Math.floor(Math.random() * 40) + 50), completedAt: new Date(Date.now() - Math.random() * 60 * 86400000).toISOString(), attempts: isYang ? 1 : (Math.floor(Math.random() * 3) + 1) };
+      var sc = isYang ? (85 + pseudoRandom(seed + j, 0, 10)) : pseudoRandom(seed + j, 50, 95);
+      scores[cName] = { score: sc, completedAt: new Date(Date.now() - pseudoRandom(seed + 'dt' + j, 1, 60) * 86400000).toISOString(), attempts: isYang ? 1 : pseudoRandom(seed + 'at' + j, 1, 3) };
     }
     
     var totalScore = 0;
@@ -10738,8 +10825,13 @@ function generateMockStudents() {
       completedCases: completedCases,
       avgScore: avgScore,
       totalCases: FIXED_CASES.length,
-      progress: Math.round(completedCases / FIXED_CASES.length * 100),
-      caseScores: scores
+      progress: isYang ? 91 : Math.round(completedCases / FIXED_CASES.length * 100),
+      caseScores: scores,
+      loginCount: isYang ? 42 : pseudoRandom(seed + 'lc', 15, 45),
+      quizAvg: isYang ? 93 : pseudoRandom(seed + 'qa', 78, 96),
+      aiQaCount: isYang ? 75 : pseudoRandom(seed + 'aq', 5, 75),
+      aiGradeCount: isYang ? 35 : pseudoRandom(seed + 'ag', 3, 35),
+      errorBookCount: isYang ? 50 : pseudoRandom(seed + 'eb', 2, 50)
     });
   });
   
@@ -10753,11 +10845,12 @@ function getAllStudentsData() {
   
   // 1. Always ensure demo students exist
   var demoVersion = localStorage.getItem('sanguofa_demo_version') || '';
-  if (demoVersion !== 'v3') {
+  if (demoVersion !== 'v4') {
     localStorage.removeItem('sanguofa_demo_students');
     localStorage.removeItem('sanguofa_debate_debates');
     localStorage.removeItem('sanguofa_teacher_materials');
-    localStorage.setItem('sanguofa_demo_version', 'v3');
+    localStorage.removeItem('sanguofa_tea_posts');
+    localStorage.setItem('sanguofa_demo_version', 'v4');
   }
   // Always regenerate to ensure latest names
   var genStudents = generateMockStudents();
@@ -15999,6 +16092,43 @@ function initNewModulesDemoData() {
       favoritedBy: ['S031','S146','S090','S130','S008','S125','S040'],
       deepThinkBy: ['S009','S204']
     }
+,
+    {
+      id: 'tea_video_001', type: 'long', title: '📹 【视频笔记】国际法院庭审实录学习：北海大陆架案',
+      content: '最近看了一段ICJ关于北海大陆架案的庭审视频记录，收获很大。\n\n视频中法官对"等距离原则"与"公平原则"的关系进行了详细讨论。几个要点：\n1. 等距离方法不是唯一的划界方法\n2. 需要考虑所有相关情况\n3. 公平原则是划界的基本目标\n\n视频来自ICJ官网公开庭审录像，推荐大家观看！\n\n📎 视频时长：约45分钟\n📎 来源：ICJ官网 > Cases > North Sea Continental Shelf',
+      tags: ['视频', '国际公法'],
+      author: '杨雅淇', authorId: 'S2024001', role: 'student',
+      createdAt: '2026-09-27 20:15',
+      likes: 34, comments: 8, favorites: 22, deepThink: 6,
+      isPinned: false, isRecommended: true, isLocked: false,
+      likedBy: ['S001','S002','S003','S004','S005','S010','S015','S020','S025','S030','S035','S040','S045','S050','S055','S060','S065','S070','S075','S080','S085','S090','S095','S100','S105','S110','S115','S120','S125','S130','S135','S140','S145','S150'],
+      favoritedBy: ['S001','S005','S010','S015','S020','S025','S030','S035','S040','S045','S050','S055','S060','S065','S070','S075','S080','S085','S090','S095','S100','S105'],
+      deepThinkBy: ['S001','S010','S020','S030','S040','S050']
+    },
+    {
+      id: 'tea_video_002', type: 'long', title: '📹 【视频推荐】CISG案例分析视频：根本违约的认定标准',
+      content: '分享一个很好的视频资源，是关于CISG根本违约认定标准的案例分析。\n\n视频通过三个实际案例讲解了"根本违约"的构成要件：\n1. 违约实质上剥夺了另一方根据合同有权期待得到的东西\n2. 违约方可预见性\n3. 买方的补救权利与宣告合同无效的关系\n\n特别适合备考复习时看，比纯文字教材生动很多。\n\n📎 视频时长：约30分钟\n📎 建议配合教材第七章一起看',
+      tags: ['视频', '国际经济法', '案例评析'],
+      author: '张维歌', authorId: 'S113', role: 'student',
+      createdAt: '2026-09-26 15:30',
+      likes: 21, comments: 5, favorites: 18, deepThink: 4,
+      isPinned: false, isRecommended: true, isLocked: false,
+      likedBy: ['S001','S002','S003','S004','S005','S010','S015','S020','S025','S030','S035','S040','S045','S050','S055','S060','S065','S070','S075','S080','S085'],
+      favoritedBy: ['S001','S005','S010','S015','S020','S025','S030','S035','S040','S045','S050','S055','S060','S065','S070','S075','S080','S085'],
+      deepThinkBy: ['S001','S010','S020','S030']
+    },
+    {
+      id: 'tea_video_003', type: 'long', title: '📹 【视频分享】国际商事仲裁模拟庭审——ICC仲裁规则详解',
+      content: '上周参加了学校组织的模拟仲裁庭审，录制了全程视频，分享给大家。\n\n本次模拟案件基于一起涉外投资争端，适用ICC仲裁规则。视频中展示了：\n- 仲裁庭组成程序\n- 管辖权异议的提出与审理\n- 实体辩论环节\n- 最终裁决的作出\n\n通过这次模拟，对国际商事仲裁的程序有了直观理解。视频已剪辑，重点环节有字幕标注。\n\n📎 视频时长：约55分钟\n📎 适合学过国际私法仲裁章节后观看',
+      tags: ['视频', '国际私法'],
+      author: '陈文轩', authorId: 'S010', role: 'student',
+      createdAt: '2026-09-25 19:00',
+      likes: 28, comments: 6, favorites: 15, deepThink: 5,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S001','S002','S003','S004','S005','S010','S015','S020','S025','S030','S035','S040','S045','S050','S055','S060','S065','S070','S075','S080','S085','S090','S095','S100','S105','S110','S115','S120'],
+      favoritedBy: ['S001','S005','S010','S015','S020','S025','S030','S035','S040','S045','S050','S055','S060','S065','S070'],
+      deepThinkBy: ['S001','S010','S020','S030','S040']
+    },
     ];
     localStorage.setItem('sanguofa_tea_posts', JSON.stringify(teaDemoPosts));
   }
@@ -17264,7 +17394,7 @@ initNewModulesDemoData();
 // 数据结构：sanguofa_tea_posts / sanguofa_tea_comments / sanguofa_tea_stats
 // 兼容旧数据：sanguofa_discussion_posts 自动迁移
 
-var TEA_TAGS = ['🌐 国际公法','⚖️ 国际私法','💼 国际经济法','🔥 热点追踪','📚 文献研读','📋 案例评析','💬 随便聊聊'];
+var TEA_TAGS = ['🌐 国际公法','⚖️ 国际私法','💼 国际经济法','🔥 热点追踪','📚 文献研读','📋 案例评析','💬 随便聊聊','📹 视频'];
 var TEA_POSTS_KEY = 'sanguofa_tea_posts';
 var TEA_COMMENTS_KEY = 'sanguofa_tea_comments';
 var TEA_STATS_KEY = 'sanguofa_tea_stats';
