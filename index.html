@@ -6999,7 +6999,7 @@ function initDemoData(user) {
   
   // 版本升级时清除旧缓存，确保重新生成演示数据
   var initVer = localStorage.getItem('sanguofa_init_version') || '';
-  if (initVer !== 'v4') {
+  if (initVer !== 'v5') {
     localStorage.removeItem('sanguofa_debate_debates');
     localStorage.removeItem('sanguofa_teacher_materials');
     localStorage.removeItem('sanguofa_student_S2024001_records');
@@ -7007,7 +7007,7 @@ function initDemoData(user) {
     localStorage.removeItem('sanguofa_student_S2024001_quiz');
     localStorage.removeItem('demo_data_loaded');
     AppState.errorBook = [];
-    localStorage.setItem('sanguofa_init_version', 'v4');
+    localStorage.setItem('sanguofa_init_version', 'v5');
   }
   
   var favKey = 'sanguofa_student_' + sid + '_favorites';
@@ -7032,7 +7032,7 @@ function initDemoData(user) {
         {type:'qa',sourceId:'qa-space',title:'外层空间法律地位与《外层空间条约》',summary:'外层空间不得据为己有，为全人类利益服务。',icon:'💬',category:'智能问答'},
         {type:'qa',sourceId:'qa-diplomatic',title:'外交特权与豁免的例外情形',summary:'民事行政管辖豁免三大例外情形。',icon:'💬',category:'智能问答'}
       ];
-      var ts = 1721300000000;
+      var ts = 1784304000000;
       items.forEach(function(item, i) { favs.push({favId:item.type+'-'+item.sourceId,type:item.type,sourceId:item.sourceId,title:item.title,summary:item.summary,icon:item.icon,category:item.category,timestamp:ts+i*86400000*3,extra:null}); });
     } else if (sid === 'S2024001') {
       var items = [
@@ -7049,7 +7049,7 @@ function initDemoData(user) {
         {type:'case',sourceId:'case-9004',title:'国际商事仲裁案例要点',summary:'Soler v. Mitsubishi案：反垄断争议可仲裁性。',icon:'⚖️',category:'案例实训'},
         {type:'qa',sourceId:'qa-outer-space',title:'外层空间条约五大原则',summary:'不得据为己有、自由探索、为全人类利益、国际合作、国家责任。',icon:'💬',category:'智能问答'}
       ];
-      var ts = 1721300000000;
+      var ts = 1784304000000;
       items.forEach(function(item, i) { favs.push({favId:item.type+'-'+item.sourceId,type:item.type,sourceId:item.sourceId,title:item.title,summary:item.summary,icon:item.icon,category:item.category,timestamp:ts+i*86400000*4,extra:null}); });
     } else if (sid.indexOf('DEMO') === 0) {
       var commonItems = [
@@ -7064,7 +7064,7 @@ function initDemoData(user) {
       ];
       var n = 3 + (sid.charCodeAt(sid.length-1) % 5);
       var shuffled = commonItems.slice().sort(function(){return 0.5-Math.random()});
-      var ts = 1721300000000;
+      var ts = 1784304000000;
       shuffled.slice(0, n).forEach(function(item, i) { favs.push({favId:item.type+'-'+item.sourceId,type:item.type,sourceId:item.sourceId,title:item.title,summary:item.summary,icon:item.icon,category:item.category,timestamp:ts+i*86400000*5+Math.floor(Math.random()*86400000),extra:null}); });
     }
     if (favs.length > 0) localStorage.setItem(favKey, JSON.stringify(favs));
@@ -7080,7 +7080,7 @@ function initDemoData(user) {
       {id:9006,name:'WTO争端解决',sideA:'申诉方：反倾销措施违反WTO规则',sideB:'被诉方：反倾销调查程序合法'}
     ];
     var allIds = []; for (var di = 1; di <= 20; di++) allIds.push('DEMO2024' + String(di).padStart(3,'0'));
-    var bt = 1721300000000;
+    var bt = 1784304000000;
     for (var di = 0; di < dCases.length; di++) {
       var dc = dCases[di], dt = bt + di * 86400000 * 12;
       var sh = allIds.slice().sort(function(){return 0.5-Math.random()});
@@ -7091,11 +7091,12 @@ function initDemoData(user) {
 
   // 初始化教师素材管理数据
   if (!localStorage.getItem('sanguofa_teacher_materials')) {
-    var now = Date.now();
+    var baseDate = new Date('2026-09-28T23:59:00+08:00').getTime();
     var materials = [
-      {id:'mat-unclos-001',title:'《联合国海洋法公约》核心条款汇编',type:'law',subject:'public',content:'涵盖UNCLOS领海、毗连区、专属经济区、大陆架等核心条款要点，便于教学引用和案例检索。',keywords:'海洋法,UNCLOS,领海,专属经济区,大陆架',createdAt:now-86400000*10},
-      {id:'mat-trade-002',title:'中美贸易摩擦典型案例集（2020-2026）',type:'case',subject:'economic',content:'收录近6年中美贸易摩擦中12个典型案例，涵盖反倾销、反补贴、知识产权争端等，附案件分析和教学讨论要点。',keywords:'贸易法,WTO,反倾销,反补贴,知识产权',createdAt:now-86400000*7},
-      {id:'mat-arb-003',title:'国际商事仲裁实务操作指引',type:'document',subject:'private',content:'涵盖ICC、SIAC、HKIAC等主要仲裁机构规则对比，仲裁协议起草要点，裁决执行（纽约公约）实务要点。',keywords:'仲裁,纽约公约,ICC,SIAC,HKIAC',createdAt:now-86400000*3}
+      {id:'mat-unclos-001',title:'《联合国海洋法公约》核心条款汇编',type:'law',subject:'public',content:'涵盖UNCLOS领海、毗连区、专属经济区、大陆架等核心条款要点，便于教学引用和案例检索。',keywords:'海洋法,UNCLOS,领海,专属经济区,大陆架',createdAt:baseDate-86400000*10},
+      {id:'mat-trade-002',title:'中美贸易摩擦典型案例集（2020-2026）',type:'case',subject:'economic',content:'收录近6年中美贸易摩擦中12个典型案例，涵盖反倾销、反补贴、知识产权争端等，附案件分析和教学讨论要点。',keywords:'贸易法,WTO,反倾销,反补贴,知识产权',createdAt:baseDate-86400000*7},
+      {id:'mat-arb-003',title:'国际商事仲裁实务操作指引',type:'document',subject:'private',content:'涵盖ICC、SIAC、HKIAC等主要仲裁机构规则对比，仲裁协议起草要点，裁决执行（纽约公约）实务要点。',keywords:'仲裁,纽约公约,ICC,SIAC,HKIAC',createdAt:baseDate-86400000*3},
+      {id:'mat-pil-class-0928',title:'9月28日国际私法课堂讲义·冲突规范与法律适用',type:'document',subject:'private',content:'今日课堂讲义，涵盖冲突规范的基本类型、连结点的选择、反致与转致制度、公共秩序保留的适用条件。配合课堂模式即时问答使用。',keywords:'国际私法,冲突规范,法律适用,课堂教学,9月28日',createdAt:baseDate}
     ];
     localStorage.setItem('sanguofa_teacher_materials', JSON.stringify(materials));
   }
@@ -7118,16 +7119,21 @@ function initDemoData(user) {
     if (!localStorage.getItem(recordsKey)) {
       var now = Date.now();
       var records = [
-        {title:'国家管辖权豁免',time:'2026-09-30 14:23',score:92,status:'已完成'},
-        {title:'南海争端国际法分析',time:'2026-09-29 16:45',score:88,status:'已完成'},
-        {title:'涉外合同法律适用',time:'2026-09-28 10:12',score:95,status:'已完成'},
-        {title:'CISG根本违约认定',time:'2026-09-27 20:30',score:90,status:'已完成'},
-        {title:'WTO争端解决机制',time:'2026-09-26 11:05',score:87,status:'已完成'},
-        {title:'国际商事仲裁协议效力',time:'2026-09-25 15:40',score:93,status:'已完成'},
-        {title:'外交特权与豁免',time:'2026-09-24 09:18',score:96,status:'已完成'},
-        {title:'条约法公约保留制度',time:'2026-09-23 13:55',score:91,status:'已完成'},
-        {title:'国际法渊源体系',time:'2026-09-22 17:30',score:85,status:'已完成'},
-        {title:'海洋法专属经济区制度',time:'2026-09-20 08:45',score:94,status:'已完成'}
+        {title:'国际私法·法律适用冲突规范',time:'2026-09-28 14:30',score:91,status:'已完成'},
+        {title:'国家管辖权豁免',time:'2026-09-27 14:23',score:92,status:'已完成'},
+        {title:'南海争端国际法分析',time:'2026-09-26 16:45',score:88,status:'已完成'},
+        {title:'涉外合同法律适用',time:'2026-09-25 10:12',score:95,status:'已完成'},
+        {title:'CISG根本违约认定',time:'2026-09-24 20:30',score:90,status:'已完成'},
+        {title:'WTO争端解决机制',time:'2026-09-23 11:05',score:87,status:'已完成'},
+        {title:'国际商事仲裁协议效力',time:'2026-09-22 15:40',score:93,status:'已完成'},
+        {title:'外交特权与豁免',time:'2026-09-20 09:18',score:96,status:'已完成'},
+        {title:'条约法公约保留制度',time:'2026-09-18 13:55',score:91,status:'已完成'},
+        {title:'国际法渊源体系',time:'2026-09-15 17:30',score:85,status:'已完成'},
+        {title:'海洋法专属经济区制度',time:'2026-09-12 08:45',score:94,status:'已完成'},
+        {title:'国家主权与领土制度',time:'2026-09-08 10:20',score:89,status:'已完成'},
+        {title:'国际条约缔结程序',time:'2026-09-03 14:15',score:86,status:'已完成'},
+        {title:'国际法主体与渊源',time:'2026-08-28 09:30',score:88,status:'已完成'},
+        {title:'国际法基础概念导学',time:'2026-08-20 15:00',score:82,status:'已完成'}
       ];
       localStorage.setItem(recordsKey, JSON.stringify(records));
     }
@@ -7137,9 +7143,10 @@ function initDemoData(user) {
     if (!localStorage.getItem(progressKey)) {
       var progress = {};
       var caseList = typeof FIXED_CASES !== 'undefined' ? FIXED_CASES : [];
-      var scoresList = [92,88,95,90,87,93,96,91,85,94];
-      for (var ci = 0; ci < Math.min(10, caseList.length); ci++) {
-        progress[caseList[ci].name || caseList[ci].id] = {score: scoresList[ci], completedAt: new Date(Date.now() - (10-ci) * 86400000).toISOString(), attempts: 1};
+      var scoresList = [91,92,88,95,90,87,93,96,91,85,94,89,86,88,82];
+      var baseDate = new Date('2026-09-28T23:59:00+08:00').getTime();
+      for (var ci = 0; ci < Math.min(15, caseList.length); ci++) {
+        progress[caseList[ci].name || caseList[ci].id] = {score: scoresList[ci], completedAt: new Date(baseDate - (15-ci) * 86400000).toISOString(), attempts: 1};
       }
       localStorage.setItem(progressKey, JSON.stringify(progress));
     }
@@ -7148,9 +7155,9 @@ function initDemoData(user) {
     var quizKey = 'sanguofa_student_S2024001_quiz';
     if (!localStorage.getItem(quizKey)) {
       var quizScores = [
-        {subject:'国际公法',score:92,totalQuestions:10,correctCount:9,date:'2026-09-28',time:'15:30'},
-        {subject:'国际私法',score:88,totalQuestions:10,correctCount:8,date:'2026-09-26',time:'10:20'},
-        {subject:'国际经济法',score:95,totalQuestions:10,correctCount:9,date:'2026-09-24',time:'14:45'}
+        {subject:'国际私法',score:91,totalQuestions:10,correctCount:9,date:'2026-09-28',time:'15:20'},
+        {subject:'国际公法',score:92,totalQuestions:10,correctCount:9,date:'2026-09-22',time:'14:30'},
+        {subject:'国际经济法',score:95,totalQuestions:10,correctCount:9,date:'2026-09-15',time:'10:45'}
       ];
       localStorage.setItem(quizKey, JSON.stringify(quizScores));
     }
@@ -10709,7 +10716,7 @@ function generateMockStudents() {
     var isYang = (studentId === 'DEMO2024005');
     var completedCases = isYang ? 10 : Math.floor(Math.random() * 5);
     // 所有学生最近活跃时间统一为9.30，但时间有差异
-    var activeDate = new Date('2026-09-30T' + String(8 + ((i * 3) % 12)).padStart(2,'0') + ':' + String((i * 17) % 60).padStart(2,'0') + ':00').toISOString();
+    var activeDate = new Date('2026-09-28T' + String(8 + ((i * 3) % 12)).padStart(2,'0') + ':' + String((i * 17) % 60).padStart(2,'0') + ':00').toISOString();
     var scores = {};
     var caseNames = FIXED_CASES.map(function(c) { return c.name; });
     
@@ -15521,6 +15528,34 @@ function initNewModulesDemoData() {
   if (!localStorage.getItem('sanguofa_tea_posts')) {
     var teaDemoPosts = [
     {
+      id: 'post-0928-class',
+      title: '今天国际私法课上的反致问题，课后继续讨论',
+      content: '今天王老师讲的反致制度很有意思。课堂上讨论了一个问题：我国《涉外民事关系法律适用法》第9条明确规定"涉外民事关系适用的外国法律，不包括该国的冲突法"，这意味着我国原则上不接受反致。但老师提到的几个例外情况让我很感兴趣，大家怎么看？',
+      author: '杨雅淇',
+      authorId: 'S2024001',
+      role: 'student',
+      createdAt: '2026-09-28 16:45',
+      tag: '国际私法',
+      replies: [
+        {
+          id: 'reply-0928-teacher',
+          content: '这个问题抓得很准。我国立法确实采取了不接受反致的立场，但在司法实践中，当外国法的适用结果明显违反我国公共秩序时，公共秩序保留制度实际上起到了类似反致的效果。这是一个值得深入思考的问题。',
+          author: '王老师',
+          authorId: 'T2026001',
+          role: 'teacher',
+          createdAt: '2026-09-28 17:20'
+        },
+        {
+          id: 'reply-0928-student2',
+          content: '同意老师的观点。我查了一下，欧盟的《罗马条例I》第20条也是排除反致的，这似乎是国际上的主流趋势。',
+          author: '刘思远',
+          authorId: 'S2024003',
+          role: 'student',
+          createdAt: '2026-09-28 18:05'
+        }
+      ]
+    },
+    {
       id: 'tea_post_001', type: 'long', title: '📌 【公告】茶座使用指南与版规',
       content: '欢迎来到小际茶座学术社区！\n\n发帖规范：\n1. 请选择合适的标签分类\n2. 学术讨论请保持理性客观\n3. 鼓励引用法条和案例支撑观点\n4. 欢迎分享学习资源和方法\n\n让我们一起营造良好的学术讨论氛围！🕊️',
       tags: ['国际公法'],
@@ -15633,7 +15668,7 @@ function initNewModulesDemoData() {
       content: '某国宣布退出《巴黎协定》又申请加入，国际条约的退出和重新加入程序引发讨论。',
       tags: ['热点追踪'],
       author: '刘雨欣', authorId: 'S134', role: 'student',
-      createdAt: '2026-09-30 09:22',
+      createdAt: '2026-09-28 09:22',
       likes: 20, comments: 8, favorites: 9, deepThink: 8,
       isPinned: false, isRecommended: false, isLocked: false,
       likedBy: ['S141','S041','S103','S106','S156','S142','S140','S133','S083','S034','S190','S037','S035','S173','S072','S102','S031','S124','S010','S194'],
@@ -15753,7 +15788,7 @@ function initNewModulesDemoData() {
       content: '图书馆的国际法书架上新了一批书，有兴趣的同学可以去看看。',
       tags: ['随便聊聊'],
       author: '张洁', authorId: 'S081', role: 'student',
-      createdAt: '2026-09-30 13:18',
+      createdAt: '2026-09-28 13:18',
       likes: 14, comments: 2, favorites: 12, deepThink: 5,
       isPinned: false, isRecommended: false, isLocked: false,
       likedBy: ['S034','S106','S007','S143','S129','S040','S014','S022','S004','S085','S134','S075','S089','S065'],
@@ -15849,7 +15884,7 @@ function initNewModulesDemoData() {
       content: 'ICJ在本案中确立的规则至今仍有重要影响：\n\n1. 公司国籍的认定：以注册地和实际管理中心为准\n2. 外交保护的行使主体：原则上由公司注册国行使\n3. 股东国籍国一般不享有外交保护权\n\n但法院也留下了例外情形的空间，即当公司已经不存在或注册国无力行使保护时。这个判例对理解国际法上的法人制度非常重要。',
       tags: ['案例评析'],
       author: '吴再渤', authorId: 'S172', role: 'student',
-      createdAt: '2026-09-29 13:22',
+      createdAt: '2026-09-27 13:22',
       likes: 23, comments: 7, favorites: 10, deepThink: 6,
       isPinned: false, isRecommended: false, isLocked: false,
       likedBy: ['S172','S150','S096','S125','S081','S143','S083','S016','S005','S074','S118','S200','S102','S038','S038','S060','S001','S188','S175','S077','S121','S062','S125'],
@@ -16046,7 +16081,7 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_013', postId: 'tea_post_004', parentId: null,
       content: '学到了！收藏了，考试前复习用。',
       author: '李志伟', authorId: 'S022', role: 'student',
-      createdAt: '2026-09-29 16:09', likes: 5, likedBy: []
+      createdAt: '2026-09-27 16:09', likes: 5, likedBy: []
     },
     {
       id: 'tea_cmt_014', postId: 'tea_post_004', parentId: null,
@@ -16094,7 +16129,7 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_021', postId: 'tea_post_006', parentId: null,
       content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
       author: '刘雅雯', authorId: 'S064', role: 'student',
-      createdAt: '2026-09-30 19:25', likes: 1, likedBy: []
+      createdAt: '2026-09-28 19:25', likes: 1, likedBy: []
     },
     {
       id: 'tea_cmt_022', postId: 'tea_post_006', parentId: null,
@@ -16106,7 +16141,7 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_023', postId: 'tea_post_006', parentId: null,
       content: '这个观点很有启发性，不过我觉得豁免制度方面还值得进一步讨论。',
       author: '郭子涵', authorId: 'S053', role: 'student',
-      createdAt: '2026-09-29 15:31', likes: 4, likedBy: []
+      createdAt: '2026-09-27 15:31', likes: 4, likedBy: []
     },
     {
       id: 'tea_cmt_024', postId: 'tea_post_006', parentId: 'tea_cmt_022',
@@ -16142,7 +16177,7 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_029', postId: 'tea_post_007', parentId: 'tea_cmt_027',
       content: '我有一个不同的看法：国家责任这个问题其实可以从另一个角度理解。',
       author: '熊粤', authorId: 'S078', role: 'student',
-      createdAt: '2026-09-29 15:31', likes: 1, likedBy: []
+      createdAt: '2026-09-27 15:31', likes: 1, likedBy: []
     },
     {
       id: 'tea_cmt_030', postId: 'tea_post_007', parentId: null,
@@ -16202,7 +16237,7 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_039', postId: 'tea_post_009', parentId: null,
       content: '分析得很到位，特别是关于最惠国待遇的部分。',
       author: '钟诗杭', authorId: 'S207', role: 'student',
-      createdAt: '2026-09-30 12:17', likes: 3, likedBy: []
+      createdAt: '2026-09-28 12:17', likes: 3, likedBy: []
     },
     {
       id: 'tea_cmt_040', postId: 'tea_post_009', parentId: null,
@@ -16256,7 +16291,7 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_048', postId: 'tea_post_010', parentId: null,
       content: '很有价值的分享，建议置顶让更多人看到。',
       author: '吴眉', authorId: 'S036', role: 'student',
-      createdAt: '2026-09-30 18:44', likes: 2, likedBy: []
+      createdAt: '2026-09-28 18:44', likes: 2, likedBy: []
     },
     {
       id: 'tea_cmt_049', postId: 'tea_post_010', parentId: 'tea_cmt_048',
@@ -16316,19 +16351,19 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_058', postId: 'tea_post_012', parentId: null,
       content: '读完受益匪浅，期待更多这样的讨论！',
       author: '黄恺馨', authorId: 'S156', role: 'student',
-      createdAt: '2026-09-29 23:16', likes: 4, likedBy: []
+      createdAt: '2026-09-27 23:16', likes: 4, likedBy: []
     },
     {
       id: 'tea_cmt_059', postId: 'tea_post_012', parentId: null,
       content: '很有价值的分享，建议置顶让更多人看到。',
       author: '汪文丽', authorId: 'S166', role: 'student',
-      createdAt: '2026-09-30 20:00', likes: 1, likedBy: []
+      createdAt: '2026-09-28 20:00', likes: 1, likedBy: []
     },
     {
       id: 'tea_cmt_060', postId: 'tea_post_012', parentId: null,
       content: '好文推荐！正好最近在研究这个方向。',
       author: '潘云昊', authorId: 'S027', role: 'student',
-      createdAt: '2026-09-29 22:52', likes: 3, likedBy: []
+      createdAt: '2026-09-27 22:52', likes: 3, likedBy: []
     },
     {
       id: 'tea_cmt_061', postId: 'tea_post_013', parentId: null,
@@ -16340,13 +16375,13 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_062', postId: 'tea_post_013', parentId: null,
       content: '我有一个不同的看法：公共秩序保留这个问题其实可以从另一个角度理解。',
       author: '王晓', authorId: 'S203', role: 'student',
-      createdAt: '2026-09-30 14:48', likes: 3, likedBy: []
+      createdAt: '2026-09-28 14:48', likes: 3, likedBy: []
     },
     {
       id: 'tea_cmt_063', postId: 'tea_post_014', parentId: null,
       content: '这个议题最近很热门，各国立场差异确实很大。',
       author: '宋佳诚', authorId: 'S100', role: 'student',
-      createdAt: '2026-09-30 15:54', likes: 3, likedBy: []
+      createdAt: '2026-09-28 15:54', likes: 3, likedBy: []
     },
     {
       id: 'tea_cmt_064', postId: 'tea_post_014', parentId: null,
@@ -16364,7 +16399,7 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_066', postId: 'tea_post_014', parentId: 'tea_cmt_064',
       content: '这个议题最近很热门，各国立场差异确实很大。',
       author: '张先语', authorId: 'S178', role: 'student',
-      createdAt: '2026-09-29 16:32', likes: 3, likedBy: []
+      createdAt: '2026-09-27 16:32', likes: 3, likedBy: []
     },
     {
       id: 'tea_cmt_067', postId: 'tea_post_014', parentId: 'tea_cmt_064',
@@ -16484,7 +16519,7 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_086', postId: 'tea_post_018', parentId: 'tea_cmt_083',
       content: '正好在写这方面的论文，你的分析对我很有帮助。',
       author: '袁诺', authorId: 'S176', role: 'student',
-      createdAt: '2026-09-29 17:24', likes: 2, likedBy: []
+      createdAt: '2026-09-27 17:24', likes: 2, likedBy: []
     },
     {
       id: 'tea_cmt_087', postId: 'tea_post_019', parentId: null,
@@ -16514,7 +16549,7 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_091', postId: 'tea_post_021', parentId: null,
       content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
       author: '王贵愈', authorId: 'S167', role: 'student',
-      createdAt: '2026-09-29 19:54', likes: 2, likedBy: []
+      createdAt: '2026-09-27 19:54', likes: 2, likedBy: []
     },
     {
       id: 'tea_cmt_092', postId: 'tea_post_021', parentId: 'tea_cmt_091',
@@ -16586,7 +16621,7 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_103', postId: 'tea_post_023', parentId: 'tea_cmt_100',
       content: '能不能详细说说最惠国待遇的部分？感觉这块最容易混淆。',
       author: '徐芊', authorId: 'S079', role: 'student',
-      createdAt: '2026-09-29 11:58', likes: 1, likedBy: []
+      createdAt: '2026-09-27 11:58', likes: 1, likedBy: []
     },
     {
       id: 'tea_cmt_104', postId: 'tea_post_023', parentId: null,
@@ -16598,7 +16633,7 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_105', postId: 'tea_post_024', parentId: null,
       content: '同意你的观点，这个确实需要重点关注。',
       author: '马欣怡', authorId: 'S026', role: 'student',
-      createdAt: '2026-09-30 23:43', likes: 2, likedBy: []
+      createdAt: '2026-09-28 23:43', likes: 2, likedBy: []
     },
     {
       id: 'tea_cmt_106', postId: 'tea_post_024', parentId: 'tea_cmt_105',
@@ -16694,13 +16729,13 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_121', postId: 'tea_post_027', parentId: 'tea_cmt_117',
       content: '正好在写这方面的论文，你的分析对我很有帮助。',
       author: '杨琴', authorId: 'S112', role: 'student',
-      createdAt: '2026-09-30 14:35', likes: 5, likedBy: []
+      createdAt: '2026-09-28 14:35', likes: 5, likedBy: []
     },
     {
       id: 'tea_cmt_122', postId: 'tea_post_028', parentId: null,
       content: '赞一个！逻辑清晰，论证有力。',
       author: '何思淇', authorId: 'S208', role: 'student',
-      createdAt: '2026-09-29 21:32', likes: 1, likedBy: []
+      createdAt: '2026-09-27 21:32', likes: 1, likedBy: []
     },
     {
       id: 'tea_cmt_123', postId: 'tea_post_028', parentId: null,
@@ -16724,13 +16759,13 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_126', postId: 'tea_post_028', parentId: null,
       content: '我觉得关键还是在于条约解释的方法论问题。',
       author: '姚远香', authorId: 'S145', role: 'student',
-      createdAt: '2026-09-29 08:03', likes: 1, likedBy: []
+      createdAt: '2026-09-27 08:03', likes: 1, likedBy: []
     },
     {
       id: 'tea_cmt_127', postId: 'tea_post_028', parentId: null,
       content: '赞一个！逻辑清晰，论证有力。',
       author: '邓畅', authorId: 'S050', role: 'student',
-      createdAt: '2026-09-29 15:13', likes: 3, likedBy: []
+      createdAt: '2026-09-27 15:13', likes: 3, likedBy: []
     },
     {
       id: 'tea_cmt_128', postId: 'tea_post_028', parentId: 'tea_cmt_125',
@@ -16772,7 +16807,7 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_134', postId: 'tea_post_030', parentId: 'tea_cmt_132',
       content: '这个知识点在往年考试中确实考过，你的总结很到位。',
       author: '党珮瑜', authorId: 'S013', role: 'student',
-      createdAt: '2026-09-29 17:20', likes: 2, likedBy: []
+      createdAt: '2026-09-27 17:20', likes: 2, likedBy: []
     },
     {
       id: 'tea_cmt_135', postId: 'tea_post_030', parentId: 'tea_cmt_133',
@@ -16844,13 +16879,13 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_146', postId: 'tea_post_032', parentId: null,
       content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
       author: '王御平', authorId: 'S034', role: 'student',
-      createdAt: '2026-09-30 11:59', likes: 1, likedBy: []
+      createdAt: '2026-09-28 11:59', likes: 1, likedBy: []
     },
     {
       id: 'tea_cmt_147', postId: 'tea_post_032', parentId: null,
       content: '赞一个！逻辑清晰，论证有力。',
       author: '乔子凌', authorId: 'S132', role: 'student',
-      createdAt: '2026-09-30 21:01', likes: 1, likedBy: []
+      createdAt: '2026-09-28 21:01', likes: 1, likedBy: []
     },
     {
       id: 'tea_cmt_148', postId: 'tea_post_032', parentId: null,
@@ -16904,13 +16939,13 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_156', postId: 'tea_post_035', parentId: null,
       content: '正好在写这方面的论文，你的分析对我很有帮助。',
       author: '徐长征', authorId: 'S111', role: 'student',
-      createdAt: '2026-09-29 23:20', likes: 5, likedBy: []
+      createdAt: '2026-09-27 23:20', likes: 5, likedBy: []
     },
     {
       id: 'tea_cmt_157', postId: 'tea_post_035', parentId: 'tea_cmt_154',
       content: '感谢分享！正好在准备相关的课程论文。',
       author: '谭宗毅', authorId: 'S102', role: 'student',
-      createdAt: '2026-09-30 19:29', likes: 4, likedBy: []
+      createdAt: '2026-09-28 19:29', likes: 4, likedBy: []
     },
     {
       id: 'tea_cmt_158', postId: 'tea_post_035', parentId: null,
@@ -16940,7 +16975,7 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_162', postId: 'tea_post_036', parentId: 'tea_cmt_161',
       content: '很有价值的分享，建议置顶让更多人看到。',
       author: '童湖景', authorId: 'S126', role: 'student',
-      createdAt: '2026-09-30 21:23', likes: 2, likedBy: []
+      createdAt: '2026-09-28 21:23', likes: 2, likedBy: []
     },
     {
       id: 'tea_cmt_163', postId: 'tea_post_036', parentId: 'tea_cmt_161',
@@ -16958,7 +16993,7 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_165', postId: 'tea_post_036', parentId: 'tea_cmt_164',
       content: '这个议题最近很热门，各国立场差异确实很大。',
       author: '吴眉', authorId: 'S036', role: 'student',
-      createdAt: '2026-09-29 08:03', likes: 2, likedBy: []
+      createdAt: '2026-09-27 08:03', likes: 2, likedBy: []
     },
     {
       id: 'tea_cmt_166', postId: 'tea_post_036', parentId: null,
@@ -16982,7 +17017,7 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_169', postId: 'tea_post_037', parentId: 'tea_cmt_168',
       content: '能不能详细说说争端解决的部分？感觉这块最容易混淆。',
       author: '刘子含', authorId: 'S161', role: 'student',
-      createdAt: '2026-09-30 09:19', likes: 3, likedBy: []
+      createdAt: '2026-09-28 09:19', likes: 3, likedBy: []
     },
     {
       id: 'tea_cmt_170', postId: 'tea_post_037', parentId: null,
@@ -16994,7 +17029,7 @@ function initNewModulesDemoData() {
       id: 'tea_cmt_171', postId: 'tea_post_037', parentId: null,
       content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
       author: '谭宗毅', authorId: 'S102', role: 'student',
-      createdAt: '2026-09-29 15:12', likes: 1, likedBy: []
+      createdAt: '2026-09-27 15:12', likes: 1, likedBy: []
     }
     ];
     localStorage.setItem('sanguofa_tea_comments', JSON.stringify(teaDemoComments));
