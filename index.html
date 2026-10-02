@@ -4575,7 +4575,7 @@ button:active:not(:disabled),
 .classroom-status-badge { display:inline-block; padding:4px 12px; border-radius:16px; font-size:0.76rem; font-weight:600; }
 .classroom-status-badge.active { background:rgba(46,125,50,0.12); color:#2e7d32; }
 .classroom-status-badge.closed { background:rgba(158,158,158,0.15); color:#757575; }
-.modal-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:10000; display:flex; align-items:center; justify-content:center; }
+.modal-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:10000; display:none; align-items:center; justify-content:center; }
 .modal-content { background:var(--card-bg); border-radius:16px; padding:28px; width:90%; max-width:520px; border:1px solid var(--border); }
 .modal-content h3 { font-size:1.15rem; color:var(--text-primary); margin-bottom:18px; }
 .modal-field { margin-bottom:14px; }
@@ -6999,7 +6999,7 @@ function initDemoData(user) {
   
   // 版本升级时清除旧缓存，确保重新生成演示数据
   var initVer = localStorage.getItem('sanguofa_init_version') || '';
-  if (initVer !== 'v7') {
+  if (initVer !== 'v8') {
     localStorage.removeItem('sanguofa_debate_debates');
     localStorage.removeItem('sanguofa_teacher_materials');
     localStorage.removeItem('sanguofa_student_S2024001_records');
@@ -7007,7 +7007,7 @@ function initDemoData(user) {
     localStorage.removeItem('sanguofa_student_S2024001_quiz');
     localStorage.removeItem('demo_data_loaded');
     AppState.errorBook = [];
-    localStorage.setItem('sanguofa_init_version', 'v7');
+    localStorage.setItem('sanguofa_init_version', 'v8');
   }
   
   var favKey = 'sanguofa_student_' + sid + '_favorites';
@@ -10858,12 +10858,12 @@ function getAllStudentsData() {
   
   // 1. Always ensure demo students exist
   var demoVersion = localStorage.getItem('sanguofa_demo_version') || '';
-  if (demoVersion !== 'v5') {
+  if (demoVersion !== 'v6') {
     localStorage.removeItem('sanguofa_demo_students');
     localStorage.removeItem('sanguofa_debate_debates');
     localStorage.removeItem('sanguofa_teacher_materials');
     localStorage.removeItem('sanguofa_tea_posts');
-    localStorage.setItem('sanguofa_demo_version', 'v5');
+    localStorage.setItem('sanguofa_demo_version', 'v6');
   }
   // Always regenerate to ensure latest names
   var genStudents = generateMockStudents();
@@ -15072,10 +15072,15 @@ function renderDebateStudentReceived(container) {
   if (!container) return;
   var user = AppState.currentUser;
   var studentId = user.studentId || '';
+  // S2024001(杨雅淇) 映射到辩论数据中的 demo ID
+  var searchIds = [studentId];
+  if (studentId === 'S2024001') searchIds.push('DEMO2024005');
   var debates = loadDebateData();
   var myDebates = debates.filter(function(d) {
     for (var g = 0; g < d.groups.length; g++) {
-      if (d.groups[g].studentIds && d.groups[g].studentIds.indexOf(studentId) !== -1) return true;
+      for (var si = 0; si < searchIds.length; si++) {
+        if (d.groups[g].studentIds && d.groups[g].studentIds.indexOf(searchIds[si]) !== -1) return true;
+      }
     }
     return false;
   });
@@ -15118,16 +15123,22 @@ function renderDebateDetail(debateId, container) {
   if (!debate) { container.innerHTML = '<div style="text-align:center;padding:40px">\u672a\u627e\u5230\u5bf9\u6297\u4efb\u52a1</div>'; return; }
   var user = AppState.currentUser;
   var studentId = user.studentId || '';
+  // S2024001(杨雅淇) 映射到辩论数据中的 demo ID
+  var searchIds = [studentId];
+  if (studentId === 'S2024001') searchIds.push('DEMO2024005');
   var role = user.role || 'student';
   // Find my group
   var myGroup = null;
   var opponentGroup = null;
   for (var g = 0; g < debate.groups.length; g++) {
-    if (debate.groups[g].studentIds && debate.groups[g].studentIds.indexOf(studentId) !== -1) {
-      myGroup = debate.groups[g];
-      opponentGroup = debate.groups[1 - g];
-      break;
+    for (var si = 0; si < searchIds.length; si++) {
+      if (debate.groups[g].studentIds && debate.groups[g].studentIds.indexOf(searchIds[si]) !== -1) {
+        myGroup = debate.groups[g];
+        opponentGroup = debate.groups[1 - g];
+        break;
+      }
     }
+    if (myGroup) break;
   }
   // For teachers viewing: show both sides
   if (!myGroup && role === 'teacher') {
@@ -15221,6 +15232,9 @@ function submitDebateOutline(debateId) {
   if (!outline) { alert('\u8bf7\u8f93\u5165\u4ee3\u7406\u610f\u89c1\u63d0\u7eb2'); return; }
   var user = AppState.currentUser;
   var studentId = user.studentId || '';
+  // S2024001(杨雅淇) 映射到辩论数据中的 demo ID
+  var searchIds = [studentId];
+  if (studentId === 'S2024001') searchIds.push('DEMO2024005');
   var debates = loadDebateData();
   var idx = -1;
   for (var i = 0; i < debates.length; i++) {
@@ -15230,7 +15244,11 @@ function submitDebateOutline(debateId) {
   var debate = debates[idx];
   var myGroup = null;
   for (var g = 0; g < debate.groups.length; g++) {
-    if (debate.groups[g].studentIds && debate.groups[g].studentIds.indexOf(studentId) !== -1) {
+    var found = false;
+    for (var si = 0; si < searchIds.length; si++) {
+      if (debate.groups[g].studentIds && debate.groups[g].studentIds.indexOf(searchIds[si]) !== -1) { found = true; break; }
+    }
+    if (found) {
       myGroup = debate.groups[g];
       break;
     }
@@ -15413,16 +15431,21 @@ function renderDebateStudentRecords(container) {
   if (!container) return;
   var user = AppState.currentUser;
   var studentId = user.studentId || '';
+  // S2024001(杨雅淇) 映射到辩论数据中的 demo ID
+  var searchIds = [studentId];
+  if (studentId === 'S2024001') searchIds.push('DEMO2024005');
   var debates = loadDebateData();
   var myDebates = debates.filter(function(d) {
     for (var g = 0; g < d.groups.length; g++) {
-      if (d.groups[g].studentIds && d.groups[g].studentIds.indexOf(studentId) !== -1) return true;
+      for (var si = 0; si < searchIds.length; si++) {
+        if (d.groups[g].studentIds && d.groups[g].studentIds.indexOf(searchIds[si]) !== -1) return true;
+      }
     }
     return false;
   });
   myDebates.sort(function(a, b) { return b.createdAt - a.createdAt; });
   if (myDebates.length === 0) {
-    container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:40px 0">\u6682\u65e0\u5bf9\u6297\u8bb0\u5f55</div>';
+    container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:40px 0">暂无对抗记录</div>';
     return;
   }
   var html = '';
@@ -15430,11 +15453,14 @@ function renderDebateStudentRecords(container) {
     var d = myDebates[i];
     var myGroup = null;
     for (var g = 0; g < d.groups.length; g++) {
-      if (d.groups[g].studentIds && d.groups[g].studentIds.indexOf(studentId) !== -1) { myGroup = d.groups[g]; break; }
+      for (var si = 0; si < searchIds.length; si++) {
+        if (d.groups[g].studentIds && d.groups[g].studentIds.indexOf(searchIds[si]) !== -1) { myGroup = d.groups[g]; break; }
+      }
+      if (myGroup) break;
     }
     var sub = d.submissions || {};
     var mySub = myGroup ? sub[myGroup.side] : null;
-    var statusText = d.aiAnalysis ? '\u5df2\u8bc4\u6790' : (mySub && mySub.outline ? '\u5df2\u63d0\u4ea4' : '\u5f85\u63d0\u4ea4');
+    var statusText = d.aiAnalysis ? '已评析' : (mySub && mySub.outline ? '已提交' : '待提交');
     var statusClass = d.aiAnalysis ? 'completed' : (mySub && mySub.outline ? 'active' : 'pending');
     var timeStr = new Date(d.createdAt).toLocaleDateString('zh-CN');
     html += '<div class="debate-card" onclick="renderDebateDetail(\'' + d.id + '\', document.getElementById(\'debateStudentContent\'))">';
