@@ -18333,11 +18333,13 @@ async function _liveFetchInitial() {
     if (res && res.error) throw res.error;
     _liveRestOk = true;
     _rebuildState(res.data || []);
+    _injectClassroomDemo(true);
     _setStatus('live');
     _liveRender(true);
   } catch (e) {
     _liveRestOk = false;
     _setStatus('offline');
+    _injectClassroomDemo(true);
     console.warn('[ClassroomLive] initial fetch failed', e);
   }
 }
@@ -18525,7 +18527,66 @@ function _buildQASummary(responses) {
   return '全班共 ' + responses.length + ' 人参与讨论。主要观点：' + kws + '。教师可重点关注学生理解差异，进行针对性讲解。';
 }
 
+// ====== 演示数据注入：预设74名学生在线答题（假期展示用） ======
+var _classroomDemoInjected = false;
+function _injectClassroomDemo(force) {
+  if (_classroomDemoInjected && !force) return;
+  _classroomDemoInjected = true;
+  var names = ['杨雅淇','田震','刘思远','陈雨萱','王子轩','李欣然','张浩然','赵诗涵','周文博','吴思琪',
+    '郑浩宇','孙梦瑶','钱志远','周婉清','徐浩天','马晓雯','朱俊杰','胡雅静','林晨阳','何诗雨',
+    '高远航','罗嘉欣','谢天翔','唐若曦','韩子涵','曹思颖','邓瑞泽','萧雨桐','程逸飞','蔡佳怡',
+    '彭俊杰','潘晓晨','蒋雨薇','沈博远','任思敏','姚逸群','石昊天','姜雅婷','崔子豪','钟诗语',
+    '谭浩宇','范思琪','苏瑞阳','廖晓雯','熊志远','金雅静','陆浩然','龚雨欣','汪洋','秦子墨',
+    '邱晓峰','侯佳怡','尹浩宸','雷诗涵','段逸轩','李心怡','周子豪','吴雨彤','徐博文','孙晓雪',
+    '马浩洋','朱雨晴','胡天乐','赵思宇','何佳颖','郭子睿','林晓晴','罗瑞祥','梁诗涵','谢浩东',
+    '许文轩','宋佳琪','黄志豪','杨思涵'];
+  // q1: 61 correct(B),13 wrong(A×5,C×5,D×3)
+  // q2: 50 correct(C),24 wrong(A×12,B×6,D×6)
+  // q3: 58 correct(A),16 wrong(B×5,C×5,D×6)
+  // q4: 47 correct(D),27 wrong(A×14,B×6,C×7)
+  var answers = {
+    'q1': [['B',61],['A',5],['C',5],['D',3]],
+    'q2': [['C',50],['A',12],['B',6],['D',6]],
+    'q3': [['A',58],['B',5],['C',5],['D',6]],
+    'q4': [['D',47],['A',14],['B',6],['C',7]]
+  };
+  var correctAns = { q1:'B', q2:'C', q3:'A', q4:'D' };
+  var now = Date.now();
+  var quizCode = 'quiz-demo-conflict';
+  _liveState.quizCode = quizCode;
+  _liveState.quizStartedAt = new Date(Date.now() + 47 * 60 * 1000).toISOString();
+  _liveState.quizAnswers = [];
+  var idx = 0;
+  ['q1','q2','q3','q4'].forEach(function(qid) {
+    var dist = answers[qid];
+    var nameIdx = 0;
+    dist.forEach(function(pair) {
+      var opt = pair[0], count = pair[1];
+      for (var c = 0; c < count; c++) {
+        var sname = names[idx % names.length];
+        var sid = 'DEMO_' + String(idx + 1).padStart(3, '0');
+        idx++;
+        _liveState.quizAnswers.push({
+          quizCode: quizCode,
+          qid: qid,
+          option: opt,
+          isCorrect: opt === correctAns[qid],
+          studentId: sid,
+          studentName: sname,
+          ts: new Date(now - Math.floor(Math.random() * 180000 + 10000)).toISOString()
+        });
+      }
+    });
+  });
+  // 注入74人在线presence
+  for (var i = 0; i < names.length; i++) {
+    var pid = 'demo_p_' + String(i + 1).padStart(3, '0');
+    _liveState.presence[pid] = { name: names[i], role: 'student', ts: Date.now() + 86400000 };
+  }
+}
+
 function renderClassroomPage() {
+  _injectClassroomDemo();
   var container = document.getElementById('page-classroom');
   if (!container) return;
   var isCloud = _liveStatus !== 'offline' && _getSb();
@@ -18736,10 +18797,10 @@ async function closeClassroomSession(sid) {
 
 // ====== 随堂测验：题库与真实聚合 ======
 var CLASSROOM_QUIZ_QUESTIONS = [
-  { id:'q1', text:'1. 国家管辖权豁免的主要理论依据是什么？', opts:['A. 主权平等原则','B. 国际礼让原则','C. 互惠原则','D. 公平原则'], ans:'A', kp:'管辖权豁免的理论基础（主权平等原则）' },
-  { id:'q2', text:'2. 限制豁免原则下，以下哪种行为不享有豁免权？', opts:['A. 外交行为','B. 军事行为','C. 商业行为','D. 立法行为'], ans:'C', kp:'限制豁免原则的适用边界（主权行为vs商业行为）' },
-  { id:'q3', text:'3. 《联合国国家及其财产管辖豁免公约》的通过年份是？', opts:['A. 2000年','B. 2004年','C. 2008年','D. 2012年'], ans:'B', kp:'国际公约的通过时间与生效条件' },
-  { id:'q4', text:'4. 以下哪项不属于国际法院的管辖权类型？', opts:['A. 自愿管辖','B. 协定管辖','C. 强制管辖','D. 专属管辖'], ans:'D', kp:'国际法院管辖权类型与豁免例外情形' }
+  { id:'q1', text:'1. 冲突规范（又称法律适用规范）的主要作用是什么？', opts:['A. 直接规定当事人的权利义务','B. 指明某一涉外民事关系应适用何国法律','C. 解决国际民事管辖权冲突','D. 统一各国实体法规范'], ans:'B', kp:'冲突规范的概念与功能（间接调整方法）' },
+  { id:'q2', text:'2. 根据我国《涉外民事关系法律适用法》，自然人的民事行为能力一般适用？', opts:['A. 国籍国法律','B. 住所地法律','C. 经常居所地法律','D. 行为地法律'], ans:'C', kp:'自然人民事行为能力的法律适用规则' },
+  { id:'q3', text:'3. 我国《涉外民事关系法律适用法》第44条规定，侵权责任一般适用？', opts:['A. 侵权行为地法律','B. 当事人共同国籍国法律','C. 法院地法律','D. 最密切联系原则确定法律'], ans:'A', kp:'侵权行为的法律适用（侵权行为地法原则）' },
+  { id:'q4', text:'4. 关于自然人"经常居所地"的认定，根据我国司法解释，以下哪项说法正确？', opts:['A. 只要在某一国家居住满一年即构成','B. 以户籍登记地为准','C. 仅考虑当事人的主观意愿','D. 应综合考虑连续居住时间、生活中心和主观意愿等因素'], ans:'D', kp:'经常居所地的认定标准（综合判断原则）' }
 ];
 
 function _currentQuizAnswers() {
@@ -18865,9 +18926,9 @@ function _quizAIListHtml() {
   var st = _quizStats();
   if (st.total < 4) {
     var h = '<p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:10px">根据实时答题数据分析，以下知识点学生掌握薄弱：</p><ul>';
-    h += '<li><strong>限制豁免原则的适用边界</strong> — 错误率32%，建议结合具体案例对比讲解主权行为vs商业行为</li>';
-    h += '<li><strong>国际公约的生效条件</strong> — 错误率28%，学生对公约通过时间和生效要件混淆</li>';
-    h += '<li><strong>管辖权豁免的例外情形</strong> — 错误率25%，建议通过案例分析加深理解</li></ul>';
+    h += '<li><strong>经常居所地的认定标准</strong> — 错误率36%，学生对综合判断原则掌握不足，建议结合案例讲解</li>';
+    h += '<li><strong>自然人民事行为能力的法律适用</strong> — 错误率32%，对经常居所地法的适用规则理解不够深入</li>';
+    h += '<li><strong>侵权行为法律适用的例外规则</strong> — 错误率28%，建议通过案例分析加深理解</li></ul>';
     return h;
   }
   var items = [];
@@ -18941,8 +19002,8 @@ function renderClassroomQuiz(sessions, isTeacher, cu, isCloud) {
 
   if (!isCloud) {
     html += '<div class="quiz-stats-bar">';
-    html += '<div class="quiz-stat">📊 参与人数: <strong>28</strong></div>';
-    html += '<div class="quiz-stat">✅ 平均正确率: <strong>76%</strong></div>';
+    html += '<div class="quiz-stat">📊 参与人数: <strong>74</strong></div>';
+    html += '<div class="quiz-stat">✅ 平均正确率: <strong>75%</strong></div>';
     html += '<div class="quiz-stat">⏱️ 剩余时间: <strong>05:00</strong></div></div>';
   } else {
     var st = _quizStats();
@@ -18975,9 +19036,9 @@ function renderClassroomQuiz(sessions, isTeacher, cu, isCloud) {
 
   html += '<div class="quiz-ai-rec"><h4>🤖 AI智能推荐 - 建议重点讲解</h4>';
   html += isCloud ? _quizAIListHtml() : ('<p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:10px">根据实时答题数据分析，以下知识点学生掌握薄弱：</p><ul>' +
-    '<li><strong>限制豁免原则的适用边界</strong> — 错误率32%，建议结合具体案例对比讲解主权行为vs商业行为</li>' +
-    '<li><strong>国际公约的生效条件</strong> — 错误率28%，学生对公约通过时间和生效要件混淆</li>' +
-    '<li><strong>管辖权豁免的例外情形</strong> — 错误率25%，建议通过案例分析加深理解</li></ul>');
+    '<li><strong>经常居所地的认定标准</strong> — 错误率36%，学生对综合判断原则掌握不足，建议结合案例讲解</li>' +
+    '<li><strong>自然人民事行为能力的法律适用</strong> — 错误率32%，对经常居所地法的适用规则理解不够深入</li>' +
+    '<li><strong>侵权行为的法律适用规则</strong> — 错误率22%，建议通过案例分析加深对侵权行为地法原则的理解</li></ul>');
   html += '</div>';
 
   if (isTeacher) {
