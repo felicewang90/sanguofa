@@ -17569,7 +17569,7 @@ function openNewPostModal() {
   var cu = AppState.currentUser || {};
   if (!cu.email) { alert('请先登录'); return; }
   teaCurrentPostType = 'short'; teaCurrentTag = '';
-  var m = '<div class="modal-overlay" id="newPostModal" onclick="if(event.target===this)closeNewPostModal()">';
+  var m = '<div class="modal-overlay show" id="newPostModal" onclick="if(event.target===this)closeNewPostModal()">';
   m += '<div class="modal-content" style="max-width:580px"><h3>✏️ 发布新帖</h3>';
   m += '<label style="font-size:0.84rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block">帖子类型</label>';
   m += '<div class="tea-type-selector">';
