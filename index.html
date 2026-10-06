@@ -9,6 +9,49 @@
   <link rel="icon" href="assets/xiaoji/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="180x180" href="assets/xiaoji/favicon180.png">
   <link rel="apple-touch-icon" href="assets/xiaoji/favicon180.png">
+  
+  <!-- 加载进度提示 -->
+  <style>
+    #page-loader {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: linear-gradient(135deg, #1a2a5e 0%, #2a3f7e 50%, #1e2d62 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 99999;
+      transition: opacity 0.5s ease;
+    }
+    #page-loader.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    #page-loader .loader-spinner {
+      width: 60px;
+      height: 60px;
+      border: 4px solid rgba(255,255,255,0.2);
+      border-top: 4px solid #c9a84c;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 24px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    #page-loader .loader-text {
+      color: white;
+      font-size: 18px;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      margin-bottom: 8px;
+    }
+    #page-loader .loader-subtext {
+      color: rgba(255,255,255,0.6);
+      font-size: 13px;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+  </style>
   <style>
 /* ========================================
    三国法教学智能体 - 主样式表
@@ -4611,6 +4654,13 @@ button:active:not(:disabled),
 </head>
 <body>
 
+  <!-- 页面加载进度提示 -->
+  <div id="page-loader">
+    <div class="loader-spinner"></div>
+    <div class="loader-text">小际陪你学国际法</div>
+    <div class="loader-subtext">正在加载知识库，请稍候...</div>
+  </div>
+
   <div id="xiaojiSplash">
     <img class="sp-mascot" src="assets/xiaoji/main.png" alt="小际">
     <div class="sp-title">小际陪你学国际法</div>
@@ -6946,6 +6996,15 @@ function startApp() {
   
   // 根据角色显示页面
   showPage('dashboard');
+  
+  // 隐藏页面加载提示
+  var loader = document.getElementById('page-loader');
+  if (loader) {
+    setTimeout(function() {
+      loader.classList.add('hidden');
+      setTimeout(function() { loader.remove(); }, 500);
+    }, 300);
+  }
 }
 
 // === Login / Logout (Supabase Auth) ===
