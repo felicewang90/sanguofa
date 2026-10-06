@@ -17552,7 +17552,6 @@ function teaFilterTag(tag) { teaCurrentFilter = tag; renderDiscussionPage(); }
 function teaSortBy(s) { teaCurrentSort = s; renderDiscussionPage(); }
 
 function openNewPostModal() {
-  alert('openNewPostModal called');
   var cu = AppState.currentUser || {};
   if (!cu.email) { alert('请先登录'); return; }
   teaCurrentPostType = 'short'; teaCurrentTag = '';
