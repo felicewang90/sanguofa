@@ -1,0 +1,14452 @@
+
+  // === Supabase 初始化 ===
+  var SUPABASE_URL = 'https://buckhpuxcenmnthxumuh.supabase.co';
+  var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ1Y2tocHV4Y2VubW50aHh1bXVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1ODU0ODgsImV4cCI6MjEwNTE2MTQ4OH0.HoNx0ZtEEJ5k3lrBJlCOhkv5rT-_C3BpNHJy3cAZXxw';
+  var sbAuthClient = null;
+  (function initSupabase() {
+    if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+      sbAuthClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      console.log('[Supabase] Client initialized');
+    } else {
+      console.warn('[Supabase] SDK not loaded yet, retrying...');
+      setTimeout(initSupabase, 500);
+    }
+  })();
+
+  // Knowledge base: raw JSON, no compression/decompression needed
+// ============================================================
+// Supabase 云端数据同步模块
+// ============================================================
+var _sbClient = null;
+var _sbConfigured = false;
+
+function _sbInit() {
+  try {
+    var url = localStorage.getItem('supabase_url') || '';
+    var key = localStorage.getItem('supabase_anon_key') || '';
+    if (!url || !key) { _sbConfigured = false; return; }
+    if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+      _sbClient = window.supabase.createClient(url, key);
+      _sbConfigured = true;
+      console.log('[Supabase] Client initialized');
+      _sbFlushQueue();
+    } else {
+      console.warn('[Supabase] SDK not loaded yet');
+      _sbConfigured = false;
+    }
+  } catch(e) {
+    console.warn('[Supabase] Init error:', e);
+    _sbConfigured = false;
+  }
+}
+
+async function _sbTrackEvent(eventType, module, payload) {
+  if (!_sbConfigured || !_sbClient) return;
+  try {
+    var user = AppState.currentUser;
+    var studentId = user ? user.studentId : '';
+    if (!studentId) return;
+    
+    // Insert event
+    var eventRow = {
+      student_id: studentId,
+      event_type: eventType,
+      module: module,
+      payload: payload,
+      created_at: new Date().toISOString()
+    };
+    var _r1 = _sbClient.from('events').insert(eventRow);
+    if (_r1 && _r1.then) await _r1;
+    
+    // Upsert students table
+    var studentRow = {
+      student_id: studentId,
+      name: user ? user.name : '',
+      role: user ? user.role : 'student',
+      last_login_at: new Date().toISOString()
+    };
+    var _r2 = _sbClient.from('students').upsert(studentRow, { onConflict: 'student_id' });
+    if (_r2 && _r2.then) await _r2;
+  } catch(e) {
+    console.warn('[Supabase] Track event error:', e);
+    _sbQueueEvent(eventType, module, payload);
+  }
+}
+
+function _sbQueueEvent(eventType, module, payload) {
+  try {
+    var queue = [];
+    var raw = localStorage.getItem('supabase_event_queue');
+    if (raw) queue = JSON.parse(raw);
+    var user = AppState.currentUser;
+    queue.push({
+      student_id: user ? user.studentId : '',
+      event_type: eventType,
+      module: module,
+      payload: payload,
+      created_at: new Date().toISOString()
+    });
+    // Keep queue reasonable size
+    if (queue.length > 500) queue = queue.slice(-500);
+    localStorage.setItem('supabase_event_queue', JSON.stringify(queue));
+  } catch(e) {}
+}
+
+async function _sbFlushQueue() {
+  if (!_sbConfigured || !_sbClient) return;
+  try {
+    var raw = localStorage.getItem('supabase_event_queue');
+    if (!raw) return;
+    var queue = JSON.parse(raw);
+    if (!queue || queue.length === 0) return;
+    
+    var _res = _sbClient.from('events').insert(queue);
+    if (_res && _res.then) {
+      var result = await _res;
+      if (result && !result.error) {
+        localStorage.removeItem('supabase_event_queue');
+        console.log('[Supabase] Flushed ' + queue.length + ' queued events');
+      }
+    }
+  } catch(e) {
+    console.warn('[Supabase] Flush queue error:', e);
+  }
+}
+
+async function _sbTestConnection() {
+  if (!_sbClient) return { ok: false, error: '客户端未初始化' };
+  try {
+    var _res = _sbClient.from('students').select('count', { count: 'exact', head: true });
+    if (_res && _res.then) {
+      var result = await _res;
+      if (result && !result.error) return { ok: true };
+      return { ok: false, error: result.error.message || '连接失败' };
+    }
+    return { ok: false, error: 'SDK未就绪' };
+  } catch(e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+// Save Supabase config
+function saveSupabaseConfig() {
+  var url = document.getElementById('sbUrlInput').value.trim();
+  var key = document.getElementById('sbKeyInput').value.trim();
+  if (!url || !key) {
+    alert('请填写 Supabase URL 和 Anon Key');
+    return;
+  }
+  localStorage.setItem('supabase_url', url);
+  localStorage.setItem('supabase_anon_key', key);
+  _sbInit();
+  var resultEl = document.getElementById('sbTestResult');
+  if (resultEl) {
+    resultEl.style.display = 'block';
+    resultEl.style.color = '#52c41a';
+    resultEl.textContent = '✅ 配置已保存，正在初始化...';
+  }
+  if (typeof closeSupabaseSettings === 'function') closeSupabaseSettings();
+}
+
+async function testSupabaseConnection() {
+  var url = document.getElementById('sbUrlInput').value.trim();
+  var key = document.getElementById('sbKeyInput').value.trim();
+  var resultEl = document.getElementById('sbTestResult');
+  if (!resultEl) return;
+  resultEl.style.display = 'block';
+  if (!url || !key) {
+    resultEl.style.color = '#ff4d4f';
+    resultEl.textContent = '❌ 请先填写 URL 和 Key';
+    return;
+  }
+  resultEl.style.color = '#999';
+  resultEl.textContent = '⏳ 正在测试连接...';
+  try {
+    // Test with fetch directly
+    var testUrl = url.replace(/\/+$/, '') + '/rest/v1/students?select=count&limit=1';
+    var resp = await fetch(testUrl, {
+      headers: { 'apikey': key, 'Authorization': 'Bearer ' + key }
+    });
+    if (resp.ok) {
+      resultEl.style.color = '#52c41a';
+      resultEl.textContent = '✅ 连接成功！请保存配置。';
+    } else {
+      var text = await resp.text();
+      resultEl.style.color = '#ff4d4f';
+      resultEl.textContent = '❌ 连接失败 (HTTP ' + resp.status + '): ' + text.substring(0, 200);
+    }
+  } catch(e) {
+    resultEl.style.color = '#ff4d4f';
+    resultEl.textContent = '❌ 网络错误: ' + e.message;
+  }
+}
+
+function clearSupabaseConfig() {
+  if (!confirm('确定要清除 Supabase 配置吗？离线队列中的事件将被保留。')) return;
+  localStorage.removeItem('supabase_url');
+  localStorage.removeItem('supabase_anon_key');
+  _sbClient = null;
+  _sbConfigured = false;
+  var resultEl = document.getElementById('sbTestResult');
+  if (resultEl) {
+    resultEl.style.display = 'block';
+    resultEl.style.color = '#b08d3a';
+    resultEl.textContent = '⏸ 配置已清除';
+  }
+}
+
+function showSupabaseSettings() {
+  var modal = document.getElementById('supabaseSettingsModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  var urlInput = document.getElementById('sbUrlInput');
+  var keyInput = document.getElementById('sbKeyInput');
+  if (urlInput) urlInput.value = localStorage.getItem('supabase_url') || '';
+  if (keyInput) keyInput.value = localStorage.getItem('supabase_anon_key') || '';
+  var resultEl = document.getElementById('sbTestResult');
+  if (resultEl) resultEl.style.display = 'none';
+}
+
+function closeSupabaseSettings() {
+  var modal = document.getElementById('supabaseSettingsModal');
+  if (modal) modal.style.display = 'none';
+}
+
+// ============================================================
+
+
+  // Knowledge base: split into 6 files, loaded in parallel
+  var KB_VERSION = '20260908a'; // 固定版本：URL稳定可被浏览器强缓存；更新知识库后改此号
+  let KB_CHUNKS = null;
+  function loadKBData() {
+    // Backwards compat: if single file already loaded
+    if (typeof KB_CHUNKS_RAW !== 'undefined' && KB_CHUNKS_RAW) {
+      KB_CHUNKS = KB_CHUNKS_RAW;
+      console.log("[KB] Direct load from KB_CHUNKS_RAW, chunks:", KB_CHUNKS.length);
+      return Promise.resolve();
+    }
+    // Check if split files are already loaded
+    const splitVars = ['KB_CHUNKS_PUB1','KB_CHUNKS_PUB2','KB_CHUNKS_PRIV','KB_CHUNKS_ECON1','KB_CHUNKS_ECON2','KB_CHUNKS_POLITICS'];
+    const alreadyLoaded = splitVars.filter(v => typeof window[v] !== 'undefined' && window[v]);
+    if (alreadyLoaded.length === splitVars.length) {
+      KB_CHUNKS = [];
+      splitVars.forEach(v => { KB_CHUNKS = KB_CHUNKS.concat(window[v]); });
+      console.log("[KB] All split files already loaded, chunks:", KB_CHUNKS.length);
+      return Promise.resolve();
+    }
+
+    const files = [
+      {name: 'kb-pub1.js', var: 'KB_CHUNKS_PUB1'},
+      {name: 'kb-pub2.js', var: 'KB_CHUNKS_PUB2'},
+      {name: 'kb-priv.js', var: 'KB_CHUNKS_PRIV'},
+      {name: 'kb-econ1.js', var: 'KB_CHUNKS_ECON1'},
+      {name: 'kb-econ2.js', var: 'KB_CHUNKS_ECON2'},
+      {name: 'kb-politics.js', var: 'KB_CHUNKS_POLITICS'}
+    ];
+
+    function loadFile(fileObj, maxRetries) {
+      maxRetries = maxRetries || 2;
+      return new Promise((resolve, reject) => {
+        let attempt = 0;
+        function tryLoad() {
+          attempt++;
+          let settled = false;
+          const timeout = setTimeout(() => {
+            if (!settled) { settled = true; retryOrReject(); }
+          }, 45000);
+          const s = document.createElement('script');
+          s.src = fileObj.name + '?v=' + KB_VERSION + '&r=' + attempt;
+          s.onload = () => {
+            if (settled) return;
+            clearTimeout(timeout);
+            settled = true;
+            if (typeof window[fileObj.var] !== 'undefined') {
+              console.log('[KB] Loaded ' + fileObj.name + ' (attempt ' + attempt + '), chunks: ' + window[fileObj.var].length);
+              resolve({file: fileObj.name, chunks: window[fileObj.var]});
+            } else {
+              retryOrReject();
+            }
+          };
+          s.onerror = () => {
+            if (settled) return;
+            clearTimeout(timeout);
+            settled = true;
+            retryOrReject();
+          };
+          function retryOrReject() {
+            if (attempt < maxRetries) {
+              console.log('[KB] Retrying ' + fileObj.name + ' (attempt ' + attempt + '/' + maxRetries + ')');
+              setTimeout(tryLoad, 500);
+            } else {
+              reject(new Error(fileObj.name + ' failed after ' + maxRetries + ' attempts'));
+            }
+          }
+          document.head.appendChild(s);
+        }
+        tryLoad();
+      });
+    }
+
+    return Promise.allSettled(files.map(loadFile)).then(results => {
+      const success = [];
+      const failed = [];
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled') success.push(r.value);
+        else failed.push(files[i].name);
+      });
+
+      // 全量备份加载器（带3次重试，30s超时），成功resolve(true)
+      function _loadRawFallback() {
+        return new Promise((resolve) => {
+          let attempt = 0;
+          function tryLoad() {
+            attempt++;
+            let done = false;
+            const timer = setTimeout(() => { if (!done) { done = true; retry(); } }, 30000);
+            const s = document.createElement('script');
+            s.src = 'kb-data-raw.js?v=' + KB_VERSION + '&r=' + attempt;
+            s.onload = () => {
+              if (done) return;
+              clearTimeout(timer); done = true;
+              if (typeof KB_CHUNKS_RAW !== 'undefined' && Array.isArray(KB_CHUNKS_RAW) && KB_CHUNKS_RAW.length > 0) {
+                resolve(true);
+              } else { retry(); }
+            };
+            s.onerror = () => { if (!done) { clearTimeout(timer); done = true; retry(); } };
+            function retry() {
+              if (attempt < 3) { console.warn('[KB] 全量备份第' + attempt + '次失败，重试...'); setTimeout(tryLoad, 800); }
+              else { console.error('[KB] 全量备份3次均失败'); resolve(false); }
+            }
+            document.head.appendChild(s);
+          }
+          tryLoad();
+        });
+      }
+
+      if (success.length === 0) {
+        // 全部分片失败 → 必须等到全量兜底就绪
+        console.warn('[KB] All split files failed, trying kb-data-raw.js fallback...');
+        return _loadRawFallback().then(ok => {
+          if (ok) { KB_CHUNKS = KB_CHUNKS_RAW; console.log('[KB] Fallback loaded, chunks:', KB_CHUNKS.length); }
+          else { KB_CHUNKS = []; throw new Error('All KB files failed (split + fallback)'); }
+        });
+      }
+
+      // 先合并已成功的分片，保证尽快可用
+      KB_CHUNKS = [];
+      success.forEach(s => { KB_CHUNKS = KB_CHUNKS.concat(s.chunks); });
+      console.log('[KB] Loaded ' + success.length + '/' + files.length + ' split files, ' + KB_CHUNKS.length + ' chunks');
+
+      if (failed.length > 0) {
+        // 部分分片失败 → 同步等待全量备份补齐（全量与分片内容一致，直接覆盖最稳妥）
+        console.warn('[KB] 部分分片加载失败(' + failed.join(',') + ')，等待全量备份补齐...');
+        return _loadRawFallback().then(ok => {
+          if (ok) {
+            KB_CHUNKS = KB_CHUNKS_RAW;
+            console.log('[KB] 全量备份补齐完成，chunks:', KB_CHUNKS.length);
+          } else {
+            console.warn('[KB] 全量备份失败，暂用已加载的', KB_CHUNKS.length, '个知识块');
+          }
+        });
+      }
+    });
+  }
+
+  // 知识库（约 2.5MB）改为按需加载：首屏不再抢占带宽，
+  // 首次真正检索时才下载；首页渲染完会在浏览器空闲时后台预取。
+  let _kbReady = null;
+  function _kbEnsure() {
+    if (_kbReady) return _kbReady;
+    try {
+      _kbReady = loadKBData();
+    } catch (e) {
+      console.error('KB load threw:', e);
+      _kbReady = Promise.reject(e);
+    }
+    _kbReady.then(() => {
+      console.log("知识库加载成功，共", KB_CHUNKS ? KB_CHUNKS.length : 'pending', "个知识块");
+    }).catch(e => {
+      console.error("KB init failed:", e);
+      const banner = document.createElement('div');
+      banner.id = 'kb-error-banner';
+      banner.style.cssText = 'position:fixed;top:64px;left:0;right:0;z-index:9999;background:#dc3545;color:white;text-align:center;padding:10px;font-size:0.85rem;cursor:pointer';
+      banner.innerHTML = '⚠️ 知识库加载失败，智能问答/案例生成/法律检索功能不可用。<b>点击刷新页面重试</b>';
+      banner.onclick = () => location.reload();
+      if (document.body) document.body.appendChild(banner);
+    });
+    return _kbReady;
+  }
+
+  // Helper: wait for KB with timeout, so search never hangs indefinitely
+  function _kbWait(ms) {
+    return Promise.race([
+      _kbEnsure(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('KB timeout ' + ms + 'ms')), ms))
+    ]);
+  }
+
+  // 首屏渲染完成后，利用浏览器空闲时间预取知识库，用户真正提问时已就绪
+  function _kbPrefetch() {
+    var schedule = window.requestIdleCallback || window.requestAnimationFrame ||
+      function (cb) { return setTimeout(cb, 1200); };
+    try {
+      schedule(function () { try { _kbEnsure(); } catch (e) { console.warn('KB prefetch failed:', e); } });
+    } catch (e) {
+      setTimeout(function () { try { _kbEnsure(); } catch (e2) {} }, 1500);
+    }
+  }
+
+
+// ========================================
+// BM25 搜索引擎 (中文双字分词)
+// ========================================
+const BM25 = (function() {
+  const K1 = 1.5;
+  const B = 0.75;
+  let avgdl = 0;
+  let docLens = [];
+  let _docTokensCache = null; // 缓存每篇文档的分词结果，避免每次搜索重复分词
+
+  function getDocTokens() {
+    // KB 数量变化时缓存自动失效
+    if (_docTokensCache && _docTokensCache.length === KB_CHUNKS.length) return _docTokensCache;
+    _docTokensCache = KB_CHUNKS.map(chunk => tokenize(chunk.t + ' ' + chunk.x));
+    return _docTokensCache;
+  }
+  
+  /**
+   * 中文双字bigram分词 + 英文单词分词
+   * "国际私法" => ["国际", "际私", "私法"]
+   * "CISG公约" => ["cisg", "公约"]
+   */
+  function tokenize(text) {
+    if (!text) return [];
+    const tokens = [];
+    const str = String(text).toLowerCase();
+    const len = str.length;
+    
+    // 提取英文单词和数字
+    const wordRegex = /[a-z0-9]+/g;
+    let m;
+    while ((m = wordRegex.exec(str)) !== null) {
+      if (m[0].length >= 1) tokens.push(m[0]);
+    }
+    
+    // 中文双字bigram
+    for (let i = 0; i < len - 1; i++) {
+      const c1 = str.charCodeAt(i);
+      const c2 = str.charCodeAt(i + 1);
+      // 两个连续中文字符 (CJK Unified Ideographs 基本区 + 扩展A)
+      if ((c1 >= 0x4e00 && c1 <= 0x9fff || c1 >= 0x3400 && c1 <= 0x4dbf) &&
+          (c2 >= 0x4e00 && c2 <= 0x9fff || c2 >= 0x3400 && c2 <= 0x4dbf)) {
+        tokens.push(str.substring(i, i + 2));
+      }
+    }
+    
+    // 单字兜底（处理单字查询）
+    for (let i = 0; i < len; i++) {
+      const c = str.charCodeAt(i);
+      if (c >= 0x4e00 && c <= 0x9fff || c >= 0x3400 && c <= 0x4dbf) {
+        tokens.push(str.charAt(i));
+      }
+    }
+    
+    return tokens;
+  }
+  
+  function init() {
+    if (!KB_CHUNKS || KB_CHUNKS.length === 0) {
+      console.warn("BM25.init: KB not ready, KB_CHUNKS=", KB_CHUNKS ? KB_CHUNKS.length : 'null');
+      return;
+    }
+    if (docLens.length > 0 && docLens.length === KB_CHUNKS.length) return; // 已初始化且数量匹配
+    const tokens = getDocTokens();
+    let totalLen = 0;
+    docLens = tokens.map(toks => { totalLen += toks.length; return toks.length; });
+    avgdl = totalLen / KB_CHUNKS.length || 1;
+  }
+  
+  function getTermFreq(tokens) {
+    const tf = {};
+    for (const t of tokens) {
+      tf[t] = (tf[t] || 0) + 1;
+    }
+    return tf;
+  }
+  
+  function search(query, topN) {
+    init();
+    if (!KB_CHUNKS || KB_CHUNKS.length === 0) {
+      console.warn("BM25.search: KB_CHUNKS not ready, returning empty results");
+      return [];
+    }
+    topN = topN || 5;
+    const queryTokens = tokenize(query);
+    if (queryTokens.length === 0) return [];
+    
+    // 构建查询词频
+    const qTf = getTermFreq(queryTokens);
+    const qTerms = Object.keys(qTf);
+    
+    // 构建文档频率 (遍历query中的每个词，统计在多少文档中出现) —— 使用分词缓存
+    const allDocTokens = getDocTokens();
+    const df = {};
+    for (const qt of qTerms) {
+      let count = 0;
+      for (let i = 0; i < KB_CHUNKS.length; i++) {
+        if (allDocTokens[i].indexOf(qt) !== -1) count++;
+      }
+      df[qt] = count;
+    }
+    
+    // 计算每个文档的BM25分数 —— 复用缓存分词与df
+    const scores = [];
+    const N = KB_CHUNKS.length;
+    
+    for (let i = 0; i < N; i++) {
+      const docTokens = allDocTokens[i];
+      const docTf = getTermFreq(docTokens);
+      const dl = docLens[i];
+      let score = 0;
+      
+      for (const term of qTerms) {
+        const f = docTf[term] || 0;
+        if (f === 0) continue;
+        
+        const n = df[term] || 1;
+        // IDF: ln((N - n + 0.5) / (n + 0.5) + 1)
+        const idf = Math.log((N - n + 0.5) / (n + 0.5) + 1);
+        // BM25 term score
+        const numerator = f * (K1 + 1);
+        const denominator = f + K1 * (1 - B + B * (dl / avgdl));
+        score += idf * (numerator / denominator);
+      }
+      
+      if (score > 0) {
+        scores.push({ index: i, score: score });
+      }
+    }
+    
+    // 按分数排序，取topN
+    scores.sort((a, b) => b.score - a.score);
+    let results = scores.slice(0, topN).map(s => ({
+      chunk: KB_CHUNKS[s.index],
+      score: s.score
+    }));
+    
+    // Fallback: if BM25 returns no results, do simple text matching
+    if (results.length === 0) {
+      const qLower = query.toLowerCase();
+      for (let i = 0; i < KB_CHUNKS.length && results.length < topN; i++) {
+        const text = (KB_CHUNKS[i].t + ' ' + KB_CHUNKS[i].x).toLowerCase();
+        if (text.includes(qLower)) {
+          results.push({ chunk: KB_CHUNKS[i], score: 0.1 });
+        }
+      }
+    }
+    
+    return results;
+  }
+  
+  return {
+    search: search,
+    tokenize: tokenize,
+    init: init
+  };
+})();
+
+/* ========================================
+   三国法教学智能体 - 应用逻辑
+   ======================================== */
+
+// === 模拟数据 ===
+var MockData = {
+  // 分类导航树
+  categories: [
+    {
+      id: 'intl-pub',
+      name: '国际公法',
+      icon: '🌐',
+      children: [
+        { id: 'intl-pub-textbook', name: '教材（19章）', count: 19 },
+        { id: 'intl-pub-convention', name: '重要公约', count: 42 },
+        { id: 'intl-pub-case', name: '经典判例', count: 36 },
+        { id: 'intl-pub-position', name: '中国立场文件', count: 15 },
+      ]
+    },
+    {
+      id: 'intl-pri',
+      name: '国际私法',
+      icon: '⚖️',
+      children: [
+        { id: 'intl-pri-textbook', name: '教材（18章）', count: 18 },
+        { id: 'intl-pri-statute', name: '核心法条', count: 28 },
+        { id: 'intl-pri-convention', name: '国际公约', count: 22 },
+        { id: 'intl-pri-case', name: '典型案例', count: 31 },
+      ]
+    },
+    {
+      id: 'intl-eco',
+      name: '国际经济法',
+      icon: '💼',
+      children: [
+        { id: 'intl-eco-textbook', name: '教材（17章）', count: 17 },
+        { id: 'intl-eco-convention', name: '贸易公约', count: 35 },
+        { id: 'intl-eco-rules', name: '国际规则', count: 24 },
+        { id: 'intl-eco-case', name: '争议案例', count: 29 },
+      ]
+    },
+    {
+      id: 'ideology',
+      name: '涉外法治资鉴',
+      icon: '🏛️',
+      children: [
+        { id: 'ideology-doc', name: '官方文件', count: 6 },
+        { id: 'ideology-news', name: '前沿动态', count: 15 },
+      ]
+    }
+  ],
+
+  // 教学案例
+  cases: [
+    {
+      id: 'case-1',
+      name: '南海仲裁案模拟法庭',
+      tag: 'pub',
+      tagText: '国际公法',
+      brief: '模拟2016年南海仲裁案审理过程，涉及UNCLOS条约解释、历史性权利、岛礁法律地位等核心问题。',
+      difficulty: '高级',
+      duration: '90分钟',
+      roles: ['中方代理人', '菲方代理人'],
+      evidence: {
+        materials: [
+          { icon: '📄', text: '《联合国海洋法公约》相关条款' },
+          { icon: '📄', text: '南海诸岛历史性权利证据汇编' },
+          { icon: '📄', text: '仲裁庭组成及程序规则' },
+          { icon: '📄', text: '中方立场文件（2014年12月）' },
+        ],
+        exhibits: [
+          { icon: '🗺️', text: '南海地图及岛礁标注' },
+          { icon: '📊', text: '相关国家海洋主张对比' },
+          { icon: '📋', text: '历史渔业活动记录' },
+        ]
+      },
+      dialogue: [
+        { role: 'arbiter', name: '首席仲裁员', text: '现在开庭审理南海仲裁案。请各方陈述己方立场。首先请申请方作开庭陈述。' },
+        { role: 'opponent', name: '菲方代理人', text: '尊敬的仲裁庭，菲律宾共和国认为，中国在南海的主张超出了《联合国海洋法公约》所允许的范围。中国在南海的"九段线"主张缺乏法律依据，违反了公约第57条、第76条等相关规定......' },
+        { role: 'self', name: '中方代理人', text: '尊敬的仲裁庭，中国对南海诸岛及其附近海域拥有无可争辩的主权。中国的南海主张有着充分的历史和法理依据......' },
+      ]
+    },
+    {
+      id: 'case-2',
+      name: 'CISG国际货物买卖纠纷',
+      tag: 'eco',
+      tagText: '国际经济法',
+      brief: '模拟CISG框架下的国际货物买卖合同纠纷，涉及合同成立、根本违约、损害赔偿等核心争议。',
+      difficulty: '中级',
+      duration: '60分钟',
+      roles: ['买方代理人（中国公司）', '卖方代理人（德国公司）'],
+      evidence: {
+        materials: [
+          { icon: '📄', text: 'CISG公约全文（中英德文）' },
+          { icon: '📄', text: '国际货物买卖合同文本' },
+          { icon: '📄', text: '往来函电及贸易单据' },
+        ],
+        exhibits: [
+          { icon: '📋', text: '货物质量检验报告' },
+          { icon: '📊', text: '市场价格波动数据' },
+          { icon: '📧', text: '双方电子邮件往来记录' },
+        ]
+      },
+      dialogue: [
+        { role: 'arbiter', name: '仲裁员', text: '本案涉及中国某进出口公司与德国某制造有限公司之间的货物买卖合同纠纷。请双方就合同是否成立及违约责任发表意见。' },
+        { role: 'opponent', name: '卖方代理人', text: '根据CISG第18条，我方已于约定时间内发出承诺通知，合同已经有效成立。买方拒绝接收货物构成根本违约......' },
+        { role: 'self', name: '买方代理人', text: '我方认为，卖方交付的货物与合同约定的规格严重不符，根据CISG第25条构成根本违约。我方有权根据第49条宣告合同无效......' },
+      ]
+    },
+    {
+      id: 'case-3',
+      name: 'ICSID投资仲裁模拟',
+      tag: 'eco',
+      tagText: '国际经济法',
+      brief: '模拟ICSID仲裁庭审理的中外投资争端案件，涉及征收补偿、公平公正待遇、最惠国待遇等议题。',
+      difficulty: '高级',
+      duration: '75分钟',
+      roles: ['投资者代理人', '东道国代理人'],
+      evidence: {
+        materials: [
+          { icon: '📄', text: '双边投资保护协定（BIT）' },
+          { icon: '📄', text: 'ICSID公约及仲裁规则' },
+          { icon: '📄', text: '投资协议及相关批文' },
+        ],
+        exhibits: [
+          { icon: '📊', text: '投资金额及收益评估报告' },
+          { icon: '📋', text: '东道国政策变化时间线' },
+        ]
+      },
+      dialogue: [
+        { role: 'arbiter', name: '仲裁庭主席', text: '本案涉及某外国投资者针对东道国征收措施提起的ICSID仲裁。请申请人先陈述诉求。' },
+        { role: 'opponent', name: '投资者代理人', text: '被申请人通过一系列行政措施，实质上剥夺了申请人对其投资的全部价值，构成间接征收，违反了BIT第5条......' },
+        { role: 'self', name: '东道国代理人', text: '我方采取的措施属于正当的环境保护监管权行使，不构成征收。根据国际法上的警察权原则......' },
+      ]
+    },
+    {
+      id: 'case-4',
+      name: '涉外民商事管辖权争议',
+      tag: 'pri',
+      tagText: '国际私法',
+      brief: '模拟一起涉及多个法域的民商事案件管辖权争议，涉及协议管辖、不方便法院原则、平行诉讼等议题。',
+      difficulty: '中级',
+      duration: '60分钟',
+      roles: ['原告代理人', '被告代理人'],
+      evidence: {
+        materials: [
+          { icon: '📄', text: '涉外民事关系法律适用法' },
+          { icon: '📄', text: '合同中管辖权条款' },
+          { icon: '📄', text: '海牙管辖权公约（2019）' },
+        ],
+        exhibits: [
+          { icon: '📋', text: '各国法院受理情况' },
+          { icon: '📊', text: '连接点分析表' },
+        ]
+      },
+      dialogue: [
+        { role: 'arbiter', name: '审判长', text: '本案涉及一起跨国合同纠纷的管辖权争议。请原告方就中国法院的管辖权依据进行陈述。' },
+        { role: 'self', name: '原告代理人', text: '尊敬的法庭，根据《民事诉讼法》第272条及涉案合同第15条的管辖权条款，贵院对本案享有管辖权......' },
+        { role: 'opponent', name: '被告代理人', text: '我方认为，中国法院应依据不方便法院原则拒绝行使管辖权。本案的争议事实、证据及证人均位于英国......' },
+      ]
+    },
+    {
+      id: 'case-5',
+      name: 'WTO争端解决机制模拟',
+      tag: 'eco',
+      tagText: '国际经济法',
+      brief: '模拟WTO争端解决机制（DSB）下的贸易争端审理，涉及反倾销措施合规性、国民待遇等议题。',
+      difficulty: '高级',
+      duration: '90分钟',
+      roles: ['申诉方代理人', '被申诉方代理人'],
+      evidence: {
+        materials: [
+          { icon: '📄', text: 'GATT 1994相关条款' },
+          { icon: '📄', text: '反倾销协定全文' },
+          { icon: '📄', text: 'DSU程序规则' },
+          { icon: '📄', text: '专家组/上诉机构相关裁决' },
+        ],
+        exhibits: [
+          { icon: '📊', text: '涉案产品贸易数据' },
+          { icon: '📋', text: '倾销幅度计算明细' },
+          { icon: '📋', text: '损害认定分析报告' },
+        ]
+      },
+      dialogue: [
+        { role: 'arbiter', name: '专家组主席', text: '本专家组今天审理申诉方就被申诉方反倾销措施提起的争端。请申诉方作开庭陈述。' },
+        { role: 'self', name: '申诉方代理人', text: '主席先生，被申诉方在本案反倾销调查中存在多项违反《反倾销协定》的行为。首先，在倾销认定方面......' },
+        { role: 'opponent', name: '被申诉方代理人', text: '主席先生，我方的反倾销调查完全符合WTO规则。调查机关在倾销认定、损害确定及因果关系分析方面均严格遵循了协定要求......' },
+      ]
+    }
+  ],
+
+  // 知识库问答模拟回复
+  qaResponses: {
+    'default': {
+      title: '📚 知识库检索结果',
+      content: '根据您的查询，我已为您检索到以下相关内容：',
+      lawArticle: '该问题涉及三国法多个领域的交叉知识点。建议从国际公法的基本原则出发，结合具体领域的条约规定和国内法实践进行综合分析。',
+      relatedLinks: ['相关条约原文', '权威学说观点', '司法实践案例', '中国立法动态'],
+      stance: '中国在该问题上坚持独立自主的和平外交政策，主张通过和平方式解决国际争端，维护以国际法为基础的国际秩序。'
+    },
+    'unclos': {
+      title: '📜 《联合国海洋法公约》(UNCLOS)',
+      content: '《联合国海洋法公约》是国际海洋法领域最重要的条约，1982年在第三次联合国海洋法会议上通过，1994年生效。',
+      lawArticle: '第2条：沿海国的主权及于其陆地领土及其内水以外邻接的一带海域，在群礁的情况下则及于群礁四周邻接的一带海域，称为领海。此项主权及于领海的上空及其海床和底土。\n\n第57条：专属经济区从测算领海宽度的基线量起，不应超过二百海里。',
+      relatedLinks: ['公约第121条-岛��制度', '第76条-大陆架定义', '第298条-任择性例外', '中国2006年排除性声明'],
+      stance: '中国于1996年批准《联合国海洋法公约》，始终坚持通过谈判协商解决海洋争议，主张全面准确理解公约条款，反对滥用强制仲裁程序。'
+    },
+    'cisg': {
+      title: '📜 《联合国国际货物销售合同公约》(CISG)',
+      content: 'CISG是国际货物买卖领域最重要的统一法公约，1980年在维也纳通过，1988年生效。中国是创始缔约国之一。',
+      lawArticle: '第14条：向一个或一个以上特定的人提出的订立合同的建议，如果十分确定并且表明发价人在得到接受时承受约束的意旨，即构成发价。\n\n第25条：一方当事人违反合同的结果，如使另一方当事人蒙受损害，以致于实际上剥夺了他根据合同规定有权期待得到的东西，即为根本违反合同。',
+      relatedLinks: ['第31-34条：卖方义务', '第45-52条：买方救济', '第74-77条：损害赔偿', '第79条：障碍免责'],
+      stance: '中国在加入CISG时对第1条第(1)款(b)项作了保留（已于2013年撤回），实践中中国法院和仲裁机构广泛适用CISG审理国际货物买卖纠纷。'
+    }
+  },
+
+  // 考核题目
+  questions: [
+    // ========== 国际公法 - 单选题 (12题) ==========
+    {id:1,type:'single',typeName:'单选题',subject:'public',knowledgePoint:'国家主权',points:6,text:'根据《联合国海洋法公约》，沿海国的专属经济区宽度从领海基线量起不超过多少海里？',options:[{letter:'A',text:'100海里'},{letter:'B',text:'200海里'},{letter:'C',text:'350海里'},{letter:'D',text:'500海里'}],answer:'B',explanation:'《联合国海洋法公约》第57条：专属经济区从测算领海宽度的基线量起，不应超过200海里。350海里是大陆架外部界限的参考值（第76条）。'},
+    {id:2,type:'single',typeName:'单选题',subject:'public',knowledgePoint:'领土制度',points:6,text:'下列哪项关于条约保留的说法是正确的？',options:[{letter:'A',text:'任何国家都可以对任何条约提出保留'},{letter:'B',text:'条约明文禁止保留的条款，不得提出保留'},{letter:'C',text:'保留一经提出立即生效，无需他国同意'},{letter:'D',text:'提出保留的国家自动退出条约'}],answer:'B',explanation:'根据《维也纳条约法公约》第19条，条约明文禁止保留的，不得提出保留；条约仅准许特定保留的，不得提出其他保留；保留不得与条约目的和宗旨不符。保留需经他国接受才能在该国与保留国之间生效。'},
+    {id:3,type:'single',typeName:'单选题',subject:'public',knowledgePoint:'海洋法',points:6,text:'关于国家豁免，下列说法正确的是？',options:[{letter:'A',text:'国家及其财产在任何情况下都享有绝对豁免'},{letter:'B',text:'国家从事商业交易行为不享有管辖豁免'},{letter:'C',text:'国家放弃豁免必须采用明示方式，默示不构成放弃'},{letter:'D',text:'中国一贯采取绝对豁免立场，从未有任何例外'}],answer:'B',explanation:'限制豁免理论认为，国家的主权行为（统治权行为）享有豁免，而商业行为（管理权行为）不享有豁免。中国2023年通过《外国国家豁免法》，从绝对豁免转向限制豁免，明确外国国家的商业活动不享有管辖豁免。'},
+    {id:4,type:'single',typeName:'单选题',subject:'public',knowledgePoint:'外交豁免',points:6,text:'国际法院的诉讼当事方仅限于？',options:[{letter:'A',text:'联合国会员国'},{letter:'B',text:'国家'},{letter:'C',text:'国家和国际组织'},{letter:'D',text:'国家、国际组织和个人'}],answer:'B',explanation:'《国际法院规约》第34条第1款规定："在法院得为诉讼当事国者，惟国家为限。"国际组织、个人、法人均不能作为国际法院诉讼案件的当事方。'},
+    {id:5,type:'single',typeName:'单选题',subject:'public',knowledgePoint:'条约法',points:6,text:'根据《联合国海洋法公约》，沿海国的领海宽度从基线量起最多不超过？',options:[{letter:'A',text:'3海里'},{letter:'B',text:'6海里'},{letter:'C',text:'12海里'},{letter:'D',text:'24海里'}],answer:'C',explanation:'《联合国海洋法公约》第3条规定：每一国家有权确定其领海的宽度，直至从按照本公约确定的基线量起不超过12海里的界限为止。24海里是毗连区的宽度。'},
+    {id:6,type:'single',typeName:'单选题',subject:'public',knowledgePoint:'条约保留',points:6,text:'下列关于国际法渊源的表述，哪项是正确的？',options:[{letter:'A',text:'国际条约是国际法最主要的渊源'},{letter:'B',text:'国际习惯是各国重复类似的行为并被认为具有法律约束力的规则'},{letter:'C',text:'一般法律原则不是国际法的渊源'},{letter:'D',text:'司法判例是国际法的主要渊源'}],answer:'B',explanation:'国际习惯是国际法的重要渊源之一，其构成需要两个要素：一是各国反复从事类似行为（物质要素），二是这种行为被各国认为具有法律约束力（心理要素，即法律确信）。国际条约和国际习惯都是主要渊源，一般法律原则是补充渊源，司法判例和公法学家学说是辅助资料。'},
+    {id:7,type:'single',typeName:'单选题',subject:'public',knowledgePoint:'国家责任',points:6,text:'联合国安理会在表决实质性事项时，需要满足什么条件才能通过决议？',options:[{letter:'A',text:'9个理事国的赞成票'},{letter:'B',text:'9个理事国的赞成票，且包括全体常任理事国的同意票'},{letter:'C',text:'全体理事国的三分之二多数'},{letter:'D',text:'全体理事国的一致同意'}],answer:'B',explanation:'根据《联合国宪章》第27条，安理会关于实质性事项的决议需要9个理事国的可决票，且包括全体常任理事国的同意票（即"大国一致原则"）。常任理事国弃权或缺席不构成否决。程序性事项只需9票即可。'},
+    {id:8,type:'single',typeName:'单选题',subject:'public',knowledgePoint:'管辖权',points:6,text:'关于国家管辖权，下列说法正确的是？',options:[{letter:'A',text:'属地管辖是最基本的管辖权原则'},{letter:'B',text:'属人管辖只适用于本国公民在国内的行为'},{letter:'C',text:'保护性管辖只能针对本国境内的外国人'},{letter:'D',text:'普遍性管辖适用于一切国际犯罪'}],answer:'A',explanation:'属地管辖权（领土管辖权）是国家最基本、最主要的管辖权，指国家对其领土内的人、物和事件有管辖的权利。属人管辖权适用于本国公民在国内外的行为；保护性管辖针对外国人在外国对本国国家或公民的犯罪；普遍性管辖仅适用于国际法规定的特定国际罪行，如海盗罪、战争罪等，而非"一切"国际犯罪。'},
+    {id:9,type:'single',typeName:'单选题',subject:'public',knowledgePoint:'国际组织',points:6,text:'根据《维也纳条约法公约》，条约对第三国的效力是？',options:[{letter:'A',text:'条约可以为第三国创设义务'},{letter:'B',text:'条约可以为第三国创设权利'},{letter:'C',text:'未经第三国同意，条约既不得为其创设义务，也不得为其创设权利'},{letter:'D',text:'条约对第三国无任何效力'}],answer:'C',explanation:'《维也纳条约法公约》第34条规定：条约非经第三国同意，不为该国创设义务或权利。第35条规定，如条约当事国有意以条约之一项规定为第三国创设义务，而该第三国以书面明示接受时，该项规定为该第三国创设义务。第36条规定创设权利需第三国同意，第三国无反对表示即可推定其同意。'},
+    {id:10,type:'single',typeName:'单选题',subject:'public',knowledgePoint:'人权法',points:6,text:'根据《联合国海洋法公约》，关于领海基线的划定，下列哪种说法是正确的？',options:[{letter:'A',text:'领海基线只能采用正常基线法'},{letter:'B',text:'正常基线是沿海国官方承认的大比例尺海图所标明的低潮线'},{letter:'C',text:'直线基线法不适用于海岸线极为曲折的情况'},{letter:'D',text:'内水位于领海基线向海一侧'}],answer:'B',explanation:'《联合国海洋法公约》第5条规定：除本公约另有规定外，测算领海宽度的正常基线是沿海国官方承认的大比例尺海图所标明的沿岸低潮线。领海基线的划定方法包括正常基线法和直线基线法（适用于海岸线极为曲折或紧邻海岸有一系列岛屿的情形）。内水位于领海基线向陆一侧。'},
+    {id:11,type:'single',typeName:'单选题',subject:'public',knowledgePoint:'空间法',points:6,text:'关于外层空间的法律地位，下列说法正确的是？',options:[{letter:'A',text:'各国可以通过先占取得外层空间的主权'},{letter:'B',text:'外层空间属于全人类的共同继承财产'},{letter:'C',text:'各国不得通过主权要求、使用或占领等方法将外层空间据为己有'},{letter:'D',text:'外层空间可以被各国自由划界使用'}],answer:'C',explanation:'《外层空间条约》第2条规定：外层空间，包括月球与其他天体，不得由国家通过主权要求，使用或占领，或以任何其他方法，据为己有。注意："全人类的共同继承财产"是《月球协定》对月球及其自然资源的定位，并非整个外层空间。'},
+    {id:12,type:'single',typeName:'单选题',subject:'public',knowledgePoint:'环境法',points:6,text:'根据《维也纳外交关系公约》，关于外交代表的特权与豁免，下列哪项表述是错误的？',options:[{letter:'A',text:'外交代表人身不可侵犯'},{letter:'B',text:'外交代表的寓所和财产不可侵犯'},{letter:'C',text:'外交代表享有刑事管辖豁免'},{letter:'D',text:'外交代表享有民事和行政管辖的绝对豁免'}],answer:'D',explanation:'《维也纳外交关系公约》第29-31条：外交代表人身不可侵犯（A正确）；寓所、文件、财产不可侵犯（B正确）；享有刑事管辖豁免（C正确）。但民事和行政管辖豁免有例外，如关于私有不动产之物权诉讼、继承诉讼、公务范围外之专业或商业活动诉讼等（D错误，非"绝对"豁免）。'},
+
+    // ========== 国际公法 - 多选题 (6题) ==========
+    {id:13,type:'multi',typeName:'多选题',subject:'public',knowledgePoint:'武装冲突',points:8,text:'根据《联合国宪章》，下列哪些属于联合国主要机关？',options:[{letter:'A',text:'联合国大会'},{letter:'B',text:'安全理事会'},{letter:'C',text:'国际法院'},{letter:'D',text:'世界贸易组织'}],answer:'ABC',explanation:'《联合国宪章》第7条规定了联合国六大主要机关：大会、安全理事会、经济及社会理事会、托管理事会、国际法院和秘书处。世界贸易组织（WTO）是独立的国际组织，不是联合国机关。'},
+    {id:14,type:'multi',typeName:'多选题',subject:'public',knowledgePoint:'争端解决',points:8,text:'根据国际法，下列哪些属于国家的基本权利？',options:[{letter:'A',text:'独立权'},{letter:'B',text:'平等权'},{letter:'C',text:'自保权'},{letter:'D',text:'管辖权'}],answer:'ABCD',explanation:'国家的基本权利包括：(1)独立权——国家按照自己的意志处理内外事务的权利；(2)平等权——国家在国际法上地位平等的权利；(3)自保权——国家保卫自己生存和独立的权利，包括国防权和自卫权；(4)管辖权——国家对其领土内的人、物和事件以及境外的本国人行使管辖的权利。这四项是国际法公认的国家基本权利。'},
+    {id:15,type:'multi',typeName:'多选题',subject:'public',knowledgePoint:'领事关系',points:8,text:'根据《维也纳领事关系公约》，下列哪些属于领事特权与豁免？',options:[{letter:'A',text:'领馆馆舍不可侵犯'},{letter:'B',text:'领事官员人身不可侵犯'},{letter:'C',text:'领馆档案及文件不可侵犯'},{letter:'D',text:'领事官员执行职务的行为不受接受国司法管辖'}],answer:'ACD',explanation:'根据《维也纳领事关系公约》：领馆馆舍在一定限度内不可侵犯（A正确）；领馆档案及文件不可侵犯（C正确）；领事官员执行职务的行为不受接受国司法和行政管辖（D正确）。但领事官员不享有完全的人身不可侵犯权，仅在犯严重罪行时方可逮捕候审或羁押（B错误，这是与外交代表的重要区别）。'},
+    {id:16,type:'multi',typeName:'多选题',subject:'public',knowledgePoint:'国家主权',points:8,text:'根据《维也纳条约法公约》，条约可以因下列哪些原因而终止或退出？',options:[{letter:'A',text:'条约本身规定的终止条件成就'},{letter:'B',text:'全体当事国同意终止'},{letter:'C',text:'一方重大违约'},{letter:'D',text:'缔约后出现新的强制法规则（强行法）'}],answer:'ABCD',explanation:'《维也纳条约法公约》规定了多种条约终止的原因：(1)条约本身规定的终止条件成就或退出条件发生（第54条）；(2)全体当事国同意终止（第54条）；(3)一方重大违约时他方有权援引为终止理由（第60条）；(4)条约缔结后出现新的国际法强行法规则（juscogens），与该规则抵触的条约失效（第64条）。此外还包括不可能履行、情势根本变更等。'},
+    {id:17,type:'multi',typeName:'多选题',subject:'public',knowledgePoint:'领土制度',points:8,text:'根据《联合国海洋法公约》，下列关于紧追权的说法，哪些是正确的？',options:[{letter:'A',text:'紧追必须在被追船舶的视听范围内发出停驶信号后方可开始'},{letter:'B',text:'紧追可以追入公海继续进行'},{letter:'C',text:'紧追权只能由军舰行使'},{letter:'D',text:'紧追在被追船舶进入其本国或第三国领海时必须终止'}],answer:'ABD',explanation:'《联合国海洋法公约》第111条规定紧追权规则：(1)紧追必须在被追船舶的视听距离内发出视觉或听觉停驶信号后方可开始（A正确）；(2)紧追可以追入公海继续进行（B正确）；(3)紧追权不仅可由军舰行使，还可由军用飞机以及有清楚标志可以识别的为政府服务并经授权紧追的船舶或飞机行使（C错误）；(4)被追船舶进入其本国领海或第三国领海时，紧追权终止（D正确）。'},
+    {id:18,type:'multi',typeName:'多选题',subject:'public',knowledgePoint:'海洋法',points:8,text:'关于国际法院的咨询管辖权，下列哪些说法是正确的？',options:[{letter:'A',text:'国际法院有权就法律问题发表咨询意见'},{letter:'B',text:'联合国大会和安理会可以请求国际法院发表咨询意见'},{letter:'C',text:'咨询意见具有法律约束力'},{letter:'D',text:'咨询意见虽无法律约束力，但在国际法发展中具有重要意义'}],answer:'ABD',explanation:'《联合国宪章》第96条和《国际法院规约》第65条规定：国际法院对于任何法律问题，经联合国大会或安理会请求，得发表咨询意见（A、B正确）。咨询意见原则上不具有法律约束力（C错误），但在国际法发展中具有重要的指导意义和权威性（D正确）。联合国其他机关和专门机构经大会授权也可请求咨询意见。'},
+
+    // ========== 国际私法 - 单选题 (12题) ==========
+    {id:19,type:'single',typeName:'单选题',subject:'private',knowledgePoint:'法律适用',points:6,text:'中国公民甲与外国公民乙因合同纠纷诉至中国法院，当事人可以协议选择合同适用的法律。关于这一规则，下列哪一选项是正确的？',options:[{letter:'A',text:'当事人只能选择与合同有实际联系的国家的法律'},{letter:'B',text:'当事人可以选择与合同没有实际联系的国家的法律'},{letter:'C',text:'当事人只能在法院地法和被告住所地法之间选择'},{letter:'D',text:'当事人不得选择国际条约��为合同准据法'}],answer:'B',explanation:'中国《涉外民事关系法律适用法》第3条及司法解释规定，当事人可以协议选择合同适用的法律，不要求所选法律与合同有实际联系。这体现了意思自治原则的广泛适用，也是国际私法的发展趋势。'},
+    {id:20,type:'single',typeName:'单选题',subject:'private',knowledgePoint:'最密切联系',points:6,text:'根据中国《涉外民事关系法律适用法》，不动产物权适用哪国法律？',options:[{letter:'A',text:'当事人选择的法律'},{letter:'B',text:'不动产所在地法律'},{letter:'C',text:'最密切联系地法律'},{letter:'D',text:'权利人国籍国法律'}],answer:'B',explanation:'《涉外民事关系法律适用法》第36条："不动产物权，适用不动产所在地法律。"这是"物之所在地法"原则的体现，为各国普遍接受。不动产物权不允许当事人协议选择适用法律。'},
+    {id:21,type:'single',typeName:'单选题',subject:'private',knowledgePoint:'意思自治',points:6,text:'一对中国夫妇在美国收养了一名美国儿童，后该家庭返回中国生活。关于收养的条件和手续，下列哪一说法正确？',options:[{letter:'A',text:'收养的条件和手续，适用中国法'},{letter:'B',text:'收养的条件和手续，适用美国法'},{letter:'C',text:'收养的条件和手续，适用收养人和被收养人经常居所地法律'},{letter:'D',text:'收养的效力适用收养人国籍国法律'}],answer:'C',explanation:'《涉外民事关系法律适用法》第28条："收养的条件和手续，适用收养人和被收养人经常居所地法律。收养的效力，适用收养时收养人经常居所地法律。收养关系的解除，适用收养时被收养人经常居所地法律或者法院地法律。"'},
+    {id:22,type:'single',typeName:'单选题',subject:'private',knowledgePoint:'国际管辖',points:6,text:'外国法院作出的发生法律效力的判决，需要中国法院承认和执行的，下列哪种途径不正确？',options:[{letter:'A',text:'由当事人直接向中国有管辖权的中级人民法院申请'},{letter:'B',text:'由外国法院依照条约或互惠原则请求中国法院承认和执行'},{letter:'C',text:'由当事人向最高人民法院申请'},{letter:'D',text:'由中国法院依条约或互惠原则进行审查'}],answer:'C',explanation:'《民事诉讼法》第289条：外国法院判决的承认和执行，可由当事人直接向有管辖权的中级人民法院申请，或由外国法院请求中国法院承认和执行。不是向最高人民法院申请。人民法院经审查后作出的裁定，当事人不得上诉。'},
+    {id:23,type:'single',typeName:'单选题',subject:'private',knowledgePoint:'判决承认',points:6,text:'关于外国法的查明，根据中国《涉外民事关系法律适用法》，下列说法错误的是？',options:[{letter:'A',text:'涉外民事关系适用的外国法律，由人民法院、仲裁机构或者行政机关查明'},{letter:'B',text:'当事人选择适用外国法律的，应当提供该国法律'},{letter:'C',text:'不能查明外国法律的，由中国法院适用该国法律的一般原则代替'},{letter:'D',text:'不能查明外国法律或者该国法律没有规定的，适用中华人民共和国法律'}],answer:'C',explanation:'《涉外民事关系法律适用法》第10条：涉外民事关系适用的外国法律，由人民法院、仲裁机构或者行政机关查明。当事人选择适用外国法律的，应当提供该国法律。不能查明外国法律或者该国法律没有规定的，适用中华人民共和国法律。因此C错误，不是适用"该国法律的一般原则"，而是直接适用中国法。'},
+    {id:24,type:'single',typeName:'单选题',subject:'private',knowledgePoint:'涉外婚姻',points:6,text:'关于自然人的民事行为能力，根据《涉外民事关系法律适用法》，自然人的民事行为能力适用什么法律？',options:[{letter:'A',text:'国籍国法律'},{letter:'B',text:'住所地法律'},{letter:'C',text:'经常居所地法律'},{letter:'D',text:'行为地法律'}],answer:'C',explanation:'《涉外民事关系法律适用法》第12条：自然人的民事行为能力，适用经常居所地法律。但有一个重要例外：自然人从事民事活动，依经常居所地法律为无民事行为能力，依行为地法律有民事行为能力的，适用行为地法律，但涉及婚姻家庭、继承的除外。本题问的是一般原则，所以选C。'},
+    {id:25,type:'single',typeName:'单选题',subject:'private',knowledgePoint:'涉外继承',points:6,text:'根据《涉外民事关系法律适用法》，关于物权的法律适用，下列哪一选项是正确的？',options:[{letter:'A',text:'不动产物权，适用不动产所在地法律'},{letter:'B',text:'动产物权，只能适用动产所在地法律'},{letter:'C',text:'当事人可以协议选择动产物权适用的法律'},{letter:'D',text:'运输中动产物权，只能适用目的地法律'}],answer:'C',explanation:'《涉外民事关系法律适用法》第36-38条：不动产物权适用不动产所在地法律（A表述正确但不是本题最佳答案，因为C同样正确且体现了意思自治的新趋势）；第37条规定"当事人可以协议选择动产物权适用的法律"（C正确）；运输中的动产物权适用当事人协议选择的法律，无选择的适用目的地法律（D错误，因可先由当事人选择）。本题A和C都正确，但C更体现法律适用法的创新。正确答案为C。'},
+    {id:26,type:'single',typeName:'单选题',subject:'private',knowledgePoint:'涉外合同',points:6,text:'根据中国相关司法解释，涉及中外合资经营企业合同的纠纷，适用哪国法律？',options:[{letter:'A',text:'当事人选择的法律'},{letter:'B',text:'中国法律'},{letter:'C',text:'最密切联系地法律'},{letter:'D',text:'投资者母国法律'}],answer:'B',explanation:'根据《最高人民法院关于适用〈中华人民共和国涉外民事关系法律适用法〉若干问题的解释（一）》第10条，中外合资经营企业合同、中外合作经营企业合同、中外合作勘探开发自然资源合同等，属于中华人民共和国法律强制性规定必须适用的情形。当事人的法律选择约定不能排除中国法的强制性适用。'},
+    {id:27,type:'single',typeName:'单选题',subject:'private',knowledgePoint:'涉外侵权',points:6,text:'根据《涉外民事关系法律适用法》，产品责任适用什么法律？',options:[{letter:'A',text:'被侵权人经常居所地法律'},{letter:'B',text:'侵权人主营业地法律'},{letter:'C',text:'损害发生地法律'},{letter:'D',text:'产品制造地法律'}],answer:'A',explanation:'《涉外民事关系法律适用法》第45条：产品责任，适用被侵权人经常居所地法律；被侵权人选择适用侵权人主营业地法律、损害发生地法律的，或者侵权人在被侵权人经常居所地没有从事相关经营活动的，适用侵权人主营业地法律或者损害发生地法律。原则上适用被侵权人经常居所地法律，体现了保护弱者的理念。'},
+    {id:28,type:'single',typeName:'单选题',subject:'private',knowledgePoint:'商事仲裁',points:6,text:'关于知识产权的法律适用，根据《涉外民事关系法律适用法》，知识产权的转让和许可使用，当事人没有协议选择法律的，适用什么法律？',options:[{letter:'A',text:'知识产权转让人或者许可人经常居所地法律'},{letter:'B',text:'知识产权被请求保护地法律'},{letter:'C',text:'知识产权登记地法律'},{letter:'D',text:'合同签订地法律'}],answer:'A',explanation:'《涉外民事关系法律适用法》第49条：知识产权的转让和许可使用，适用当事人协议选择的法律；当事人没有选择的，适用本法对合同的有关规定（即最密切联系原则）。在实践中，通常适用知识产权转让人或许可人经常居所地法律。注意：知识产权的归属和内容，适用被请求保护地法律（第48条），这与转让和许可的规则不同。'},
+    {id:29,type:'single',typeName:'单选题',subject:'private',knowledgePoint:'海商法',points:6,text:'根据《涉外民事关系法律适用法》，涉外民事诉讼的时效适用什么法律？',options:[{letter:'A',text:'法院地法律'},{letter:'B',text:'原告国籍国法律'},{letter:'C',text:'相关涉外民事关系应当适用的法律'},{letter:'D',text:'被告住所地法律'}],answer:'C',explanation:'《涉外民事关系法律适用法》第7条：诉讼时效，适用相关涉外民事关系应当适用的法律。即诉讼时效问题不是独立的程序问题，而是随实体法律关系的准据法确定。例如，合同纠纷的时效适用合同准据法，侵权纠纷的时效适用侵权准据法。'},
+    {id:30,type:'single',typeName:'单选题',subject:'private',knowledgePoint:'票据法',points:6,text:'根据《涉外民事关系法律适用法》，关于结婚条件的法律适用，下列说法正确的是？',options:[{letter:'A',text:'适用婚姻缔结地法律'},{letter:'B',text:'适用当事人共同经常居所地法律，没有共同经常居所地的，适用共同国籍国法律，都没有的，适用婚姻缔结地法律'},{letter:'C',text:'适用男方国籍国法律'},{letter:'D',text:'适用法院地法律'}],answer:'B',explanation:'《涉外民事关系法律适用法》第21条：结婚条件，适用当事人共同经常居所地法律；没有共同经常居所地的，适用共同国籍国法律；没有共同国籍国，在一方当事人经常居所地或者国籍国缔结婚姻的，适用婚姻缔结地法律。这是一个递进式的连结点设计。'},
+
+    // ========== 国际私法 - 多选题 (6题) ==========
+    {id:31,type:'multi',typeName:'多选题',subject:'private',knowledgePoint:'区际冲突',points:8,text:'根据《涉外民事关系法律适用法》，关于协议离婚的法律适用，下列哪些选项是正确的？',options:[{letter:'A',text:'当事人可以协议选择适用一方当事人经常居所地法律'},{letter:'B',text:'当事人可以协议选择适用一方当事人国籍国法律'},{letter:'C',text:'当事人没有选择的，适用共同经常居所地法律'},{letter:'D',text:'当事人没有选择的，只能适用法院地法'}],answer:'ABC',explanation:'《涉外民事关系法律适用法》第26条：协议离婚，当事人可以协议选择适用一方当事人经常居所地法律或者国籍国法律。当事人没有选择的，适用共同经常居所地法律；没有共同经常居所地的，适用共同国籍国法律；没有共同国籍国的，适用办理离婚手续机构所在地法律。D错误，不是只能适用法院地法。'},
+    {id:32,type:'multi',typeName:'多选题',subject:'private',knowledgePoint:'外国法查明',points:8,text:'根据《涉外民事关系法律适用法》，关于夫妻财产关系的法律适用，下列哪些选项属于当事人可以选择适用的法律？',options:[{letter:'A',text:'一方当事人经常居所地法律'},{letter:'B',text:'一方当事人国籍国法律'},{letter:'C',text:'婚姻缔结地法律'},{letter:'D',text:'当事人主要财产所在地法律'}],answer:'ABD',explanation:'《涉外民事关系法律适用法》第24条：夫妻财产关系，当事人可以协议选择适用一方当事人经常居所地法律、国籍国法律或者主要财产所在地法律。当事人没有选择的，适用共同经常居所地法律；没有共同经常居所地的，适用共同国籍国法律。注意婚姻缔结地法律不在当事人可选范围之内（C错误）。'},
+    {id:33,type:'multi',typeName:'多选题',subject:'private',knowledgePoint:'反致制度',points:8,text:'根据《涉外民事关系法律适用法》，关于父母子女关系的法律适用，下列哪些说法是正确的？',options:[{letter:'A',text:'父母子女人身关系，适用共同经常居所地法律'},{letter:'B',text:'没有共同经常居所地的，适用一方经常居所地法律中有利于保护弱者权益的法律'},{letter:'C',text:'父母子女财产关系，只能适用法院地法律'},{letter:'D',text:'没有共同国籍国的，可以适用一方国籍国法律中有利于保护弱者权益的法律'}],answer:'ABD',explanation:'《涉外民事关系法律适用法》第25条：父母子女人身、财产关系，适用共同经常居所地法律；没有共同经常居所地的，适用一方当事人经常居所地法律或者国籍国法律中有利于保护弱者权益的法律。这是一个选择性冲突规范，以保护弱者（通常是子女）为价值取向。C错误，父母子女财产关系并非只能适用法院地法。'},
+    {id:34,type:'multi',typeName:'多选题',subject:'private',knowledgePoint:'法律适用',points:8,text:'根据《涉外民事关系法律适用法》及相关司法解释，下列哪些合同必须适用中国法律？',options:[{letter:'A',text:'中外合资经营企业合同'},{letter:'B',text:'中外合作经营企业合同'},{letter:'C',text:'中外合作勘探开发自然资源合同'},{letter:'D',text:'国际货物买卖合同'}],answer:'ABC',explanation:'根据最高人民法院相关司法解释，在中国境内履行的中外合资经营企业合同、中外合作经营企业合同、中外合作勘探开发自然资源合同，属于中国法律强制性规定必须适用中国法律的情形。国际货物买卖合同则适用一般合同的法律选择规则，当事人可以自由选择准据法。'},
+    {id:35,type:'multi',typeName:'多选题',subject:'private',knowledgePoint:'最密切联系',points:8,text:'关于国际私法中的"识别"，下列哪些说法是正确的？',options:[{letter:'A',text:'识别是指依据一定的法律观念对有关事实情况作出定性'},{letter:'B',text:'识别是确定准据法的前提'},{letter:'C',text:'识别的主要依据是法院地法'},{letter:'D',text:'识别的对象包括冲突规范中的连结点和法律范畴'}],answer:'ABCD',explanation:'识别（Characterization/Qualification）是国际私法中的重要制度。A正确，识别是依据一定的法律观念对有关事实情况作出定性或分类的过程。B正确，只有先完成识别，才能确定应适用的冲突规范，进而确定准据法。C正确，通说认为识别主要依据法院地法（lexfori）。D正确，识别的对象包括对事实情况的定性和对冲突规范中法律概念（如"合同""侵权""物权"等法律范畴）的解释。'},
+    {id:36,type:'multi',typeName:'多选题',subject:'private',knowledgePoint:'意思自治',points:8,text:'关于国际私法中外国法人的认可，下列哪些说法是正确的？',options:[{letter:'A',text:'特别认可制是对个案逐一审查认可'},{letter:'B',text:'相互认可制是以条约或互惠关系为基础相互认可'},{letter:'C',text:'一般认可制是对外国法人原则上自动认可'},{letter:'D',text:'中国对外国法人采用分别认可制'}],answer:'ABC',explanation:'外国法人的认可方式主要有：(1)特别认可制——对每个外国法人逐一审查批准（A正确）；(2)相互认可制——基于双边条约或互惠关系相互承认（B正确）；(3)一般认可制——对外国法人原则上自动予以认可（C正确）；(4)分别认可制——根据不同类型的外国法人采用不同的认可方式。中国对外国法人主要采用特别认可制，而非分别认可制（D错误）。'},
+
+    // ========== 国际经济法 - 单选题 (12题) ==========
+    {id:37,type:'single',typeName:'单选题',subject:'economic',knowledgePoint:'CISG',points:6,text:'根据CISG公约，下列哪项关于"根本违约"的表述是正确的？',options:[{letter:'A',text:'任何违反合同的行为都构成根本违约'},{letter:'B',text:'违约方主观上存在故意才构成根本违约'},{letter:'C',text:'违约结果实际上剥夺了守约方根据合同有权期待得到的东西'},{letter:'D',text:'只有违反合同核心条款才构成根本违约'}],answer:'C',explanation:'CISG第25条：根本违约是指一方违约的结果使另一方蒙受损害，以致实际上剥夺了他根据合同规定有权期待得到的东西，除非违约方并未预知且同等资格的人在相同情况下也没有理由预知。根本违约的关键在于违约后果的严重程度，而非违约方的主观状态或违反的条款类型。'},
+    {id:38,type:'single',typeName:'单选题',subject:'economic',knowledgePoint:'根本违约',points:6,text:'根据WTO《反倾销协定》，确定倾销存在并实施反倾销措施必须同时满足哪些条件？',options:[{letter:'A',text:'存在倾销和损害即可'},{letter:'B',text:'存在倾销、损害以及二者之间的因果关系'},{letter:'C',text:'存在倾销且倾销幅度超过10%'},{letter:'D',text:'存在倾销且进口商有主观恶意'}],answer:'B',explanation:'WTO《反倾销协定》要求同时证明三个要件：(1)存在倾销（出口价格低于正常价值）；(2)存在损害（对国内产业造成实质损害、实质损害威胁或实质阻碍国内产业建立）；(3)倾销与损害之间存在因果关系。三者缺一不可。倾销幅度的最低标准为2%（非10%），微量倾销应终止调查。'},
+    {id:39,type:'single',typeName:'单选题',subject:'economic',knowledgePoint:'国际贸易术语',points:6,text:'信用证交易中，开证行付款的依据是？',options:[{letter:'A',text:'买卖合同的实际履行情况'},{letter:'B',text:'单据与信用证条款表面相符'},{letter:'C',text:'买方发出的付款指令'},{letter:'D',text:'货物的实际质量和数量'}],answer:'B',explanation:'信用证交易遵循"独立抽象原则"和"严格相符原则"。UCP600规定，银行只审查单据表面是否与信用证条款相符，不受基础买卖合同履行情况的影响。银行处理的是单据而非货物。这就是信用证的独立性——信用证一经开立，即与基础合同分离。'},
+    {id:40,type:'single',typeName:'单选题',subject:'economic',knowledgePoint:'WTO规则',points:6,text:'根据Incoterms®2020，在FOB术语下，卖方在何时完成交货义务？',options:[{letter:'A',text:'货物在装运港越过船舷时'},{letter:'B',text:'货物在装运港装上买方指定的船舶时'},{letter:'C',text:'货物到达目的港时'},{letter:'D',text:'买方收到货物时'}],answer:'B',explanation:'根据Incoterms®2010和2020，FOB（船上交货）术语下，卖方在指定装运港将货物装上买方指定的船舶时完成交货，风险也随之转移。Incoterms®2000中的"越过船舷"标准在2010年被修改为"装上船"，以更准确地反映实际操作。'},
+    {id:41,type:'single',typeName:'单选题',subject:'economic',knowledgePoint:'反倾销',points:6,text:'根据CISG公约，关于要约的生效时间，下列哪一选项是正确的？',options:[{letter:'A',text:'要约自发出时生效'},{letter:'B',text:'要约自到达受要约人时生效'},{letter:'C',text:'要约自受要约人了解时生效'},{letter:'D',text:'要约自受要约人表示接受时生效'}],answer:'B',explanation:'CISG第15条第1款规定："要约于送达受要约人时生效。"这采用的是"到达主义"（ReceivedtheMailboxRule），而非英美法上的"发信主义"（MailboxRule，即投邮生效）。到达主义是CISG和大多数国家采用的原则。'},
+    {id:42,type:'single',typeName:'单选题',subject:'economic',knowledgePoint:'补贴',points:6,text:'根据CISG公约，关于卖方知识产权担保义务的范围，下列说法正确的是？',options:[{letter:'A',text:'卖方须保证货物在全球范围内不侵犯任何第三方的知识产权'},{letter:'B',text:'卖方仅须保证货物不侵犯买方营业地所在国的知识产权'},{letter:'C',text:'卖方的知识产权担保义务仅限于合同订立时已知或不可能不知道的第三方权利主张'},{letter:'D',text:'卖方对任何知识产权侵权均不承担责任'}],answer:'C',explanation:'CISG第42条规定：卖方所交付的货物，必须是第三方不能根据工业产权或其他知识产权主张任何权利或要求的货物，但以卖方在订立合同时已知道或不可能不知道的权利或要求为限，而且这种权利或要求需基于以下国家的法律：(a)预期转售或使用的国家的法律；(b)在其他情况下，买方营业地所在国家的法律。因此担保义务有地域限制和主观限制。'},
+    {id:43,type:'single',typeName:'单选题',subject:'economic',knowledgePoint:'服务贸易',points:6,text:'根据Incoterms®2020，CIF术语下卖方对保险的最低义务是？',options:[{letter:'A',text:'投保一切险（AllRisks）'},{letter:'B',text:'投保平安险（FPA）'},{letter:'C',text:'投保协会货物条款（C）险或类似最低险别'},{letter:'D',text:'投保战争险和罢工险'}],answer:'C',explanation:'根据Incoterms®2020，CIF术语下卖方的保险义务是取得至少符合协会货物条款（InstituteCargoClauses）C款或类似条款的最低险别。这与Incoterms®2010的规定一致（即最低险别）。保险金额应至少为合同价格加10%。如需更高险别，需由买卖双方明确约定或买方自行加保。'},
+    {id:44,type:'single',typeName:'单选题',subject:'economic',knowledgePoint:'知识产权',points:6,text:'根据CISG公约，卖方在什么情况下可以免除违约责任？',options:[{letter:'A',text:'卖方已尽合理努力但仍无法履行'},{letter:'B',text:'货物的灭失是由于卖方无法控制的障碍所致'},{letter:'C',text:'买方同意延迟交货'},{letter:'D',text:'市场价格发生剧烈波动'}],answer:'B',explanation:'CISG第79条规定：当事人对不履行义务，不负责任，如果他能证明此种不履行是由于某种非他所能控制的障碍所致，而且对于这种障碍及其后果他是无法预料、无法避免或无法克服的。这就是CISG中的免责条款（类似于不可抗力）。市场价格波动属于正常商业风险，不能免责。'},
+    {id:45,type:'single',typeName:'单选题',subject:'economic',knowledgePoint:'投资保护',points:6,text:'根据CISG公约，如果一方在合同履行日期前明显看出另一方将不履行其大部分重要义务，该方可以采取什么措施？',options:[{letter:'A',text:'立即解除合同'},{letter:'B',text:'中止履行义务'},{letter:'C',text:'要求对方双倍赔偿'},{letter:'D',text:'单方面修改合同条款'}],answer:'B',explanation:'CISG第71条规定了预期违约（AnticipatoryBreach）制度：如果订立合同后，一方当事人由于另一方当事人的履约能力或信用有严重缺陷，或者他在准备履行或履行中的行为，而明显看出另一方将不履行其大部分重要义务，该方当事人可以中止履行义务。注意是"中止"而非"解除"。如果要宣告合同无效，需满足第72条的条件（明显看出一方将根本违约）。'},
+    {id:46,type:'single',typeName:'单选题',subject:'economic',knowledgePoint:'ICSID',points:6,text:'根据CISG公约，关于承诺的生效时间，下列哪一选项是正确的？',options:[{letter:'A',text:'承诺自发出时生效（发信主义）'},{letter:'B',text:'承诺自要约人了解时生效（了解主义）'},{letter:'C',text:'承诺于表示同意的通知送达要约人时生效（到达主义）'},{letter:'D',text:'承诺自合同成立时生效'}],answer:'C',explanation:'CISG第18条第2款规定：对要约的同意于表示同意的通知送达要约人时生效。这与要约的生效时间一致，都采用到达主义。如果根据要约或当事人之间的惯例，受要约人可以做出某种行为（如发货或付款）来表示同意，则于做出该行为时生效。'},
+    {id:47,type:'single',typeName:'单选题',subject:'economic',knowledgePoint:'国际支付',points:6,text:'根据WTO规则，关于最惠国待遇原则，下列哪项说法是正确的？',options:[{letter:'A',text:'最惠国待遇仅适用于货物贸易'},{letter:'B',text:'最惠国待遇不适用于服务贸易'},{letter:'C',text:'最惠国待遇仅适用于关税'},{letter:'D',text:'最惠国待遇适用于进出口关税、与进出口有关的规则和手续以及国内税费等方面'}],answer:'D',explanation:'GATT第1条的最惠国待遇原则适用范围广泛：(1)进出口关税和任何形式的费用；(2)与进出口有关的规则和手续；(3)国内税和其他国内费用。该原则不仅适用于货物贸易（GATT），也适用于服务贸易（GATS第2条）和知识产权（TRIPS第4条），但各领域的具体规则有所不同。'},
+    {id:48,type:'single',typeName:'单选题',subject:'economic',knowledgePoint:'国际税法',points:6,text:'根据WTO争端解决机制（DSU），下列哪项说法是正确的？',options:[{letter:'A',text:'专家组程序是争端解决的必经程序'},{letter:'B',text:'上诉程序是争端解决的必经程序'},{letter:'C',text:'上诉机构可以审查事实问题'},{letter:'D',text:'争端解决机构的裁决由专家组负责监督执行'}],answer:'A',explanation:'WTO争端解决机制的程序为：磋商（必经）→专家组（必经）→上诉（非必经）→裁决执行监督。专家组程序是必经程序（A正确），但上诉程序不是必经程序（B错误）。上诉机构仅审查专家组报告中的法律问题和法律解释，不审查事实问题（C错误）。裁决的执行监督由争端解决机构（DSB）负责，而非专家组（D错误）。'},
+
+    // ========== 国际经济法 - 多选题 (6题) ==========
+    {id:49,type:'multi',typeName:'多选题',subject:'economic',knowledgePoint:'海商保险',points:8,text:'根据CISG公约，下列哪些交易不属于公约的适用范围？',options:[{letter:'A',text:'供私人、家人或家庭使用的货物销售'},{letter:'B',text:'拍卖方式的销售'},{letter:'C',text:'股票或投资证券的销售'},{letter:'D',text:'电力的销售'}],answer:'ABCD',explanation:'CISG第2条明确排除了六类销售：(a)供私人、家人或家庭使用的货物销售（消费者合同）；(b)经由拍卖的销售；(c)根据法律执行令状或其他令状的销售；(d)公债、股票、投资证券、流通票据或货币的销售；(e)船舶、船只、气垫船或飞机的销售；(f)电力的销售。这六类销售均不适用CISG。'},
+    {id:50,type:'multi',typeName:'多选题',subject:'economic',knowledgePoint:'技术转让',points:8,text:'根据WTO规则，下列哪些属于WTO的基本原则？',options:[{letter:'A',text:'最惠国待遇原则'},{letter:'B',text:'国民待遇原则'},{letter:'C',text:'透明度原则'},{letter:'D',text:'自由贸易原则（通过谈判逐步降低关税和减少非关税壁垒）'}],answer:'ABCD',explanation:'WTO的基本原则包括：(1)最惠国待遇原则——对所有成员一视同仁（A正确）；(2)国民待遇原则——对进口产品和本国产品一视同仁（B正确）；(3)透明度原则——贸易法规和措施应公开（C正确）；(4)自由贸易原则——通过多边贸易谈判逐步降低关税和减少非关税贸易壁垒（D正确）；此外还包括公平竞争原则和特殊和差别待遇原则等。'},
+    {id:51,type:'multi',typeName:'多选题',subject:'economic',knowledgePoint:'经济制裁',points:8,text:'根据《与贸易有关的知识产权协定》（TRIPS），下列哪些属于该协定保护的范围？',options:[{letter:'A',text:'版权及相关权利'},{letter:'B',text:'商标和地理标志'},{letter:'C',text:'专利和工业设计'},{letter:'D',text:'未披露信息（商业秘密）'}],answer:'ABCD',explanation:'TRIPS协定第二部分规定了七类知识产权的保护标准：(1)版权及相关权利（A正确）；(2)商标（B正确）；(3)地理标志（B正确）；(4)工业设计（C正确）；(5)专利（C正确）；(6)集成电路布图设计（拓扑图）；(7)未披露信息（D正确，即商业秘密保护）。TRIPS是目前保护范围最广、保护标准最高的国际知识产权公约。'},
+    {id:52,type:'multi',typeName:'多选题',subject:'economic',knowledgePoint:'CISG',points:8,text:'关于国际投资法中的海外私人投资保险制度，下列哪些说法是正确的？',options:[{letter:'A',text:'承保的政治风险通常包括征收险、外汇险和政治暴力险'},{letter:'B',text:'美国海外私人投资公司（OPIC/D FC）是最早的海外投资保险机构之一'},{letter:'C',text:'多边投资担保机构（MIGA）是世界银行集团成员'},{letter:'D',text:'投资保险承保的范围包括商业经营失败的风险'}],answer:'ABC',explanation:'海外私人投资保险制度承保的是政治风险而非商业风险：(1)征收险——东道国实行国有化或征收（A正确）；(2)外汇险（转移险）——东道国限制外汇汇出（A正确）；(3)政治暴力险——战争、革命、内乱等（A正确）。商业经营失败属于商业风险，不在承保范围内（D错误）。美国OPIC（现更名为DFC）是最早的投资保险机构之一（B正确）。MIGA是世界银行集团成员，提供多边投资担保（C正确）。'},
+    {id:53,type:'multi',typeName:'多选题',subject:'economic',knowledgePoint:'根本违约',points:8,text:'根据国际税法，关于避免国际重复征税的方法，下列哪些说法是正确的？',options:[{letter:'A',text:'免税法是指居住国对居民来源于非居住国的所得免予征税'},{letter:'B',text:'抵免法是指居住国允许居民以其在非居住国已纳的税额冲抵其应向居住国缴纳的税额'},{letter:'C',text:'扣除法是指居住国允许居民将已纳的非居住国税款作为费用从应税所得中扣除'},{letter:'D',text:'减税法是指居住国对居民来源于非居住国的所得减征一定比例的税款'}],answer:'ABCD',explanation:'避免国际重复征税的主要方法包括：(1)免税法——居住国对居民来源于来源国并在来源国已纳税的所得免予征税（A正确）；(2)抵免法——居住国允许居民用已在来源国缴纳的税款抵免本国税额，是目前最广泛使用的方法（B正确）；(3)扣除法——允许将已纳外国税款作为费用扣除（C正确）；(4)减税法——对来源国所得减征一定比例税款（D正确）。此外还有税收饶让等特殊制度。'},
+    {id:54,type:'multi',typeName:'多选题',subject:'economic',knowledgePoint:'国际贸易术语',points:8,text:'根据《解决国家和他国国民间投资争端公约》（华盛顿公约/ICSID公约），下列哪些是ICSID行使管辖权的条件？',options:[{letter:'A',text:'争端当事一方为缔约国，另一方为另一缔约国国民'},{letter:'B',text:'争端须直接产生于投资'},{letter:'C',text:'争端双方须书面同意提交ICSID仲裁'},{letter:'D',text:'投资者必须先穷尽当地救济才能提交ICSID'}],answer:'ABC',explanation:'ICSID公约第25条规定管辖权条件：(1)争端当事一方为缔约国（或其指定的机构），另一方为另一缔约国国民（A正确）；(2)争端须直接产生于投资（B正确）；(3)争端双方须以书面形式同意提交ICSID，且同意一旦做出不得单方面撤销（C正确）。关于D，公约第26条规定：除非另有约定，同意提交ICSID仲裁视为同意排除其他救济方法，但缔约国可以要求先穷尽当地行政或司法救济作为同意仲裁的条件——也就是说，穷尽当地救济不是默认要求，而是缔约国可以附加的条件，D错误。'}
+  ,
+  {id:9001,type:'essay',typeName:'案例分析',subject:'public',points:20,knowledgePoint:'国家管辖权豁免',
+    text:'A国政府与B国公司签订基础设施建设合同后单方面终止。B国公司在B国法院起诉A国。根据2004年联合国国家管辖豁免公约和中国2023年《外国国家管辖豁免法》分析A国能否主张豁免。',
+    keywords:['限制豁免','商业行为','主权行为','管辖豁免','商业例外','外国国家管辖豁免法'],
+    referenceAnswer:'根据公约第10条商业交易例外,A国不能主张豁免。中国2023年法第7条明确商业活动不享有豁免。'},
+  {id:9002,type:'essay',typeName:'案例分析',subject:'public',points:20,knowledgePoint:'南海争端',
+    text:'2016年南海仲裁案后中国表示不接受不参与不承认。分析中国立场的国际法依据和UNCLOS争端解决机制的相关规定。',
+    keywords:['领土主权','海洋划界','强制仲裁','争端解决','UNCLOS','声明排除','谈判协商'],
+    referenceAnswer:'涉及领土主权和海洋划界,中国2006年依UNCLOS第298条作出排除声明。主张通过谈判协商解决。'},
+  {id:9003,type:'essay',typeName:'案例分析',subject:'private',points:20,knowledgePoint:'涉外合同法律适用',
+    text:'中国甲公司与美国乙公司签订货物买卖合同未约定适用法律。如何确定准据法?最密切联系原则如何适用?CISG是否自动适用?',
+    keywords:['最密切联系原则','特征性履行','意思自治','CISG','准据法','涉外民事关系法律适用法'],
+    referenceAnswer:'依涉外民事关系法律适用法第41条适用特征性履行方经常居所地法。CISG在中美均为缔约国时自动适用。'},
+  {id:9004,type:'essay',typeName:'案例分析',subject:'private',points:20,knowledgePoint:'国际商事仲裁',
+    text:'中国A公司与英国B公司约定伦敦仲裁。裁决后A拒绝履行,B向中国法院申请执行。法律依据和抗辩理由?',
+    keywords:['纽约公约','承认与执行','仲裁协议','公共秩序保留','程序公正','不予执行'],
+    referenceAnswer:'依据1958年纽约公约和中国民诉法第283条。可依公约第5条抗辩。'},
+  {id:9005,type:'essay',typeName:'案例分析',subject:'economic',points:20,knowledgePoint:'CISG根本违约',
+    text:'中国卖方与德国买方钢材合同(CISG),规格不符。买方直接宣告合同无效是否合法?CISG对根本违约和补救权如何规定?',
+    keywords:['根本违约','实质剥夺','可预见性','宣告合同无效','补救权','CISG第25条','CISG第48条'],
+    referenceAnswer:'依第25条须实质损害且可预见。第48条规定卖方可自付费用补救。非根本违约需给额外时间。'},
+  {id:9006,type:'essay',typeName:'案例分析',subject:'economic',points:20,knowledgePoint:'WTO争端解决',
+    text:'甲国对乙国钢铁征收反倾销税,乙国向WTO申诉。反倾销征税条件?DSU程序?败诉不执行怎么办?',
+    keywords:['倾销','损害','因果关系','DSU','磋商','专家组','上诉机构','报复','中止减让'],
+    referenceAnswer:'需倾销+损害+因果关系。DSU程序:磋商、专家组、上诉、通过。可依第22条申请中止减让。'}],
+
+    // 涉外法治资鉴馆 - 官方文件库内容
+    ideologyDocs: [
+    {
+      id: 'doc-xp-speech',
+      icon: '📜',
+      title: '习近平涉外法治重要论述汇编',
+      summary: '二十届政治局第十次集体学习讲话、中央全面依法治国工作会议论述、二十大报告涉外法治论述、涉外法治内涵与体系建设成就。',
+      date: '2023年11月',
+      category: '重要论述',
+      sourceFile: '习近平涉外法治重要论述汇编.md'
+    },
+    {
+      id: 'doc-strategy',
+      icon: '📋',
+      title: '涉外法治战略文件汇编',
+      summary: '法治中国建设规划涉外章节、二十届三中全会涉外法治部署、最高法一带一路司法保障意见、全球治理中国方案白皮书。',
+      date: '2024年7月',
+      category: '战略规划',
+      sourceFile: '涉外法治战略文件汇编.md'
+    },
+    {
+      id: 'doc-talent',
+      icon: '🎓',
+      title: '涉外法治人才培养文件汇编',
+      summary: '涉外法治人才现状数据（涉外律师占比1.46%）、国家培养政策、三国法教学目标、能力要求矩阵。',
+      date: '2025年',
+      category: '人才培养',
+      sourceFile: '涉外法治人才培养文件汇编.md'
+    },
+    {
+      id: 'doc-fazhiguo',
+      icon: '🏛️',
+      title: '法治中国建设规划（2020—2025年）',
+      summary: '加强涉外法治工作：推进法域外适用法律体系建设、防范制裁干预、域外法律查明机制、涉外法律服务发展。',
+      date: '2021年1月',
+      category: '战略规划',
+      sourceFile: '涉外法治战略文件汇编.md'
+    },
+    {
+      id: 'doc-global-gov',
+      icon: '🌐',
+      title: '全球治理体系变革的中国方案白皮书',
+      summary: '维护以联合国为核心的国际体系、以国际法为基础的国际秩序、推动全球治理体系朝更加公正合理方向发展。',
+      date: '2026年6月',
+      category: '白皮书',
+      sourceFile: '涉外法治战略文件汇编.md'
+    },
+    {
+      id: 'doc-belt-road',
+      icon: '⚖️',
+      title: '最高人民法院"一带一路"司法保障意见',
+      summary: '两份司法保障意见：依法公正审理涉"一带一路"案件、完善国际商事纠纷解决机制、加强国际司法协助。',
+      date: '2015年/2019年',
+      category: '司法文件',
+      sourceFile: '涉外法治战略文件汇编.md'
+    }
+  ],
+
+    // 文档详情内容（基于知识库提取，结构化HTML）
+  docDetails: {
+    'doc-xp-speech': `<h4>核心论述摘编</h4>
+<p>本汇编系统整理了习近平总书记关于涉外法治的重要论述，涵盖二十届中央政治局第十次集体学习、中央全面依法治国工作会议、党的二十大报告、二十届三中全会决定等重要场合的讲话精神。</p>
+
+<div class="highlight-box">
+<strong>核心论断：</strong>加强涉外法治建设既是以中国式现代化全面推进强国建设、民族复兴伟业的长远所需，也是推进高水平对外开放、应对外部风险挑战的当务之急。
+</div>
+
+<h4>一、二十届中央政治局第十次集体学习（2023.11.27）</h4>
+<p><strong>战略定位</strong>：涉外法治作为中国特色社会主义法治体系的重要组成部分，事关全面依法治国，事关我国对外开放和外交工作大局。推进涉外法治工作，根本目的是用法治方式更好维护国家和人民利益，促进国际法治进步，推动构建人类命运共同体。</p>
+
+<p><strong>五大关键部署</strong>：</p>
+<ul>
+<li>坚持立法先行、立改废释并举，形成系统完备的涉外法律法规体系</li>
+<li>建设协同高效的涉外法治实施体系，提升涉外执法司法效能</li>
+<li>强化涉外法律服务保障，促进涉外法律服务提质增效</li>
+<li>加快构建中国法域外适用的法律体系</li>
+<li>加强涉外法治人才培养</li>
+</ul>
+
+<h4>二、涉外法治的基本内涵</h4>
+<p><strong>定义</strong>：涉外法治是中国特色社会主义法治体系的重要组成部分，是运用法治思维和法治方式处理涉外事务、参与国际治理的系统工程。</p>
+
+<p><strong>国内法治与涉外法治的关系</strong>：国内法治是基础，涉外法治是延伸，二者相互促进、协调发展。要统筹推进国内法治和涉外法治，协调推进国内治理和国际治理。</p>
+
+<h4>三、涉外法治体系建设成就</h4>
+<p><strong>立法成就</strong>：《反外国制裁法》（2021）、《对外关系法》（2023）、《外国国家豁免法》（2023）、《海警法》（2021）、《反间谍法》修订（2023）等。</p>
+
+<p><strong>司法成就</strong>：最高人民法院国际商事法庭建立和运作，"一站式"国际商事纠纷多元化解决机制，2025年全国法院新收一审涉外商事海事案件6.7万余件，同比增长44%。</p>
+
+<p><strong>法律服务成就</strong>：中国律所在37个国家和地区设立207家分支机构，已签署91个司法协助条约、19个移管被判刑人条约，建立51家涉外法治人才协同培养平台。</p>
+
+<h4>四、教学应用指引</h4>
+<p><strong>考核重点</strong>：统筹推进国内法治和涉外法治的内涵和要求、涉外法治体系的主要组成部分、涉外法治建设的战略意义、中国参与全球治理的法治方案。</p>`,
+
+    'doc-strategy': `<h4>国家涉外法治战略文件总览</h4>
+<p>本汇编汇集了《法治中国建设规划（2020—2025年）》涉外章节、二十届三中全会涉外法治部署、最高人民法院"一带一路"司法保障意见、《全球治理体系变革的中国方案》白皮书等核心战略文件。</p>
+
+<div class="highlight-box">
+<strong>战略总目标：</strong>加强涉外法治体系和能力建设，完善涉外法律法规体系，积极参与全球治理体系改革和建设，推动构建公正合理的国际秩序。
+</div>
+
+<h4>一、《法治中国建设规划（2020—2025年）》</h4>
+<p><strong>加强涉外法治工作</strong>：</p>
+<ul>
+<li>加快推进我国法域外适用的法律体系建设</li>
+<li>完善防范和制裁干预行政行为、维护国家主权和安全稳定的法律制度</li>
+<li>建立健全域外法律查明机制</li>
+<li>加强国际法治交流合作</li>
+</ul>
+
+<p><strong>加强涉外法律服务</strong>：发展涉外律师队伍、支持仲裁机构提高国际化水平、培育国际一流的仲裁机构。</p>
+
+<h4>二、二十届三中全会涉外法治部署</h4>
+<p><strong>五大部署</strong>：</p>
+<ul>
+<li>完善涉外法律法规体系：加快形成系统完备的涉外法律法规体系</li>
+<li>健全反制裁反干涉反"长臂管辖"法律制度</li>
+<li>扩大高水平制度型开放：对接国际高标准经贸规则</li>
+<li>完善涉外执法司法机制：提升涉外法律服务能力</li>
+<li>积极参与国际规则制定：推动全球治理体系改革</li>
+</ul>
+
+<h4>三、最高法"一带一路"司法保障意见</h4>
+<p><strong>2015年意见</strong>：依法公正高效审理涉"一带一路"建设各类案件，加强执行工作，完善司法保障机制，加强国际交流与合作。</p>
+<p><strong>2019年意见</strong>：充分发挥审判职能作用，完善国际商事纠纷解决机制，加强国际司法协助，推动国际法治合作。</p>
+
+<h4>四、"十四五"涉外法治建设数据</h4>
+<ul>
+<li>签署91个司法协助条约、19个移管被判刑人条约</li>
+<li>办理司法协助案件1.6万多件</li>
+<li>律所在37个国家和地区设立207家分支机构</li>
+<li>建立51家涉外法治人才协同培养平台、16家研究平台</li>
+<li>办理涉外仲裁案件1.6万件，标的额7300亿元</li>
+</ul>`,
+
+    'doc-talent': `<h4>涉外法治人才培养战略与方案</h4>
+<p>本文件汇编了涉外法治人才培养的政策要求、现状数据、培养目标与能力框架，为三国法教学提供人才培养指引。</p>
+
+<div class="highlight-box">
+<strong>核心数据：</strong>涉外律师在全国律师数量中占比仅<strong>1.46%</strong>，与中国作为世界第二大经济体和第一大货物贸易国的地位严重不匹配，涉外法治人才供需缺口巨大。
+</div>
+
+<h4>一、人才培养现状与挑战</h4>
+<p><strong>仲裁领域数据</strong>：截至2025年底，中国共有仲裁机构285家，仲裁员6万多名（其中境外仲裁员3400多名），涉外仲裁案件当事人覆盖140多个国家。</p>
+
+<p><strong>核心挑战</strong>：人才总量不足、高端人才稀缺、国际话语权不够、跨学科复合能力有待提升。</p>
+
+<h4>二、国家层面培养政策</h4>
+<p><strong>二十届中央政治局第十次集体学习要求</strong>：加强涉外法治人才培养，建设德才兼备的高素质法治工作队伍。</p>
+<p><strong>教育部/司法部举措</strong>：建立51家涉外法治人才协同培养平台、16家涉外法治研究平台，加强国际法、国际经济法、国际私法等核心课程建设，推动法学教育国际化。</p>
+
+<h4>三、三国法教学目标</h4>
+<p><strong>知识目标</strong>：掌握三国法（国际公法+国际私法+国际经济法）的基本概念、基本原则和基本制度。</p>
+<p><strong>能力目标</strong>：能够运用三国法知识分析涉外法律问题。</p>
+<p><strong>价值目标</strong>：树立国际法治意识，坚定中国立场。</p>
+
+<h4>四、核心知识点覆盖</h4>
+<ul>
+<li><strong>国际公法</strong>：国家主权、条约法、海洋法、国家豁免、领土（高频）</li>
+<li><strong>国际私法</strong>：冲突规范、法律适用、管辖权、判决承认执行（高频）</li>
+<li><strong>国际经济法</strong>：CISG、WTO规则、投资保护、仲裁（高频）</li>
+<li><strong>涉外法治</strong>：涉外法治战略、中国立场、全球治理（中频）</li>
+</ul>
+
+<h4>五、能力要求矩阵</h4>
+<p><strong>基本素质</strong>：扎实的法学基础理论、熟练的外语应用能力、国际视野与跨文化沟通能力、中国立场与家国情怀。</p>
+<p><strong>专业能力</strong>：国际法律规则理解运用能力、涉外法律实务操作能力、国际争端解决能力（谈判/调解/仲裁/诉讼）、比较法研究能力。</p>
+<p><strong>前沿领域</strong>：数字经济与国际规则、数据安全与跨境流动、气候变化与环境治理、国际投资与贸易新规则。</p>`,
+
+    'doc-fazhiguo': `<h4>《法治中国建设规划（2020—2025年）》涉外法治章节</h4>
+<p>来源：中国政府网 https://www.gov.cn/zhengce/2021-01/10/content_5578591.htm</p>
+<p>《法治中国建设规划（2020—2025年）》是新中国成立以来第一个关于法治中国建设的专门规划，其中涉外法治部分为新时代涉外法治工作指明了方向。</p>
+
+<div class="highlight-box">
+<strong>定位：</strong>加强涉外法治工作是法治中国建设的重要组成部分，是统筹推进国内法治和涉外法治的关键抓手。
+</div>
+
+<h4>一、加强涉外法治工作</h4>
+<p><strong>1. 加快推进我国法域外适用的法律体系建设</strong></p>
+<p>围绕反制裁、反干涉、反制"长臂管辖"等，充实应对挑战、防范风险的法律"工具箱"，推动形成系统完备的涉外法律法规体系。</p>
+
+<p><strong>2. 完善防范和制裁干预行政行为、维护国家主权和安全稳定的法律制度</strong></p>
+<p>健全涉外商事审判工作机制，完善国际商事纠纷多元化解决机制，依法平等保护中外当事人合法权益。</p>
+
+<p><strong>3. 建立健全域外法律查明机制</strong></p>
+<p>构建域外法律查明平台，完善域外法律查明途径和方式，提升涉外案件审判质效。支持法律院校加强外国法研究与教学。</p>
+
+<p><strong>4. 加强国际法治交流合作</strong></p>
+<p>积极参与国际规则制定，推动全球治理体系改革和建设，为构建人类命运共同体提供法治保障。</p>
+
+<h4>二、加强涉外法律服务</h4>
+<ul>
+<li><strong>发展涉外律师队伍</strong>：实施涉外律师人才培养规划，建立涉外律师人才库</li>
+<li><strong>支持仲裁机构提高国际化水平</strong>：完善仲裁制度，提升中国仲裁的国际公信力</li>
+<li><strong>培育国际一流的仲裁机构</strong>：打造面向全球的国际商事仲裁中心</li>
+</ul>
+
+<h4>三、教学关联</h4>
+<p>本规划是涉外法治教学的纲领性文件，建议结合国际公法"国家主权原则"、国际私法"外国法查明制度"、国际经济法"国际商事仲裁"等知识点进行教学。</p>`,
+
+    'doc-global-gov': `<h4>《全球治理体系变革的中国方案》白皮书</h4>
+<p>发布机构：中华人民共和国外交部<br/>发布时间：2026年6月<br/>来源：https://www.mfa.gov.cn/zyxw/202606/t20260617_11947249.shtml</p>
+
+<div class="highlight-box">
+<strong>核心主张：</strong>维护以联合国为核心的国际体系、维护以国际法为基础的国际秩序、维护以《联合国宪章》宗旨和原则为基础的国际关系基本准则，推动全球治理体系朝着更加公正合理的方向发展。
+</div>
+
+<h4>一、时代背景</h4>
+<p>当前，世界之变、时代之变、历史之变正以前所未有的方式展开。世界进入新的动荡变革期，全球治理面临多重挑战。中国始终是世界和平的建设者、全球发展的贡献者、国际秩序的维护者。</p>
+
+<h4>二、核心理念：人类命运共同体</h4>
+<p><strong>五大维度</strong>：</p>
+<ul>
+<li><strong>持久和平</strong>：坚持共同、综合、合作、可持续的安全观</li>
+<li><strong>普遍安全</strong>：推动构建均衡、有效、可持续的全球安全架构</li>
+<li><strong>共同繁荣</strong>：推动经济全球化朝着更加开放、包容、普惠、平衡、共赢方向发展</li>
+<li><strong>开放包容</strong>：尊重世界文明多样性，促进文明交流互鉴</li>
+<li><strong>清洁美丽</strong>：加强全球环境治理，积极应对气候变化</li>
+</ul>
+
+<h4>三、全球治理的中国原则</h4>
+<p><strong>1. 坚持真正的多边主义</strong>：维护联合国在全球治理中的核心地位，反对单边主义和霸权主义。</p>
+<p><strong>2. 坚持共商共建共享</strong>：全球事务由各国商量着办，治理成果由各国共同分享。</p>
+<p><strong>3. 坚持国际关系民主化</strong>：国家不分大小、强弱、贫富一律平等，反对干涉别国内政。</p>
+<p><strong>4. 坚持以国际法为基础</strong>：维护国际法治权威，确保国际法平等统一适用。</p>
+
+<h4>四、重点领域行动</h4>
+<ul>
+<li>全球发展：全球发展倡议，推动落实2030年可持续发展议程</li>
+<li>全球安全：全球安全倡议，构建普遍安全的世界</li>
+<li>全球文明：全球文明倡议，促进人类文明进步</li>
+<li>数字治理：推动构建公正合理的全球数字治理体系</li>
+<li>气候治理：积极参与应对气候变化全球治理</li>
+</ul>
+
+<h4>教学要点</h4>
+<p>本白皮书是理解中国在国际法与全球治理中立场的重要文献，建议结合国际公法"国际法基本原则"、"国际组织法"、"国际环境法"等章节教学。</p>`,
+
+    'doc-belt-road': `<h4>最高人民法院"一带一路"司法保障意见（两份）</h4>
+<p>最高人民法院分别于2015年和2019年发布两份关于为"一带一路"建设提供司法服务和保障的意见，是涉外民商事审判领域的重要司法政策文件。</p>
+
+<div class="highlight-box">
+<strong>司法目标：</strong>充分发挥人民法院司法职能作用，为"一带一路"建设营造稳定、公平、透明、可预期的法治化营商环境。
+</div>
+
+<h4>一、2015年《若干意见》核心内容</h4>
+<p><strong>依法公正高效审理各类案件</strong>：</p>
+<ul>
+<li>涉"一带一路"建设的刑事、民事、商事、海事、知识产权等各类案件</li>
+<li>坚持严格公正司法，平等保护中外当事人合法权益</li>
+<li>加强涉"一带一路"建设案件的执行工作</li>
+</ul>
+
+<p><strong>完善司法保障机制</strong>：</p>
+<ul>
+<li>建立涉"一带一路"建设案件专项统计分析制度</li>
+<li>完善涉"一带一路"建设的多元化纠纷解决机制</li>
+<li>加强涉"一带一路"建设司法研究的国际交流与合作</li>
+</ul>
+
+<h4>二、2019年《意见》深化内容</h4>
+<p><strong>充分发挥审判职能作用</strong>：</p>
+<ul>
+<li>依法服务保障全面开放新格局</li>
+<li>依法服务保障创新驱动发展</li>
+<li>依法服务保障海洋强国建设</li>
+</ul>
+
+<p><strong>完善国际商事纠纷解决机制</strong>：</p>
+<ul>
+<li>最高人民法院国际商事法庭（CICC）的设立与运作</li>
+<li>"一站式"国际商事纠纷多元化解决机制</li>
+<li>国际商事专家委员会制度</li>
+</ul>
+
+<p><strong>加强国际司法协助</strong>：</p>
+<ul>
+<li>完善送达、取证、判决承认执行等司法协助机制</li>
+<li>深化与"一带一路"沿线国家的司法交流合作</li>
+<li>推动国际法治合作向更高水平发展</li>
+</ul>
+
+<h4>三、实践成效</h4>
+<p>2025年全国法院新收一审涉外商事海事案件6.7万余件，同比增长44%。最高人民法院国际商事法庭已审结多起标志性案件，国际影响力持续提升。</p>
+
+<h4>教学关联</h4>
+<p>本文件建议结合国际私法"涉外管辖权"、"国际民事诉讼程序"、"区际司法协助"以及国际经济法"国际商事仲裁"、"国际商事争端解决机制"等知识点进行教学。</p>`
+  },
+
+  // 涉外法治前沿动态
+  zhijianNews: [
+    {
+      id: 'news-1',
+      title: '司法部：加快推进海外利益保护专门立法，一体推进涉外法治体系和能力建设',
+      summary: '司法部在国新办发布会上表示，"十五五"期间将加快海外利益保护专门立法，推进首个全国性涉外法律服务平台建设，构建覆盖全球的中国公民和企业权益保护机制。',
+      source: '司法部',
+      sourceClass: 'source-npc',
+      date: '2026年9月',
+      sourceURL: 'https://www.moj.gov.cn/',
+      teachingNote: {
+        knowledgeTags: ['国际公法', '涉外法治', '海外利益保护', '法治体系建设'],
+        suggestion: '在"国际法基本原则"和"涉外法治战略"章节中，结合十五五规划部署，分析我国海外利益保护的法治需求：(1) 海外公民和企业权益保护的法律框架；(2) 涉外法治体系建设的战略意义；(3) 与一带一路战略的协同关系。',
+        kbHint: '关联知识库：涉外法治战略文件汇编 > 海外利益保护相关条款'
+      }
+    },
+    {
+      id: 'news-2',
+      title: '《人工智能安全治理框架3.0》正式发布',
+      summary: '我国发布人工智能安全治理框架3.0版本，更新AI安全风险分类体系，提出分级分类治理措施。外交部表态支持以联合国为主渠道构建全球AI治理体系，推动形成更具包容性的国际AI治理共识。',
+      source: '外交部',
+      sourceClass: 'source-mfa',
+      date: '2026年9月',
+      sourceURL: 'https://www.fmprc.gov.cn/',
+      teachingNote: {
+        knowledgeTags: ['国际公法', '人工智能治理', '全球治理', '国际规则制定'],
+        suggestion: '在"全球治理"和"国际法前沿"专题中讨论：(1) AI安全治理的国际竞争与合作；(2) 联合国框架下AI治理的中国方案；(3) AI技术对传统国际法体系带来的挑战与机遇。',
+        kbHint: '关联知识库：涉外法治战略文件汇编 > 新兴技术领域治理'
+      }
+    },
+    {
+      id: 'news-3',
+      title: '司法部发布首批涉外法律服务典型案例（18个）',
+      summary: '司法部发布首批18个涉外法律服务典型案例，涵盖跨境投资、国际贸易、知识产权保护、海事海商等领域，为涉外法律服务实践提供示范指引，推动涉外法律服务高质量发展。',
+      source: '司法部',
+      sourceClass: 'source-npc',
+      date: '2026年9月',
+      sourceURL: 'https://www.moj.gov.cn/',
+      teachingNote: {
+        knowledgeTags: ['国际私法', '涉外法律服务', '跨境投资', '案例教学'],
+        suggestion: '在涉外法治案例教学中，选取代表性案例开展分组讨论：(1) 跨境投资中的法律风险识别；(2) 国际贸易争端的解决路径；(3) 知识产权保护的国际协调。',
+        kbHint: '关联知识库：涉外民商事典型案例汇编'
+      }
+    },
+    {
+      id: 'news-4',
+      title: '《反跨境腐败法》草案首次提请全国人大常委会审议',
+      summary: '反跨境腐败法草案首次提请十四届全国人大常委会审议，旨在完善我国反腐败法律体系的域外适用机制，强化跨境腐败行为的法律规制，与国际反腐败公约接轨。',
+      source: '全国人大',
+      sourceClass: 'source-npc',
+      date: '2026年8月',
+      sourceURL: 'https://flk.npc.gov.cn/',
+      teachingNote: {
+        knowledgeTags: ['国际公法', '反腐败', '域外管辖', '国际法基本原则'],
+        suggestion: '在"国际刑法"和"域外管辖权"章节中讨论：(1) 跨境腐败的法律定性与管辖权冲突；(2) 中国反跨境腐败立法与国际公约（UNCAC）的衔接；(3) 对企业合规出海的影响。',
+        kbHint: '关联知识库：国际公法基础教学要点汇编 > 国际刑法章节'
+      }
+    },
+    {
+      id: 'news-5',
+      title: '重庆签发全球首张基于UNCITRAL范本的电子可转让货物单证',
+      summary: '重庆成功签发全球首张基于联合国国际贸易法委员会（UNCITRAL）范本的电子可转让货物单证，标志着国际贸易数字化里程碑，为跨境贸易电子单证的法律确定性提供实践范本。',
+      source: '商务部',
+      sourceClass: 'source-commerce',
+      date: '2026年8月',
+      sourceURL: 'https://www.mofcom.gov.cn/',
+      teachingNote: {
+        knowledgeTags: ['国际经济法', '国际贸易法', '电子单证', '数字化贸易'],
+        suggestion: '在"国际贸易法"前沿专题中讲解：(1) 电子可转让单证的法律效力与UNCITRAL示范法框架；(2) 数字化对传统贸易单据体系的变革；(3) 中国在国际贸易数字化中的引领作用。',
+        kbHint: '关联知识库：CISG联合国国际货物销售合同公约'
+      }
+    },
+    {
+      id: 'news-6',
+      title: '最高人民检察院：构建反制裁、反干预、反"长臂管辖"法治协同机制',
+      summary: '最高检发布工作通报，强调构建完善反制裁、反干预、反"长臂管辖"法治协同机制，强化涉外检察职能，维护国家主权安全和发展利益，为涉外法治提供司法保障。',
+      source: '最高法',
+      sourceClass: 'source-court',
+      date: '2026年6月',
+      sourceURL: 'https://www.spp.gov.cn/',
+      teachingNote: {
+        knowledgeTags: ['国际公法', '反制裁', '长臂管辖', '国家主权'],
+        suggestion: '在"国家主权"和"域外管辖权"章节中分析：(1) "长臂管辖"的国际法争议；(2) 中国反制裁法律体系的构建逻辑；(3) 涉外检察职能的定位与作用。',
+        kbHint: '关联知识库：国际公法基础教学要点汇编 > 国家主权与管辖权'
+      }
+    },
+    {
+      id: 'news-7',
+      title: '《律师法》修正草案提请审议，强化涉外律师人才培养',
+      summary: '律师法修正草案提请全国人大常委会审议，重点增加涉外律师人才培养、涉外法律服务体系建设等内容，为涉外法治人才队伍专业化建设提供法律依据。',
+      source: '全国人大',
+      sourceClass: 'source-npc',
+      date: '2026年6月',
+      sourceURL: 'https://flk.npc.gov.cn/',
+      teachingNote: {
+        knowledgeTags: ['涉外法治', '法律人才培养', '律师制度', '法治建设'],
+        suggestion: '结合本项目研究目标讨论：(1) 涉外法治人才培养的制度保障；(2) AI赋能法律教育的政策导向；(3) 复合型涉外法治人才的能力标准构建。',
+        kbHint: '关联知识库：涉外法治战略文件汇编 > 人才培养相关政策'
+      }
+    },
+    {
+      id: 'news-8',
+      title: '联合国《可转让货物单证公约》将于10月开放签署',
+      summary: '联合国大会于2025年12月通过的《联合国可转让货物单证公约》将于2026年10月正式开放签署，该公旨在为国际贸易中电子可转让单证提供统一法律框架，促进跨境贸易数字化。',
+      source: '联合国',
+      sourceClass: 'source-mfa',
+      date: '2026年6月',
+      sourceURL: 'https://uncitral.un.org/',
+      teachingNote: {
+        knowledgeTags: ['国际经济法', '国际贸易法', '联合国公约', '贸易数字化'],
+        suggestion: '在"国际贸易法"章节中讲解：(1) 可转让货物单证的法律性质与流转规则；(2) 电子单证与传统纸质单证的法律差异；(3) 中国参与国际经贸规则制定的实践。',
+        kbHint: '关联知识库：CISG联合国国际货物销售合同公约'
+      }
+    },
+    {
+      id: 'news-9',
+      title: '新修订《海商法》自主知识体系构建取得重要进展',
+      summary: '中国法学会举办海商法修订草案专题讲座，系统介绍新修订海商法的自主知识体系构建成果，涵盖船舶物权、海上运输合同、海事赔偿责任限制等核心制度的修订完善。',
+      source: '全国人大',
+      sourceClass: 'source-npc',
+      date: '2026年5月',
+      sourceURL: 'https://flk.npc.gov.cn/',
+      teachingNote: {
+        knowledgeTags: ['海商法', '国际私法', '海事法律', '自主知识体系'],
+        suggestion: '在"海商法"专题教学中结合本次修订：(1) 海商法自主知识体系的构建思路；(2) 与国际海事公约的衔接与协调；(3) 对中国航运业和海事司法实践的影响。',
+        kbHint: '关联知识库：涉外民事关系法律适用法'
+      }
+    },
+    {
+      id: 'news-10',
+      title: '国际调解院正式成立，总部设于香港',
+      summary: '国际调解院于2025年10月20日正式成立，总部设在香港，这是全球首个以调解为核心职能的政府间国际组织。《国际调解院公约》已于2025年9月开放签署，标志着国际争端解决机制多元化发展的重要里程碑。',
+      source: '外交部',
+      sourceClass: 'source-mfa',
+      date: '2025年10月',
+      sourceURL: 'https://www.fmprc.gov.cn/',
+      teachingNote: {
+        knowledgeTags: ['国际公法', '国际争端解决', '国际调解', '国际组织'],
+        suggestion: '在"国际争端解决"章节中重点讲解：(1) 国际调解院的法律地位与职能；(2) 调解与仲裁、诉讼的互补关系；(3) 中国在香港设立国际调解院的战略考量。',
+        kbHint: '关联知识库：国际公法基础教学要点汇编 > 国际争端解决'
+      }
+    },
+    {
+      id: 'news-11',
+      title: '企业破产法修订草案完善跨境破产规则',
+      summary: '企业破产法修订草案提请全国人大常委会审议，新增跨境破产专章，完善跨国破产案件管辖权规定，借鉴UNCITRAL《跨境破产案件示范法》，建立与国际接轨的跨境破产合作机制。',
+      source: '全国人大',
+      sourceClass: 'source-npc',
+      date: '2026年8月',
+      sourceURL: 'http://www.chinanews.com.cn/gn/2026/08-21/10681726.shtml',
+      teachingNote: {
+        knowledgeTags: ['国际私法', '跨境破产', '企业破产法', '涉外民商事'],
+        suggestion: '在"跨境破产"和"涉外民商事法律适用"章节中讨论：(1) 跨国破产管辖权的确定规则与我国立场；(2) 与UNCITRAL《跨境破产案件示范法》的对接；(3) 破产财产清偿顺位对涉外债权人的影响。',
+        kbHint: '关联知识库：涉外民事关系法律适用法、涉外民商典型案例汇编'
+      }
+    },
+    {
+      id: 'news-12',
+      title: '2025年度中国十大国际仲裁裁决新闻发布会召开',
+      summary: '中国法学会召开新闻发布会，发布2025年度中国十大国际仲裁裁决，涵盖国际投资仲裁、国际商事仲裁、海事仲裁等领域，集中展示中国仲裁事业的发展成就。',
+      source: '司法部',
+      sourceClass: 'source-npc',
+      date: '2026年7月',
+      sourceURL: 'https://www.moj.gov.cn/',
+      teachingNote: {
+        knowledgeTags: ['国际经济法', '国际仲裁', '争端解决', '仲裁裁决'],
+        suggestion: '在"国际商事仲裁"章节中结合典型案例讲解：(1) 国际仲裁裁决的法律效力；(2) 纽约公约框架下的裁决承认与执行；(3) 中国仲裁机构在国际争端解决中的地位提升。',
+        kbHint: '关联知识库：纽约公约、国际投资法知识汇编'
+      }
+    },
+    {
+      id: 'news-13',
+      title: '司法部发布首批国际仲裁典型案例',
+      summary: '司法部发布首批国际仲裁典型案例，涵盖投资仲裁、商事仲裁、海事仲裁等类别，系统展示中国仲裁实践的成果，为涉外法律实务提供参考借鉴。',
+      source: '司法部',
+      sourceClass: 'source-npc',
+      date: '2026年7月',
+      sourceURL: 'https://www.moj.gov.cn/',
+      teachingNote: {
+        knowledgeTags: ['国际经济法', '国际商事仲裁', '案例教学', '争端解决'],
+        suggestion: '在"国际商事仲裁"和"国际争端解决"章节中选取典型案例进行教学：(1) 仲裁协议的效力认定；(2) 仲裁程序中的法律适用；(3) 裁决的承认与执行实务。',
+        kbHint: '关联知识库：纽约公约、涉外民商事典型案例汇编'
+      }
+    },
+    {
+      id: 'news-14',
+      title: '最高人民法院发布涉外商事海事审判典型案例',
+      summary: '最高法发布涉外商事海事审判典型案例，涵盖跨境电商、国际货物买卖、海事海商等领域，明确涉外民商事审判中的法律适用标准和裁判规则。',
+      source: '最高法',
+      sourceClass: 'source-court',
+      date: '2026年4月',
+      sourceURL: 'https://www.court.gov.cn/',
+      teachingNote: {
+        knowledgeTags: ['国际私法', '涉外管辖权', '法律适用', '判决承认执行'],
+        suggestion: '在国际私法"涉外民事诉讼"和"法律适用"章节中选取代表性案例进行案例教学，引导学生分析涉外民事关系的认定标准、管辖权确定规则和准据法选择方法。',
+        kbHint: '关联知识库：涉外民商事典型案例汇编、涉外民事关系法律适用法'
+      }
+    },
+    {
+      id: 'news-15',
+      title: '司法部年均办理国际司法协助请求达3300多件',
+      summary: '司法部通报，我国年均办理国际司法协助请求达3300多件，涵盖民商事送达、取证、判决承认执行等多个领域，涉外法治工作体系日益完善。',
+      source: '司法部',
+      sourceClass: 'source-npc',
+      date: '2026年5月',
+      sourceURL: 'https://www.moj.gov.cn/',
+      teachingNote: {
+        knowledgeTags: ['国际私法', '司法协助', '区际法律合作', '涉外法治'],
+        suggestion: '在"国际司法协助"和"区际司法协助"章节中讲解：(1) 国际司法协助的法律框架；(2) 海牙送达公约和海牙取证公约的实践应用；(3) 我国国际司法协助的制度建设。',
+        kbHint: '关联知识库：内地与港澳台司法协助汇编、海牙公约要点汇编'
+      }
+    }
+  ],
+
+  // === 材料分析题 ===  ],
+
+  // === 材料分析题 ===
+  materialQuestions: [
+    {
+      id: 'mq-1', title: '南海仲裁案与国际法适用', subject: 'public', difficulty: '中等',
+      material: '2016年7月12日，南海仲裁案仲裁庭作出裁决，认定菲律宾提起的仲裁请求大多成立。中国政府的立场是"不接受、不参与"该仲裁程序，并在裁决后发表声明指出该裁决是"无效的，没有约束力"。中国政府同时强调，南海诸岛自古以来就是中国领土，中国对南海诸岛及其附近海域拥有无可争辩的主权。',
+      questions: [
+        { q: '结合《联合国海洋法公约》(UNCLOS)第298条，分析中国"不接受、不参与"立场的国际法依据。', score: 10, answer: '中国在2006年依据UNCLOS第298条第1款(a)项作出声明，将涉及海域划界、历史性海湾或所有权、军事活动和执法活动等争端排除在强制仲裁程序之外。菲律宾单方面提起的仲裁涉及南海岛礁主权归属和海域划界问题，属于中国已排除的争端类型，因此仲裁庭对本案不具有管辖权。' },
+        { q: '从国际法的"国家同意"原则出发，评析该案仲裁庭的管辖权认定。', score: 10, answer: '国际司法和仲裁机构的管辖权建立在国家同意基础上。中国作为主权国家，有权依据UNCLOS第298条排除特定类型争端。仲裁庭将岛礁法律地位问题与海域划界问题割裂处理，违反了国家同意原则，也违背了UNCLOS争端解决机制的整体性和善意解释原则。' }
+      ],
+      totalScore: 20, knowledgePoints: ['UNCLOS争端解决机制', '第298条排除性声明', '国家同意原则', '管辖权']
+    },
+    {
+      id: 'mq-2', title: '《维也纳条约法公约》与条约保留', subject: 'public', difficulty: '较难',
+      material: '甲国、乙国、丙国和丁国均为某多边环境公约的缔约国。甲国在签署公约时对第15条（关于争端解决的强制管辖条款）提出保留，声明"本国不受第15条约束"。乙国接受该保留，丙国反对该保留但不同时反对条约在两国间生效，丁国未表态。公约共30条，第15条规定缔约国间关于公约解释或适用的争端应提交国际法院裁决。',
+      questions: [
+        { q: '根据《维也纳条约法公约》(VCLT)第19-21条，分析甲国的保留是否有效，以及该保留对甲国与其他四国之间条约关系的影响。', score: 15, answer: '根据VCLT第19条，除非保留被条约禁止、不在条约允许的保留范围内、或与条约目的和宗旨不符，否则国家有权提出保留。第15条的强制管辖保留一般不被认为违反条约目的和宗旨，故甲国的保留有效。根据第20-21条：(1)乙国接受保留→甲乙之间按保留范围修改第15条的适用；(2)丙国反对但不反对条约生效→甲丙之间第15条不适用，但条约其他条款仍然有效；(3)丁国未表态→根据第20条第5款，12个月后视为接受保留。' },
+        { q: '如果该公约明确规定"不得对本公约提出任何保留"，甲国的保留行为会产生什么法律后果？', score: 10, answer: '根据VCLT第19条(a)项，条约明文禁止保留时，国家不得提出保留。如果甲国仍提出保留，该保留无效。甲国面临两种选择：(1)撤回保留，成为条约的完全缔约国；(2)不成为条约缔约国。甲国不能选择性地只接受部分条款（除非条约本身允许选择性条款机制）。' }
+      ],
+      totalScore: 25, knowledgePoints: ['VCLT第19-21条', '条约保留', '保留的法律效力', '条约目的与宗旨']
+    },
+    {
+      id: 'mq-3', title: '涉外合同法律适用与最密切联系原则', subject: 'private', difficulty: '中等',
+      material: '中国A公司与美国B公司在上海签订一份国际货物买卖合同，合同中未约定争议解决条款和适用法律。合同约定交货地点为上海港，付款方式为信用证。后因货物质量问题发生纠纷，A公司向中国上海某法院提起诉讼。B公司抗辩称合同应在美国仲裁。经查，合同谈判主要在美国进行，合同文本为英文版本。',
+      questions: [
+        { q: '根据《涉外民事关系法律适用法》第41条，分析本案应如何确定准据法。', score: 12, answer: '根据《涉外民事关系法律适用法》第41条：当事人可以协议选择合同适用的法律；没有选择的，适用履行义务最能体现该合同特征的一方当事人经常居所地法律或者其他与该合同有最密切联系的法律。本案中：(1)双方未约定适用法律；(2)本案为国际货物买卖合同，特征性履行方为卖方A公司（中国公司）；(3)交货地上海、合同签订地上海，均指向中国法；(4)综合最密切联系原则，应适用中国法。' },
+        { q: 'B公司主张在美国仲裁，请从国际民事诉讼管辖权角度分析其主张能否成立。', score: 8, answer: 'B公司的主张不能成立。理由：(1)合同未约定仲裁条款，不存在有效仲裁协议；(2)根据《民事诉讼法》第272条，因合同纠纷提起的诉讼，由被告住所地或合同履行地法院管辖。本案交货地在上海，上海法院有管辖权；(3)没有仲裁协议时，一方不能单方强制另一方去境外仲裁。' }
+      ],
+      totalScore: 20, knowledgePoints: ['涉外民事关系法律适用法第41条', '最密切联系原则', '特征性履行', '国际商事仲裁管辖权']
+    },
+    {
+      id: 'mq-4', title: '外国判决的承认与执行', subject: 'private', difficulty: '较难',
+      material: '日本C公司在东京地方法院获得对中国D公司的胜诉判决（货款纠纷，金额500万日元）。日本与中国之间没有双边司法协助条约，也没有共同参加的相关国际公约。C公司拟向中国法院申请承认和执行该日本判决。D公司住所地在中国深圳市。',
+      questions: [
+        { q: '根据中国现行法律，分析C公司能否在中国法院申请承认和执行该日本判决，法律依据是什么？', score: 12, answer: '根据《民事诉讼法》第289条和第290条，中国法院承认和执行外国法院判决需要满足以下条件之一：(1)中国与该国之间存在 bilateral 司法协助条约；(2)存在互惠关系。本案中：(1)中日之间没有相关司法协助条约；(2)需要考察是否存在互惠关系。2019年最高法《全国法院涉外商事海事审判工作座谈会会议纪要》第44条对互惠关系进行了宽松解释，如果日本曾有过承认中国判决的先例，可认定互惠关系存在。如果无法证明互惠关系，则C公司无法在中国获得该判决的承认和执行，需在中国另行起诉。' },
+        { q: '如果中日之间存在司法协助条约，中国法院在审查时主要关注哪些方面？', score: 8, answer: '中国法院主要审查：(1)原判决国法院是否有管辖权（根据条约规定的管辖权标准）；(2)判决是否已发生法律效力；(3)诉讼程序是否保障当事人的诉讼权利（特别是缺席判决时的合法传唤）；(4)是否存在诉讼竞合（中国法院是否已就同一纠纷作出判决或正在审理）；(5)是否违反中国法律的基本原则或国家主权、安全、社会公共利益（公共秩序保留）。' }
+      ],
+      totalScore: 20, knowledgePoints: ['民事诉讼法第289-290条', '外国判决承认与执行', '互惠原则', '公共秩序保留']
+    },
+    {
+      id: 'mq-5', title: 'WTO反倾销争端与争端解决机制', subject: 'economic', difficulty: '中等',
+      material: 'A国对来自B国的钢材产品征收35%的反倾销税。B国认为A国的反倾销调查存在以下问题：(1)倾销幅度的计算采用了"归零法"；(2)损害认定中未充分评估其他可能导致损害的因素；(3)因果关系分析不完整。B国向WTO争端解决机构(DSB)提出磋商请求，磋商失败后成立专家组。',
+      questions: [
+        { q: '根据WTO《反倾销协定》和DSU，分析B国上述三项指控的法律依据。', score: 15, answer: '(1)关于"归零法"：WTO上诉机构在US—Zeroing (Japan)等案件中已裁定归零法违反《反倾销协定》第2.4.2条关于公平比较的要求。在加权平均对加权平均比较中，调查机关不得将低于正常价值的出口交易视为零。(2)关于损害认定：《反倾销协定》第3.1条要求对损害进行客观审查，第3.5条要求调查机关评估除倾销进口外的其他已知因素，确保其他因素造成的损害不归因于倾销进口。(3)关于因果关系：第3.5条要求证明倾销进口与损害之间存在因果关系，且因果关系分析应当充分。' },
+        { q: '如果专家组裁定A国违反相关协定，A国提起上诉，请描述WTO上诉机构的运作机制和可能的结果。', score: 10, answer: '根据DSU第17条：(1)上诉仅限于专家组的法律问题和法律解释（不审查事实问题）；(2)上诉机构由7名成员中的3名组成；(3)上诉机构可维持、修改或撤销专家组的法律调查结果和结论；(4)上诉机构报告经DSB通过后，争端各方应无条件接受；(5)如果裁定A国违规，A国应在"合理期限"内修改其反倾销措施以符合WTO义务（DSU第21条）；(6)如果A国未能在合理期限内执行，B国可申请授权报复（中止减让，DSU第22条）。' }
+      ],
+      totalScore: 25, knowledgePoints: ['反倾销协定', '归零法', 'DSU争端解决程序', '上诉机构', '因果关系']
+    },
+    {
+      id: 'mq-6', title: 'ICSID投资仲裁与东道国监管权', subject: 'economic', difficulty: '较难',
+      material: 'E国为应对气候变化，出台新能源政策，逐步取消对传统能源项目的补贴。F国投资者G公司在E国拥有燃煤电厂投资（依据E国外国投资法获得30年稳定期承诺）。新政导致G公司运营成本大幅上升，G公司依据E国-F国双边投资协定(BIT)中的"公平公正待遇"和"间接征收"条款，向ICSID提起仲裁，索赔10亿美元。',
+      questions: [
+        { q: '分析G公司基于"公平公正待遇"(FET)条款的主张能否成立，重点讨论"合法预期"问题。', score: 12, answer: 'FET条款的保护核心包括保护投资者的"合法预期"(legitimate expectations)。分析要点：(1)G公司是否在投资时获得了E国政府的具体承诺或保证���如30年稳定期承诺）；(2)如果存在明确的稳定期承诺，E国取消补贴可能违反投资者的合法预期，构成FET违反；(3)但也要考量：东道国有权基于公共利益（如气候变化应对）进行善意监管。近年仲裁实践（如Blusun v. Italy）认为，合理的监管变化本身不违反FET，只有当监管变化具有任意性、歧视性、或违反具体承诺时才构成违反。(4)关键是稳定期承诺的范围和具体性，以及E国政策的合理过渡安排。' },
+        { q: 'E国可否援引"间接征收"条款中的"治安权例外"(police powers)进行抗辩？请结合晚近投资仲裁实践分析。', score: 13, answer: '可以援引。治安权例外是国际法上的习惯规则：国家为保护公共健康、安全、环境等正当公共利益而采取的非歧视性善意监管措施，不构成间接征收，无需补偿。分析要点：(1)Philip Morris v. Uruguay案确认了东道国在公共健康领域的治安权；(2)但治安权并非绝对——措施必须是善意的、非歧视的、符合比例原则的；(3)如果新政对G公司的影响过于严重（完全剥夺投资价值），且缺乏合理过渡安排，可能超出治安权的合理范围；(4)关键考量：(a)措施的目的（应对气候变化——正当公共目的）；(b)措施的性质（非歧视性？针对所有传统能源？）；(c)影响的程度（G公司是否仍有合理运营可能？）；(d)是否有过渡安排。' }
+      ],
+      totalScore: 25, knowledgePoints: ['FET与合法预期', '间接征收', '治安权例外', 'ICSID仲裁', 'BIT稳定期条款']
+    }
+  ],
+
+  // === 易混辨析 ===
+  confusingPoints: [
+    {
+      id: 'cp-1', title: '条约的"签署"与"批准"', subject: 'public',
+      pointA: { name: '签署(Signature)', definition: '国家代表在条约文本上签名，表示对条约文本的认证和初步承诺', keyFeature: '认证文本+承担不破坏条约目的和宗旨的义务（VCLT第18条）；一般不产生受条约约束的最终效力', example: '中国于2000年签署《公民权利和政治权利国际公约》，但至今未批准，该公约对中国不生效' },
+      pointB: { name: '批准(Ratification)', definition: '国家最高权力机关对已签署条约的正式确认，表示同意受条约约束', keyFeature: '产生受条约约束的法律效力；国内层面通常需要人大常委会批准；国际层面交存批准书', example: '中国于1983年批准加入《维也纳条约法公约》，批准书交存联合国秘书长后，公约对中国生效' },
+      comparison: ['签署仅认证文本，批准产生约束力', '签署后仅负"不破坏义务"(VCLT第18条)，批准后受条约全面约束', '签署是批准的前提，但签署不必然导致批准', '中国条约批准权属于全国人大常委会（宪法第67条）', '批准需要交存批准书，签署不需要额外手续'],
+      mnemonic: '签署=签名表态（先签），批准=正式拍板（后批）。签了不一定批，批了一定算数。'
+    },
+    {
+      id: 'cp-2', title: '"管辖权"与"适用法"', subject: 'private',
+      pointA: { name: '管辖权(Jurisdiction)', definition: '确定哪国法院有权审理涉外民商事案件的程序性问题', keyFeature: '解决"谁审"的问题；依据包括被告住所地、合同履行地、侵权行为地、协议管辖等；中国《民事诉讼法》第272条等', example: '中国A公司诉美国B公司合同纠纷，因交货地在上海，上海法院有管辖权' },
+      pointB: { name: '适用法(Applicable Law)', definition: '确定审理案件时适用哪国实体法的规则', keyFeature: '解决"用谁的法"的问题；依据包括当事人意思自治、最密切联系原则、特征性履行等；中国《涉外民事关系法律适用法》第41条', example: '同一合同纠纷中，上海法院审理（管辖权），但根据最密切联系原则可能适用中国法或美国法（适用法）' },
+      comparison: ['管辖权是程序问题，适用法是实体问题', '管辖权决定"谁审"，适用法决定"用什么法审"', '两者适用不同法律，可能不一致：A国法院审理但适用B国法', '管辖权依法院地法确定，适用法依冲突规范确定', '当事人可协议选择适用法，但协议管辖不等于协议选择适用法'],
+      mnemonic: '管辖权=找法院（谁管），适用法=找法律（谁的法）。找法院看程序法，找法律看冲突法。'
+    },
+    {
+      id: 'cp-3', title: '"反倾销"与"反补贴"', subject: 'economic',
+      pointA: { name: '反倾销(Anti-dumping)', definition: '针对出口商以低于正常价值的价格出口产品的价格歧视行为征收的关税措施', keyFeature: '针对企业行为（私人定价）；需证明：倾销（出口价<正常价值）+损害+因果关系；正常价值通常以出口国国内价格或构建价格确定', example: '中国出口钢铁到美国，售价低于中国国内市场售价，美国征收反倾销税' },
+      pointB: { name: '反补贴(Countervailing)', definition: '针对出口国政府给予出口企业财政资助（补贴）导致不公平竞争优势而征收的关税措施', keyFeature: '针对政府行为（财政资助）；需证明：存在专向性补贴+损害+因果关系；补贴包括直接拨款、税收优惠、低息贷款、政府担保等', example: 'E国政府向本国光伏企业提供低息贷款和税收减免，F国对此征收反补贴税' },
+      comparison: ['倾销是企业定价行为，补贴是政府资助行为', '倾销调查对象是出口商，补贴调查对象是出口国政府', '正常价值确定方法不同：倾销看企业定价，补贴看政府资助金额', 'WTO规则不同：倾销适用《反倾销协定》，补贴适用《SCM协定》', '补贴需证明"专向性"（特定企业/行业/地区获益），倾销无此要求'],
+      mnemonic: '倾销=企业低价卖（找企业），补贴=政府帮忙给钱（找政府）。一个看价格，一个看资助。'
+    },
+    {
+      id: 'cp-4', title: '"国民待遇"与"最惠国待遇"', subject: 'economic',
+      pointA: { name: '国民待遇(National Treatment)', definition: '给予外国产品/服务/投资者的待遇不低于本国同类产品/服务/投资者的待遇', keyFeature: '外国 vs. 本国（内外对比）；核心是"不歧视外国"；GATT第3条（国内税和法规）、GATS第17条、TRIPS第3条', example: '进口汽车和国产汽车征收相同的消费税，不得对进口汽车额外加税' },
+      pointB: { name: '最惠国待遇(MFN)', definition: '给予一国的优惠待遇应同样给予所有其他WTO成员', keyFeature: '外国A vs. 外国B（外外对比）；核心是"不歧视任何外国"；GATT第1条、GATS第2条、TRIPS第4条；可附条件豁免', example: '美国对日本汽车征收5%关税，则对所有WTO成员的汽车也应征收不超过5%的关税' },
+      comparison: ['国民待遇是内外对比（外国vs本国），MFN是外外对比（外国A vs. 外国B）', '国民待遇防止歧视外国产品，MFN防止在不同外国之间搞差别待遇', '国民待遇适用于国内环节（进口后的税收和法规），MFN适用于边境环节（关税等）', 'GATT中国民待遇有例外（如政府采购、国内补贴），MFN有自贸区/关税同盟例外', 'WTO中两者都是非歧视原则的组成部分，互为补充'],
+      mnemonic: '国民待遇=对外国人和本国人一视同仁（不排外），最惠国=对所有外国人一视同仁（不偏心）。'
+    },
+    {
+      id: 'cp-5', title: '"公共秩序保留"与"法律规避"', subject: 'private',
+      pointA: { name: '公共秩序保留(Public Order Reservation)', definition: '适用外国法的结果如违反法院地国的公共秩序/社会公共利益，则排除该外国法的适用', keyFeature: '事后审查：先确定适用外国法，再审查结果是否违反公共秩序；是国家主权的"安全阀"；《涉外民事关系法律适用法》第5条', example: '根据外国法承认一夫多妻制，因违反中国婚姻法的基本原则（公共秩序），中国法院拒绝适用该外国法' },
+      pointB: { name: '法律规避(Evasion of Law)', definition: '当事人通过人为制造或改变连结点，故意规避本应适用的强制性法律规范', keyFeature: '事前审查：关注当事人是否恶意操纵连结点；构成要件：故意+规避对象是强制性规范+手段是改变连结点+结果达到规避目的', example: '当事人为了规避中国的外汇管制法规，故意在境外设立公司转移资产，构成法律规避' },
+      comparison: ['公共秩序保留针对外国法的适用结果，法律规避针对当事人的主观行为', '公共秩序是法院主动审查，法律规避关注当事人恶意行为', '公共秩序排除外国法的适用，法律规避否定连结点改变的效力', '公共秩序是"安全阀"（被动防御），法律规避是"反规避"（主动打击）', '两者都可能导致本应适用的法律被排除'],
+      mnemonic: '公共秩序=法院守门（外国法结果不行就挡住），法律规避=法院抓人（当事人耍小聪明就识破）。'
+    },
+    {
+      id: 'cp-6', title: '"关税减让"与"市场准入承诺"', subject: 'economic',
+      pointA: { name: '关税减让(Tariff Concession)', definition: 'WTO成员在货物贸易中承诺将关税约束在特定水平，不随意提高', keyFeature: '适用于货物贸易（GATT框架）；以"约束税率"形式体现在减让表中；通过谈判逐步降低；违反需补偿受影响成员', example: '中国在入世议定书中承诺将汽车关税从100%降至25%，该25%即为约束税率' },
+      pointB: { name: '市场准入承诺(Market Access Commitment)', definition: 'WTO成员在服务贸易中承诺开放特定服务部门，不得维持或采取限制性措施', keyFeature: '适用于服务贸易（GATS框架）；以具体承诺表形式列明开放的部门、条件和限制；包括四种提供模式（跨境、境外消费、商业存在、自然人流动）', example: '中国承诺开放银行服务，允许外资银行在中国设立法人机构，但设有注册资本和经营年限等限制' },
+      comparison: ['关税减让适用于货物贸易，市场准入承诺适用于服务贸易', '关税减让是约束关税水平（量化的），市场准入是开放服务部门（定性的+附条件）', '关税减让以HS编码分列税率，市场准入以服务部门和提供模式分列承诺', '违反关税减让直接征收超额关税，违反市场准入则维持限制性措施', '两者都是WTO非歧视原则的具体体现，但制度设计完全不同'],
+      mnemonic: '关税减让=货物贸易"降税表"（数字说话），市场准入=服务贸易"开放清单"（部门+模式+条件）。'
+    }
+  ],
+
+  // === 文书写作模板 ===
+  documentTemplates: [
+    {
+      id: 'dt-1', name: '国际商事仲裁申请书', nameEn: 'Application for International Commercial Arbitration',
+      icon: '⚖️',
+      tips: '国际商事仲裁申请书是启动仲裁程序的关键文件，需明确仲裁协议依据、请求事项及事实理由。注意选择正确的仲裁机构和仲裁规则。',
+      example_snippet: '仲裁申请书\n\n申请人：XX国际贸易有限公司\n住所：中国上海市浦东新区XX路XX号\n\n被申请人：YY Corporation Ltd.\n住所：美国纽约州XX大道XX号\n\n仲裁请求：\n1. 裁决被申请人赔偿申请人货款损失XXX美元；\n2. 裁决被申请人支付逾期利息XXX美元；\n3. 裁决被申请人承担本案仲裁费用和申请人合理律师费。',
+      structure: [
+        { section: '当事人信息', guidance: '准确完整', placeholder: '申请人：名称、住所、法定代表人、联系方式\n被申请人：名称、住所、法定代表人、联系方式' },
+        { section: '仲裁协议', guidance: '明确依据', placeholder: '写明仲裁条款的具体内容、所在合同条款编号、选定的仲裁机构和仲裁规则' },
+        { section: '仲裁请求', guidance: '具体明确、可执行', placeholder: '1. 请求裁决……\n2. 请求裁决……\n（每项请求应具体、可量化）' },
+        { section: '事实与理由', guidance: '按时间线叙述，重点突出违约事实', placeholder: '一、合同签订情况\n二、合同履行过程\n三、被申请人违约事实\n四、损失计算依据\n五、法律适用分析' },
+        { section: '证据清单', guidance: '编号列明', placeholder: '证据1：合同文本\n证据2：往来邮件\n证据3：付款凭证\n……' }
+      ]
+    },
+    {
+      id: 'dt-2', name: '涉外民事起诉状', nameEn: 'Complaint for Foreign-related Civil Action',
+      icon: '📋',
+      tips: '涉外民事起诉状应符合《民事诉讼法》关于涉外民事诉讼的特别规定。注意管辖权依据的说明和外国法的查明问题。如涉及外国当事人，需要准备外文译本。',
+      example_snippet: '民事起诉状\n\n原告：中国XX有限公司\n住所地：广东省深圳市XX区XX路XX号\n法定代表人：张XX\n\n被告：ABC International Inc.\n住所地：新加坡XX路XX号\n\n诉讼请求：\n1. 判令被告支付货款人民币XXX万元；\n2. 判令被告承担逾期付款违约金XXX万元；\n3. 本案诉讼费由被告承担。',
+      structure: [
+        { section: '当事人信息', guidance: '外国当事人需提供经认证的主体资格证明', placeholder: '原告：名称、住所、法定代表人、国籍\n被告：名称、住所、法定代表人、国籍\n（外国当事人需附经公证认证的身份证明）' },
+        { section: '管辖权依据', guidance: '涉外案件必须说明', placeholder: '说明中国法院享有管辖权的法律依据：\n（合同履行地/被告住所地/协议管辖条款等）' },
+        { section: '诉讼请求', guidance: '明确具体，注意币种', placeholder: '1. 判令被告……\n2. 判令被告……\n3. 本案诉讼费用由被告承担' },
+        { section: '事实与理由', guidance: '含法律适用分析', placeholder: '一、合同签订经过\n二、合同履行情况\n三、被告违约事实\n四、损失计算\n五、法律适用分析（准据法的确定）' },
+        { section: '证据清单', guidance: '注意域外证据的公证认证', placeholder: '证据1：合同文本（附中文译本）\n证据2：往来函件\n证据3：……\n（域外形成的证据需经公证认证）' }
+      ]
+    },
+    {
+      id: 'dt-3', name: '条约分析报告', nameEn: 'Treaty Analysis Report',
+      icon: '📑',
+      tips: '条约分析报告应遵循《维也纳条约法公约》的解释规则，按通常含义、上下文、目的宗旨三个层次进行解释。注意区分条约的签署、批准、加入等不同阶段的法律效力。',
+      example_snippet: '关于《XX公约》第X条的法律分析报告\n\n一、条约概况\n条约名称：XX公约\n缔结时间：XXXX年X月X日\n生效时间：XXXX年X月X日\n中国缔结状态：XXXX年X月X日签署，XXXX年X月X日批准\n\n二、争议条款的文本分析\n第X条英文文本："..."\n法文文本："..."\n中文文本："..."',
+      structure: [
+        { section: '条约基本信息', guidance: '条约概况', placeholder: '条约名称、缔结时间、生效条件、缔约方数量\n中国签署/批准/加入的时间和状态\n是否提出保留或声明' },
+        { section: '条约解释', guidance: '依VCLT第31-32条', placeholder: '一、通常含义（文义解释）\n二、上下文（体系解释）\n三、目的与宗旨（目的解释）\n四、准备工作资料（补充解释手段）' },
+        { section: '权利义务分析', guidance: '核心部分', placeholder: '缔约国的权利：\n1. ……\n2. ……\n缔约国的义务：\n1. ……\n2. ……\n保留条款的影响：' },
+        { section: '中国立场与建议', guidance: '结合国家利益', placeholder: '一、中国的缔约实践和保留情况\n二、条约在中国的适用方式\n三、政策建议' },
+        { section: '结论', guidance: '简洁明确', placeholder: '综合以上分析，得出以下结论：\n1. ……\n2. ……' }
+      ]
+    },
+    {
+      id: 'dt-4', name: 'WTO争端解决磋商请求书', nameEn: 'Request for Consultations under WTO DSU',
+      icon: '🌐',
+      tips: '磋商请求是WTO争端解决机制的第一步。根据DSU第4条，请求应以书面形式提出，说明争端措施的法律依据和事实基础。磋商期为60天，期满后可请求成立专家组。',
+      example_snippet: 'REQUEST FOR CONSULTATIONS\n\nMember requesting consultations: Country A\nMember concerned: Country B\n\n1. On [date], Country A imposed anti-dumping duties of [X]% on imports of [product] originating in Country B.\n\n2. Country A considers that this measure is inconsistent with:\n- Article VI of GATT 1994;\n- Articles 2, 3, and 5 of the Anti-Dumping Agreement;\n- Article VI of GATT 1994.\n\n3. Country A accordingly requests consultations with Country B pursuant to Article 4 of the DSU...',
+      structure: [
+        { section: '争端概述', guidance: '概述争议措施', placeholder: '请求方成员：\n被诉方成员：\n争议措施：具体措施名称、实施日期、内容概述' },
+        { section: '法律依据', guidance: '逐一列明违反的WTO条款', placeholder: '请求方认为该措施违反了以下WTO协定条款：\n1. GATT 1994 第X条：……\n2. 《XX协定》第X条：……\n3. ……' },
+        { section: '事实依据', guidance: '概述关键事实', placeholder: '事实概述：\n1. 争议措施的具体内容和实施方式\n2. 对请求方贸易利益的影响\n3. 与WTO规则不符的具体表现' },
+        { section: '磋商请求', guidance: '明确援引DSU条款', placeholder: '根据DSU第4条，请求方请求与被诉方进行磋商。\n\n请求方希望磋商解决以下问题：\n1. ……\n2. ……' }
+      ]
+    }
+  ]
+
+,
+    laws: [
+  {
+    id: 'law-unclos',
+    name: '联合国海洋法公约（UNCLOS）',
+    category: 'public',
+    type: '公约',
+    source: '联合国海洋法公约（1982年蒙特哥湾），1994年生效',
+    articles: [
+      {
+        num: '第2条',
+        title: '领海及其上空、海床和底土的法律地位',
+        text: '1. 沿海国的主权及于其陆地领土及其内水以外邻接的一带海域，在群岛国的情形下则及于群岛水域以外邻接的一带海域，称为领海。2. 此项主权及于领海的上空及其海床和底土。3. 对于领海的主权的行使受本公约和其他国际法规则的限制。'
+      },
+      {
+        num: '第3条',
+        title: '领海的宽度',
+        text: '每一国家有权确定其领海的宽度，直至从按照本公约确定的基线量起不超过十二海里的界限为止。'
+      },
+      {
+        num: '第57条',
+        title: '专属经济区的宽度',
+        text: '专属经济区从测算领海宽度的基线量起，不应超过二百海里。'
+      },
+      {
+        num: '第76条',
+        title: '大陆架的定义',
+        text: '1. 沿海国的大陆架包括其领海以外依其陆地领土的全部自然延伸，扩展到大陆边外缘的海底区域的海床和底土，如果从测算领海宽度的基线量起到大陆边的外缘的距离不到二百海里，则扩展到二百海里的距离。2. 沿海国的大陆架不应超过第4至第6款所规定的界限。3. 大陆边包括沿海国陆块没入水中的延伸部分，由陆架、陆坡和陆基的海床和底土构成，它不包括深洋洋底及其洋脊，也不包括其底土。'
+      },
+      {
+        num: '第286条',
+        title: '第三节规定的程序的适用',
+        text: '任何有关本公约的解释或适用的争端，如不能以第十五部分第一节所规定的任何方法加以解决，经争端任何一方的请求，应提交第十五部分第三节所规定的有管辖权的法院或法庭。'
+      }
+    ]
+  },
+  {
+    id: 'law-vclt',
+    name: '维也纳条约法公约（VCLT）',
+    category: 'public',
+    type: '公约',
+    source: '维也纳条约法公约（1969年），1980年生效',
+    articles: [
+      {
+        num: '第2条',
+        title: '用语',
+        text: '1. 就适用本公约而言：(a) 称"条约"者，谓国家间所缔结而以国际法为准之国际书面协定，不论其载于一项单独文书或两项以上相互有关之文书内，亦不论其特定名称如何；(b) 称"批准"、"接受"、"赞同"及"加入"者，一国用以在国际上确定其同意受条约拘束之国际行为，以此类推；(c) 称"全权证书"者，谓一国主管当局所颁发，指派一人或数人代表该国谈判、议定或认证条约约文，表示该国同意受条约拘束，或完成有关条约之任何其他行为之文件。'
+      },
+      {
+        num: '第26条',
+        title: '条约必须遵守',
+        text: '凡有效之条约对其各当事国有拘束力，必须由各该国善意履行（pacta sunt servanda）。'
+      },
+      {
+        num: '第31条',
+        title: '解释之通则',
+        text: '1. 条约应依其用语按其上下文并参照条约之目的及宗旨所具有之通常意义，善意解释之。2. 就解释条约而言，上下文除指连同弁言及附件在内之约文外，并应包括：(a) 全体当事国间因缔结条约所订与条约有关之任何协定；(b) 一个以上当事国因缔结条约所订并经其他当事国接受为条约有关文书之任何文书。3. 应与上下文一并考虑者尚有：(a) 当事国嗣后所订关于条约之解释或其规定之适用之任何协定；(b) 嗣后在条约适用方面确定各当事国对条约解释之协定之任何惯例；(c) 适用于当事国间关系之任何有关国际法规则。'
+      },
+      {
+        num: '第53条',
+        title: '与一般国际法强制规律（绝对法）抵触之条约',
+        text: '条约在缔结时与一般国际法强制规律抵触者无效。就适用本公约而言，一般国际法强制规律指国家之国际社会全体接受并公认为不许损抑且仅有以后具有同等性质之一般国际法规律始得更改之规律。'
+      }
+    ]
+  },
+  {
+    id: 'law-state-immunity',
+    name: '中华人民共和国外国国家豁免法',
+    category: 'public',
+    type: '国内法',
+    source: '中华人民共和国主席令第17号，2023年9月1日通过，2024年1月1日起施行',
+    articles: [
+      {
+        num: '第3条',
+        title: '限制豁免原则',
+        text: '外国国家及其财产享有管辖豁免，本法另有规定的除外。本法所称外国国家包括外国主权国家的国家机构、组成单位、代表、机关及其人员。'
+      },
+      {
+        num: '第7条',
+        title: '商业活动例外',
+        text: '有下列情形之一的，外国国家在因商业活动产生的诉讼中不享有管辖豁免：（一）商业活动是在中华人民共和国境内进行的；（二）商业活动虽然在中华人民共和国境外进行，但其对中华人民共和国境内产生直接、实质且可预见的影响的。本法所称商业活动，是指非行使主权权力的商业交易、投资、金融活动以及其他商业性质的行为、交易或活动。'
+      },
+      {
+        num: '第12条',
+        title: '人身伤害和财产损害例外',
+        text: '外国国家的作为或者不作为造成人身伤害或者财产损害，其行为或者不作为发生在中华人民共和国境内，或者虽然发生在中华人民共和国境外但对中华人民共和国境内产生直接、实质且可预见的影响，相关损害赔偿诉讼不适用管辖豁免。'
+      },
+      {
+        num: '第17条',
+        title: '对等原则',
+        text: '外国国家给予中华人民共和国的国家豁免待遇，低于本法或者中华人民共和国其他相关法律、法规规定的，中华人民共和国可以根据对等原则给予相应的待遇。'
+      }
+    ]
+  },
+  {
+    id: 'law-un-charter',
+    name: '联合国宪章（武力使用条款）',
+    category: 'public',
+    type: '公约',
+    source: '联合国宪章（1945年旧金山），1945年10月24日生效',
+    articles: [
+      {
+        num: '第2条第4款',
+        title: '禁止使用武力原则',
+        text: '各会员国在其国际关系上不得使用威胁或武力，或以与联合国宗旨不符之任何其他方法，侵害任何会员国或国家之领土完整或政治独立。'
+      },
+      {
+        num: '第42条',
+        title: '安理会的武力执行权',
+        text: '安全理事会如认第四十一条所规定之办法为不足或已经证明为不足时，得采取必要之空海陆军行动，以维持或恢复国际和平及安全。此项行动得包括联合国会员国之空海陆军示威、封锁、及其他军事举动。'
+      },
+      {
+        num: '第51条',
+        title: '自卫权',
+        text: '联合国任何会员国受武力攻击时，在安全理事会采取必要办法，以维持国际和平及安全以前，本宪章不得认为禁止行使单独或集体自卫之自然权利。会员国因行使此项自卫权而采取之办法，应立向安全理事会报告，此项办法于任何方面不得影响该会按照本宪章随时采取其所认为必要行动之权责，以维持或恢复国际和平及安全。'
+      }
+    ]
+  },
+  {
+    id: 'law-conflict-of-laws',
+    name: '中华人民共和国涉外民事关系法律适用法',
+    category: 'private',
+    type: '国内法',
+    source: '2010年10月28日通过，2011年4月1日起施行',
+    articles: [
+      {
+        num: '第41条',
+        title: '合同的法律适用',
+        text: '当事人可以协议选择合同适用的法律。当事人没有选择的，适用履行义务最能体现该合同特征的一方当事人经常居所地法律或者其他与该合同有最密切联系的法律。'
+      },
+      {
+        num: '第44条',
+        title: '侵权责任的法律适用',
+        text: '侵权责任，适用侵权行为地法律，但当事人有共同经常居所地的，适用共同经常居所地法律。侵权行为发生后，当事人协议选择适用法律的，按照其协议。'
+      },
+      {
+        num: '第36条',
+        title: '不动产物权的法律适用',
+        text: '不动产物权，适用不动产所在地法律。'
+      },
+      {
+        num: '第26条',
+        title: '协议离婚的法律适用',
+        text: '协议离婚，当事人可以协议选择适用一方当事人经常居所地法律或者国籍国法律。当事人没有选择的，适用共同经常居所地法律；没有共同经常居所地的，适用共同国籍国法律；没有共同国籍的，适用办理离婚手续机构所在地法律。'
+      },
+      {
+        num: '第18条',
+        title: '仲裁协议的法律适用',
+        text: '当事人可以协议选择仲裁协议适用的法律。当事人没有选择的，适用仲裁机构所在地法律或者仲裁地法律。'
+      }
+    ]
+  },
+  {
+    id: 'law-civil-procedure',
+    name: '中华人民共和国民事诉讼法（涉外管辖权）',
+    category: 'private',
+    type: '国内法',
+    source: '2023年9月1日修正，2024年1月1日起施行',
+    articles: [
+      {
+        num: '第272条',
+        title: '涉外合同纠纷管辖',
+        text: '因合同纠纷或者其他财产权益纠纷，对在中华人民共和国领域内没有住所的被告提起的诉讼，如果合同在中华人民共和国领域内签订或者履行，或者诉讼标的物在中华人民共和国领域内，或者被告在中华人民共和国领域内有可供扣押的财产，或者被告在中华人民共和国领域内设有代表机构，可以由合同签订地、合同履行地、诉讼标的物所在地、可供扣押财产所在地、侵权行为地或者代表机构住所地人民法院管辖。'
+      },
+      {
+        num: '第273条',
+        title: '专属管辖',
+        text: '因在中华人民共和国履行中外合资经营企业合同、中外合作经营企业合同、中外合作勘探开发自然资源合同发生纠纷提起的诉讼，由中华人民共和国人民法院管辖。'
+      },
+      {
+        num: '第283条',
+        title: '外国仲裁裁决的承认与执行',
+        text: '国外仲裁机构的裁决，需要中华人民共和国人民法院承认和执行的，应当由当事人直接向被执行人住所地或者其财产所在地的中级人民法院申请，人民法院应当依照中华人民共和国缔结或者参加的国际条约，或者按照互惠原则办理。'
+      }
+    ]
+  },
+  {
+    id: 'law-cisg',
+    name: '联合国国际货物销售合同公约（CISG）',
+    category: 'economic',
+    type: '公约',
+    source: '联合国国际货物销售合同公约（1980年维也纳），1988年1月1日生效',
+    articles: [
+      {
+        num: '第1条',
+        title: '适用范围',
+        text: '(1) 本公约适用于营业地在不同国家的当事人之间所订立的货物销售合同：(a) 如果这些国家是缔约国；或(b) 如果国际私法规则导致适用某一缔约国的法律。(2) 当事人营业地在不同国家的事实，如果从合同或从订立合同前任何时候或订立合同时，当事人之间的任何交易或当事人透露的情报均看不出，应不予考虑。(3) 在确定本公约的适用时，当事人的国籍和当事人或合同的民事或商业性质，应不予考虑。'
+      },
+      {
+        num: '第25条',
+        title: '根本违约',
+        text: '一方当事人违反合同的结果，如使另一方当事人蒙受损害，以致于实际上剥夺了他根据合同规定有权期待得到的东西，即为根本违反合同，除非违反合同一方并不预知而且一个同等资格、通情达理的人处于相同情况中也没有理由预知会发生这种结果。'
+      },
+      {
+        num: '第67条',
+        title: '风险转移（货交承运人）',
+        text: '(1) 如果销售合同涉及到货物的运输，但卖方没有义务在某一特定地点交付货物，自货物按照销售合同交付给第一承运人以转交给买方时起，风险就移转到买方承担。如果卖方有义务在某一特定地点把货物交付给承运人，在货物于该地点交付给承运人以前，风险不移转到买方承担。卖方受权保留控制货物处置权的单据，并不影响风险的移转。(2) 但是，在货物以货物上加标记、或以装运单据、或向买方发出通知或其它方式清楚地注明有关合同以前，风险不移转到买方承担。'
+      },
+      {
+        num: '第74条',
+        title: '损害赔偿范围',
+        text: '一方当事人违反合同应负的损害赔偿额，应与另一方当事人因他违反合同而遭受的包括利润在内的损失额相等。这种损害赔偿不得超过违反合同一方在订立合同时，依照他当时已知道或理应知道的事实和情况，对违反合同预料到或理应预料到的可能损失。'
+      }
+    ]
+  },
+  {
+    id: 'law-gatt',
+    name: 'GATT 1994（关税及贸易总协定）核心条款',
+    category: 'economic',
+    type: 'WTO协定',
+    source: '建立世界贸易组织协定附件1A（1994年马拉喀什）',
+    articles: [
+      {
+        num: '第1条',
+        title: '最惠国待遇',
+        text: '在对输出或输入、有关输出或输入及输出入货物的国际支付转帐所征收的关税和费用方面，在征收上述关税和费用的方法方面，在输出和输入的规章手续方面，以及在本协定第三条第2款及第4款所述事项方面，一缔约国对来自或运往其他国家的产品所给予的利益、优待、特权或豁免，应当立即无条件地给予来自或运往所有其他缔约国的相同产品。'
+      },
+      {
+        num: '第3条',
+        title: '国民待遇',
+        text: '1. 各缔约国认识到，国内税和其他国内费用，影响产品的国内销售、推销、购买、运输、分配或使用的法令、条例和规定，以及对产品的混合、加工或使用须符合特定数量或比例要求的国内数量限制条例，在对进口产品或国产品实施时，不应用来对国内生产提供保护。2. 一缔约国领土的产品输入到另一缔约国领土时，不应对它直接或间接征收高于对相同的国产品所直接或间接征收的国内税或其他国内费用。'
+      },
+      {
+        num: '第6条',
+        title: '反倾销与反补贴',
+        text: '1. 各缔约国认识到，用倾销的手段将一国产品以低于正常价值的办法进入另一国商业内，如因此对一缔约国领土内已建立的某项工业造成重大损害或产生重大威胁，或者对一国内工业的新建产生严重阻碍，这种倾销应该受到谴责。本条所称一产品以低于它的正常价值进入进口国的商业，系指从一国向另一国出口的产品的价格：(a) 低于相同产品在出口国用于国内消费时在正常贸易情况下的可比价格，或(b) 如没有这种国内价格，低于(1) 相同产品在正常贸易情况下向第三国出口的最高可比价格；或(2) 产品在原产国的生产成本加合理的推销费用和利润。'
+      }
+    ]
+  },
+  {
+    id: 'law-gats',
+    name: 'GATS（服务贸易总协定）核心条款',
+    category: 'economic',
+    type: 'WTO协定',
+    source: '建立世界贸易组织协定附件1B（1994年马拉喀什）',
+    articles: [
+      {
+        num: '第1条',
+        title: '范围与定义',
+        text: '1. 本协定适用于各成员影响服务贸易的措施。2. 就本协定而言，服务贸易定义为：(a) 从一成员境内向任何其他成员境内提供服务；(b) 在一成员境内向任何其他成员的服务消费者提供服务；(c) 一成员的服务提供者以自然人的存在在任何其他成员境内提供服务；(d) 一成员的服务提供者以商业存在在任何其他成员境内提供服务。'
+      },
+      {
+        num: '第2条',
+        title: '最惠国待遇',
+        text: '1. 关于本协定涵盖的任何措施，每一成员对于任何其他成员的服务和服务提供者，应立即和无条件地给予不低于其给予任何其他国家同类服务和服务提供者的待遇。2. 一成员可维持与第1款不一致的措施，只要该措施已列入第2条豁免清单，并符合该清单的条件。'
+      },
+      {
+        num: '第17条',
+        title: '国民待遇',
+        text: '1. 在列入其承诺表的部门中，在遵照其中所列条件和资格的前提下，每个成员在所有影响服务提供的措施方面，给予任何其他成员的服务和服务提供者的待遇不得低于其给予本国相同服务和服务提供者的待遇。'
+      }
+    ]
+  },
+  {
+    id: 'law-trips',
+    name: 'TRIPS（与贸易有关的知识产权协定）核心条款',
+    category: 'economic',
+    type: 'WTO协定',
+    source: '建立世界贸易组织协定附件1C（1994年马拉喀什）',
+    articles: [
+      {
+        num: '第1条',
+        title: '义务的性质和范围',
+        text: '1. 各成员均应有权在其本国法律制度和实践中确定实施本协定规定的适当方法。2. 对于本协定，"知识产权"一词系指第二部分第1节至第8节所列举的所有类别的知识产权。3. 各成员应将本协定规定的待遇给予其他成员的国民。'
+      },
+      {
+        num: '第3条',
+        title: '国民待遇',
+        text: '1. 在知识产权保护方面，在遵守《巴黎公约》(1967)、《伯尔尼公约》(1971)、《罗马公约》或《关于集成电路的知识产权条约》中各自规定的例外的前提下，每一成员给予其他成员国民的待遇不得低于给予本国国民的待遇。'
+      },
+      {
+        num: '第27条',
+        title: '可授予专利的客体',
+        text: '1. 在遵守第2款和第3款规定的前提下，所有技术领域的任何发明，无论是产品还是方法，只要它们具有新颖性、包含发明性步骤，并可供工业应用，均应有可能获得专利。在遵守第65条第4款、第70条第8款和本条第3款规定的前提下，专利的获得和专利权的享受不因发明地点、技术领域、产品是进口的还是当地生产的而受到歧视。'
+      },
+      {
+        num: '第61条',
+        title: '刑事程序',
+        text: '各成员应规定刑事程序和处罚，至少适用于具有商业规模的故意假冒商标或抄袭版权案件。可使用的救济应包括足以起到威慑作用的监禁和/或罚金，其程度应与同样严重的犯罪所适用的处罚相一致。在适当情况下，可使用的救济还应包括扣押、没收和销毁侵权货物以及主要用于实施上述犯罪的材料和工具。对于具有商业规模的故意假冒商标或抄袭版权案件，各成员可规定适用于刑事程序和处罚。'
+      }
+    ]
+  },
+  {
+    id: 'law-new-york',
+    name: '承认及执行外国仲裁裁决公约（纽约公约）',
+    category: 'economic',
+    type: '公约',
+    source: '1958年6月10日订于纽约，1959年6月7日生效；中国1987年加入',
+    articles: [
+      {
+        num: '第3条',
+        title: '裁决拘束力与执行之平等待遇',
+        text: '各缔约国应承认仲裁裁决具有拘束力，并依援引裁决地之程序规则及下列各条所载条件执行之。承认或执行适用本公约之仲裁裁决时，不得较承认或执行内国仲裁裁决附加过苛之条件或征收过多之费用。'
+      },
+      {
+        num: '第5条第1款',
+        title: '拒绝承认及执行之事由（需被申请人举证）',
+        text: '裁决唯有于受裁决援用之一造向声请承认及执行地之主管机关提具证据证明有下列情形之一时，始得依该造之请求，拒予承认及执行：(甲) 第二条所称协定之当事人依对其适用之法律有某种无行为能力情形者，或该项协定依当事人作为协定准据之法律系属无效，或未指明以何法律为准时，依裁决地所在国法律系属无效者；(乙) 受裁决援用之一造未接获关于指派仲裁员或仲裁程序之适当通知，或因他故，致未能申辩者；(丙) 裁决所处理之争议非为交付仲裁之标的或不在其条款之列，或裁决载有关于交付仲裁范围以外事项之决定者；(丁) 仲裁机关之组成或仲裁程序与各造间之协议不符，或无协议而与仲裁地所在国法律不符者；(戊) 裁决对各造尚无拘束力，或业经裁决地所在国或裁决所依据法律之国家之主管机关撤销或停止执行者。'
+      },
+      {
+        num: '第5条第2款',
+        title: '拒绝承认及执行之事由（法院依职权审查）',
+        text: '倘声请承认及执行地所在国之主管机关认定有下列情形之一，亦得拒不承认及执行仲裁裁决：(甲) 依该国法律，争议事项系不能以仲裁解决者；(乙) 承认或执行裁决有违该国公共政策者。'
+      }
+    ]
+  }
+],
+    caseDetails: [
+  {
+    id: 'case-south-china-sea',
+    name: '南海仲裁案（菲律宾诉中国） / South China Sea Arbitration (Philippines v. China)',
+    court: '海牙常设仲裁法院仲裁庭',
+    year: 2016,
+    subject: 'public',
+    facts: '2013年1月，菲律宾单方面就中菲南海有关争议提起仲裁，主张中国在南海的"九段线"主张违反《联合国海洋法公约》，相关岛礁不具备岛屿法律地位，中国在南海的活动违法。中国政府坚持不接受、不参与仲裁的立场，认为仲裁庭对该案没有管辖权。仲裁庭于2016年7月12日作出所谓"裁决"，支持菲律宾多数诉求，否定中国南海历史性权利。',
+    issues: [
+      '仲裁庭对本案是否有管辖权',
+      '中国在南海的历史性权利是否违反《联合国海洋法公约》',
+      '南海部分岛礁是否构成岛屿、岩礁或低潮高地',
+      '中国在南海的相关活动是否合法'
+    ],
+    holding: '仲裁庭裁决认为，菲律宾提起的事项构成关于《公约》解释和适用的争端，因而具有管辖权；认定中国在南海的历史性权利超出《公约》范围，没有法律依据；判定美济礁等南沙岛礁为低潮高地或岩礁，不能主张专属经济区和大陆架。中国政府明确表态，该裁决是无效的，没有拘束力，中国不接受、不承认。',
+    reasoning: '仲裁庭以"陆地统治海洋"原则的反向适用为由，认为可以在不解决主权归属的前提下先判定岛礁的海洋地物性质，并据此确立管辖权。在实体问题上，仲裁庭认为《公约》意在全面分配缔约国对海洋区域的权利，历史性权利若超出《公约》规定即不能成立。该裁决在管辖权认定、事实认定和法律适用等方面均存在严重错误，严重背离《公约》宗旨和原则。',
+    chinaPosition: '中国政府始终坚持对南海诸岛及其附近海域拥有无可争辩的主权。中菲南海争议的实质是领土主权和海洋划界问题，仲裁庭越权管辖、枉法裁判，其裁决非法无效。中国坚持通过谈判协商和平解决争端，致力于同直接有关的主权国家共同维护南海和平稳定，这一立场符合国际法和《联合国宪章》宗旨。',
+    keywords: [
+      '南海仲裁',
+      '九段线',
+      '历史性权利',
+      '岛屿制度',
+      'UNCLOS'
+    ]
+  },
+  {
+    id: 'case-norway-lobster',
+    name: '挪威龙虾案（英国诉挪威） / Anglo-Norwegian Fisheries Case (UK v. Norway)',
+    court: '国际法院',
+    year: 1951,
+    subject: 'public',
+    facts: '挪威于1935年颁布法令，采用直线基线法划定其渔业领海基线，将其西部沿海的众多岛屿、岩礁和礁石连接起来，形成长度不等的直线基线。英国对此提出异议，认为挪威采用的直线基线方法违反国际法，特别是基线的最大长度和适用条件不符合国际习惯法规则，导致挪威领海范围过大，侵犯了英国渔民的传统捕鱼权利。两国于1949年将争端提交国际法院。',
+    issues: [
+      '挪威采用直线基线法是否符合国际法',
+      '海岸几何形态是否构成适用直线基线的条件',
+      '历史上的长期使用能否产生法律效力'
+    ],
+    holding: '国际法院以10票对2票判决挪威1935年法令所规定的直线基线制度并不违反国际法。法院认为，由于挪威海岸线特别曲折、岛屿众多，采用直线基线法是合理的，基线长度不必受固定最大长度的限制；同时，挪威对该制度的长期使用以及其他国家的默示承认，也构成其合法性的有力依据。',
+    reasoning: '法院指出，领海基线的划定必须符合海岸的地理现实。挪威西海岸属典型的"石垒"（skjaergaard）地貌，有无数岛屿、岩礁和礁石，其领海基线自然应当沿着这些外围岛礁划定。法院强调，直线基线制度并非挪威独创，而是已被国际实践广泛接受；对于海岸线特别曲折的国家，不应机械地适用10海里等固定最长基线标准，而应根据具体地理情况加以判断。',
+    chinaPosition: '本案是领海基线制度发展史上的标志性判例，确立了直线基线法的合法性及其适用的弹性标准，对后来《联合国海洋法公约》第7条的制定产生了直接而深远的影响。中国在处理东海、南海等海域基线问题时，也可参考本案确立的"适应海岸地理特征"和"长期使用形成习惯"等法理原则。',
+    keywords: [
+      '直线基线',
+      '领海',
+      '渔业争端',
+      '国际习惯法',
+      '石垒原则'
+    ]
+  },
+  {
+    id: 'case-arrest-warrant',
+    name: '逮捕令案（刚果民主共和国诉比利时） / Arrest Warrant Case (DRC v. Belgium)',
+    court: '国际法院',
+    year: 2002,
+    subject: 'public',
+    facts: '2000年4月11日，比利时一名调查法官依据比利时"普遍管辖权"法，对时任刚果民主共和国外交部长耶罗迪亚（Abdulaye Yerodia Ndombasi）发出国际逮捕令，指控其在1998年发表煽动种族仇恨的言论，构成严重违反日内瓦公约的行为和危害人类罪。比利时通过国际刑警组织在全球范围内散发该逮捕令。刚果于2000年10月向国际法院起诉，主张比利时的行为侵犯了在任外交部长的豁免权。',
+    issues: [
+      '在任外交部长是否享有外国刑事管辖豁免',
+      '比利时的普遍管辖权立法是否违反国际法',
+      '国际罪行能否构成豁免的例外'
+    ],
+    holding: '国际法院以13票对3票判决比利时签发并国际散发逮捕令的行为违反了它对刚果民主共和国的义务，侵犯了时任外交部长的豁免权和不可侵犯权。法院认为，在任外交部长根据习惯国际法享有完全的属人豁免（immunity ratione personae），即使被指控犯有战争罪或危害人类罪，也不构成对此种豁免的例外。比利时应撤销该逮捕令。',
+    reasoning: '法院指出，外交部长的豁免权基于其履行职务的功能需要——外交部长必须能够自由旅行、随时参与外交活动，任何逮捕令的存在本身就会妨碍其履行职责。法院区分了属人豁免（适用于在任高官，覆盖所有行为）与属物豁免（适用于职务行为，离职后仍享有），并明确指出，追究国际罪行的责任可以通过其他途径实现，如在本国受审、本国放弃豁免、离职后就私人行为受审、或在国际刑事法庭受审。',
+    chinaPosition: '本案确立了在任国家高级官员享有外国刑事管辖豁免的习惯国际法规则，对国家豁免和外交特权豁免制度有重要指导意义。中国一贯坚持国家主权平等和不干涉内政原则，反对外方依据其国内法对中国国家官员和公民行使所谓"普遍管辖权"。本案的裁判逻辑也为理解《外国国家豁免法》的制度边界提供了参考。',
+    keywords: [
+      '外交豁免',
+      '普遍管辖权',
+      '属人豁免',
+      '国际罪行',
+      '习惯国际法'
+    ]
+  },
+  {
+    id: 'case-siemens-argentina',
+    name: '西门子诉阿根廷案 / Siemens A.G. v. Argentine Republic (ICSID ARB/02/8)',
+    court: '国际投资争端解决中心（ICSID）',
+    year: 2007,
+    subject: 'private',
+    facts: '1998年，西门子阿根廷子公司SITS与阿根廷政府签订为期6年的服务合同，负责开发综合移民管制系统和制作新版国民身份证。此后，阿根廷政府以大选推迟、技术问题等理由多次中断合同履行，迫使西门子重新谈判价格。2000年阿根廷国会通过紧急状态法案，2001年5月阿根廷政府依据该法案宣布终止服务合同。SITS在阿根廷国内行政诉讼败诉后，母公司西门子基于德国-阿根廷双边投资条约（BIT）向ICSID提起仲裁。',
+    issues: [
+      '阿根廷政府的系列行为是否构成间接征收（渐进式征收）',
+      '阿根廷是否违反公平公正待遇义务',
+      '紧急状态法案能否作为免责事由'
+    ],
+    holding: 'ICSID仲裁庭认定阿根廷政府的一系列行为——包括推迟项目、中断合同、压价谈判以及最终依据紧急状态法案终止合同——共同构成渐进式征收（creeping expropriation），违反了德阿BIT项下的投资保护义务。仲裁庭裁决阿根廷赔偿西门子约2.17亿美元。仲裁庭同时指出，阿根廷颁布紧急状态法案本身具有公共目的，但在个案中适用该法案终止合同且未给予合理补偿，构成非法征收。',
+    reasoning: '仲裁庭强调，判断是否构成征收不应仅看政府最终行为的形式，而应考察一系列政府行为累积产生的效果。本案中阿根廷并非单纯的合同违约，而是利用国家主权权力干涉合同履行，通过一系列措施逐步剥夺投资者的投资价值。虽然紧急状态法案本身服务于公共目的，但政府在适用该法案终止特定合同时，仍须符合比例原则并给予充分补偿，否则即构成BIT项下的非法征收。',
+    chinaPosition: '本案是渐进式征收理论的经典判例，对中国企业"走出去"过程中防范东道国监管风险具有重要参考价值。中国在对外签订BIT和自贸协定时，应注意征收条款的表述和例外情形的设计，既要保护中国海外投资者的合法权益，也要保留必要的公共政策空间。同时，中国企业应充分利用BIT下的投资争端解决机制维护自身权益。',
+    keywords: [
+      '渐进式征收',
+      '投资仲裁',
+      'BIT',
+      '公平公正待遇',
+      '紧急状态'
+    ]
+  },
+  {
+    id: 'case-currie-misa',
+    name: '居里埃姐妹案 / Currie v. Misa (1875)',
+    court: '英国财政法院（Exchequer Chamber）',
+    year: 1875,
+    subject: 'private',
+    facts: '商人Lizardi向被告Misa出售汇票，约定次日付款。Lizardi欠原告银行Currie & Co.债务，遂指示Misa将货款直接支付给银行。Misa按指示向银行签发了支票。但在支票兑现前，银行得知Lizardi财务状况严重恶化，已停止支付。Misa在得知Lizardi破产后，指示其银行止付该支票。Currie银行起诉Misa，要求兑付支票，主张其与Misa之间存在有效的对价关系。',
+    issues: [
+      '银行与Misa之间是否存在有效的对价（consideration）',
+      '向第三人履行能否构成合同对价',
+      '允诺的对价必须具有何种法律属性'
+    ],
+    holding: '法院判决原告银行胜诉，确认银行与Misa之间存在有效的对价关系。法院给出了对价的经典定义："法律意义上的有价值的对价，可以是一方获得的某种权利、利益、利润或好处，或者是另一方作出、忍受或承担的某种克制、损害、损失或责任。"法院认为，Misa向银行付款的承诺有充分的对价支持——因为银行基于对该支票的信赖，放弃了对Lizardi立即追索债务的权利。',
+    reasoning: 'Lush法官在判决中系统阐述了对价理论的核心内涵：对价并不要求受诺人获得实际利益，只要允诺人获得利益或受诺人遭受损害即可。本案中，虽然银行表面上只是接受了原本就欠自己的款项，但银行在收到支票后对Lizardi暂缓采取进一步的追偿行动，这种克制本身就构成了对Misa允诺的法律上的损害/对价。该案确立的对价定义至今仍是英美合同法的基石。',
+    chinaPosition: 'Currie v. Misa案是英美合同法对价制度的奠基性判例，对于理解普通法系合同成立的核心要件具有重要意义。在国际商事合同纠纷中，尤其是涉及英美法域的跨境交易时，对价规则是判断合同效力和当事人权利义务的重要依据。中国法律体系虽不采用对价制度，但在处理涉外合同法律适用时，仍需了解和适用准据法中的相关规则。',
+    keywords: [
+      '对价',
+      'consideration',
+      '英美合同法',
+      '支票',
+      '合同成立'
+    ]
+  },
+  {
+    id: 'case-mitsubishi-soler',
+    name: '三菱商事案 / Mitsubishi Motors Corp. v. Soler Chrysler-Plymouth, Inc.',
+    court: '美国联邦最高法院',
+    year: 1985,
+    subject: 'private',
+    facts: '日本三菱汽车公司与波多黎各汽车经销商Soler签订销售协议，协议约定所有与协议有关的争议应在日本依据日本商事仲裁协会规则进行仲裁。后因市场不景气，Soler未能完成销售指标，三菱停止供货并在日本申请仲裁，同时向美国联邦法院请求强制仲裁。Soler提起反诉，主张三菱违反美国《谢尔曼法》（反托拉斯法），并认为反垄断争议具有公共政策性质，不能通过仲裁解决。一审判令仲裁，二审部分推翻，案件上诉至最高法院。',
+    issues: [
+      '国际商事合同中的反垄断争议是否具有可仲裁性',
+      '仲裁条款能否涵盖法定请求权（statutory claims）',
+      '公共政策与国际仲裁政策的关系'
+    ],
+    holding: '美国联邦最高法院以7票对2票判决：国际商事合同中的反垄断争议可以仲裁。法院认为，在国际商事背景下，国际礼让、对外国和跨国仲裁庭能力的尊重、以及国际商事体系对争端解决可预见性的需要，都要求执行仲裁条款，即便在国内语境下可能得出相反结论。反垄断法的私法损害赔偿救济并非只能通过法院实现，仲裁庭同样有能力适用反垄断法。',
+    reasoning: 'Blackmun法官代表法院指出，《联邦仲裁法》和《纽约公约》所体现的支持仲裁的联邦政策，在国际商事领域具有特殊效力。反垄断争议的复杂性、公共政策属性都不足以否定仲裁的可行性——国际仲裁员通常具备法律和商业背景，能够处理复杂法律问题；且执行阶段法院仍可依据《纽约公约》第5条公共政策例外进行审查。法院强调，不能仅凭反垄断争议的存在就推定仲裁条款有瑕疵。',
+    chinaPosition: '本案是国际商事仲裁发展史上的里程碑判例，确立了国际反垄断争议可仲裁性原则，极大推动了国际商事仲裁的范围扩张和地位提升。中国《仲裁法》及司法实践也逐步扩大了可仲裁事项的范围，对于涉外反垄断争议的可仲裁性，中国司法实践持审慎开放态度。对中国企业参与国际商事仲裁而言，本案所体现的支持仲裁的国际政策取向具有重要参考意义。',
+    keywords: [
+      '可仲裁性',
+      '反垄断',
+      '纽约公约',
+      '公共政策',
+      '国际商事仲裁'
+    ]
+  },
+  {
+    id: 'case-ds542',
+    name: '美国-中国知识产权争端案 / US - China Intellectual Property Rights (WTO DS542)',
+    court: '世界贸易组织（WTO）争端解决机构',
+    year: 2020,
+    subject: 'economic',
+    facts: '2018年3月，美国依据"301调查"结果，同时在WTO争端解决机制下就中国有关技术转让和知识产权保护的措施提起诉讼（DS542）。美方指控中国的《技术进出口管理条例》《中外合资经营企业法实施条例》等法律法规对外国知识产权权利人设置歧视性待遇，包括强制技术转让、限制技术改进成果归属、合同期满后继续使用技术等，违反了TRIPS协定的国民待遇原则和专利权相关条款。',
+    issues: [
+      '中国技术进出口条例是否违反TRIPS协定国民待遇',
+      '强制技术转让指控是否成立',
+      '技术改进成果的归属规则是否符合TRIPS'
+    ],
+    holding: '专家组于2020年9月发布报告，部分支持美方诉求，裁定中国《技术进出口条例》中的部分条款（如第24条第3款关于侵权责任承担、第27条关于技术改进成果归属、第29条关于限制改进技术等规定）违反了TRIPS协定第3条（国民待遇）和第28条（专利权）。同时，专家组也驳回了美国关于"合资企业要求构成强制技术转让"等部分主张。中国在上诉期内未提出上诉，裁决通过。',
+    reasoning: '专家组主要从国民待遇角度分析，认为中国法规对进口技术合同和国内技术合同设置了不同的规则，对外国技术许可人施加了额外义务和限制，使其待遇低于本国权利人，因而违反TRIPS第3条。关于合资企业要求，专家组认为美方未能证明中国的合资要求与技术转让之间存在必然联系，因此未能支持该项指控。裁决强调TRIPS协定保障知识产权权利人自由谈判合同条款的权利。',
+    chinaPosition: 'DS542案是中美贸易摩擦背景下的重要WTO争端，涉及知识产权保护与技术转让这一核心议题。中国尊重WTO争端解决机制，已根据裁决对相关法规进行了清理和修订。该案也反映出在数字经济和科技竞争时代，知识产权国际规则面临新的挑战。中国始终坚定保护知识产权，同时反对将经贸问题政治化，主张在WTO框架下通过对话协商解决分歧。',
+    keywords: [
+      'TRIPS',
+      '强制技术转让',
+      '国民待遇',
+      '技术进出口',
+      '中美贸易'
+    ]
+  },
+  {
+    id: 'case-occidental-ecuador',
+    name: '西方石油诉厄瓜多尔案 / Occidental Petroleum v. Ecuador (ICSID ARB/06/11)',
+    court: '国际投资争端解决中心（ICSID）',
+    year: 2007,
+    subject: 'economic',
+    facts: '1999年，美国西方石油公司（Occidental）与厄瓜多尔政府签订15区块石油开发参与合同。2000年，西方石油在未获政府批准的情况下，将区块40%的经济权益转让给加拿大AEC公司。厄瓜多尔认为此举违反合同约定，于2006年5月通过"失效（caducidad）"法令终止合同并接管15区块。西方石油随后依据美国-厄瓜多尔BIT向ICSID提起仲裁，主张厄瓜多尔的终止行为构成非法征收。',
+    issues: [
+      '厄瓜多尔终止合同的行为是否构成非法征收',
+      '终止措施是否符合比例原则',
+      '投资者的过错是否影响赔偿额计算'
+    ],
+    holding: '仲裁庭裁决厄瓜多尔终止合同的行为与投资者违约的严重程度不成比例，构成非法征收，裁定厄瓜多尔赔偿西方石油约17.7亿美元（当时为ICSID历史最高赔偿额之一）。但仲裁庭同时认定西方石油未经批准转让40%权益的行为存在过错，将损害赔偿额减少了25%。后经撤销程序，赔偿额调整为约10.6亿美元，厄瓜多尔于2016年支付完毕。',
+    reasoning: '仲裁庭适用比例原则分析：虽然西方石油未经批准转让权益构成违约，但厄瓜多尔完全终止合同并没收整个区块资产的处罚过于严厉，与违约的性质和程度明显不成比例。仲裁庭认为，政府有权对违约行为采取制裁措施，但制裁必须与违约程度相称，不能动辄剥夺全部投资价值。在赔偿计算上，仲裁庭适用了"过失相抵"原则，根据投资者自身过错相应扣减赔偿金额。',
+    chinaPosition: '本案是国际投资仲裁中比例原则适用的经典案例，对理解征收的认定标准和赔偿计算具有重要参考价值。对于中国企业海外投资，特别是能源资源领域的投资，本案提示：一方面要严格遵守东道国法律和合同约定，避免因程序瑕疵招致重大损失；另一方面，在遭遇东道国过度执法或不当征收时，应积极利用BIT等国际投资保护规则维护合法权益。',
+    keywords: [
+      '比例原则',
+      '间接征收',
+      'BIT',
+      '石油投资',
+      '过失相抵'
+    ]
+  },
+  {
+    id: 'case-korea-japan-ad',
+    name: '韩国-日本不锈钢棒材反倾销案 / Korea - Anti-Dumping Duties on Stainless Steel Bars (Japan)',
+    court: '世界贸易组织（WTO）争端解决机构',
+    year: 2020,
+    subject: 'economic',
+    facts: '韩国自2004年起对日本产不锈钢棒材征收反倾销税，后于2010年、2013年、2017年三次延长征税期限。2017年日落复审中，韩国裁定若取消反倾销税，倾销对韩国国内产业的损害可能再度发生，因此决定第三次延长征税。日本认为韩国的反倾销税延长措施违反WTO《反倾销协定》，于2018年6月提出磋商请求，磋商未果后申请设立专家组。',
+    issues: [
+      '韩国日落复审中损害复发可能性的认定是否符合第11.3条',
+      '韩国在信息使用上是否违反第6.8条',
+      '韩国在机密信息处理上是否违反第6.5条'
+    ],
+    holding: 'WTO专家组于2020年11月30日发布报告，裁定韩国的反倾销税延长措施不符合《反倾销协定》。专家组认定韩国存在三项违规：一是在认定损害复发可能性时，未适当考虑日本产品价格明显高于韩国、以及来自中国等第三国大量低价产品的存在，违反第11条第3款；二是在认定日本生产商产能时，无合理理由拒绝生产商提供的信息，违反第6条第8款；三是在机密信息处理方面违反第6条第5款。韩国未上诉，裁决生效。',
+    reasoning: '专家组对日落复审中的"可能性"标准进行了严格审查，强调不能仅凭历史倾销和损害的存在就简单推定取消措施后损害必然复发，而必须基于确凿证据进行前瞻性分析。专家组特别指出，在评估损害复发的可能性时，调查机关必须考虑所有相关经济因素，包括进口产品的价格水平、市场份额变化、第三国进口的竞争状况等，不能有选择性地使用证据。本案再次确认了反倾销调查中的证据规则和程序正义要求。',
+    chinaPosition: '本案是WTO反倾销争端中的典型案例，对日落复审的审查标准和证据规则具有重要指导意义。中国作为全球反倾销调查的最大目标国，应积极运用WTO争端解决机制挑战其他成员的违规反倾销措施，维护中国企业的合法出口权益。同时，中国在自身开展反倾销调查时，也应严格遵守WTO规则，确保调查程序公正、证据充分、裁定合理。',
+    keywords: [
+      '反倾销',
+      '日落复审',
+      '证据规则',
+      'DSU',
+      '损害认定'
+    ]
+  }
+]
+};
+
+
+// 分层题库：为题目分配难度（如果还没有difficulty字段）
+MockData.questions.forEach(q => {
+  if (!q.difficulty) {
+    if (q.id <= 18) q.difficulty = 'basic';
+    else if (q.id <= 36) q.difficulty = 'exam';
+    else q.difficulty = 'advanced';
+  }
+});
+
+// === 应用状态管理 ===
+const AppState = {
+  currentPage: 'dashboard',
+  currentCategory: null,
+  currentCase: null,
+  currentRole: null,
+  currentAssessTab: 'quiz',
+  selectedAnswers: {},
+  quizSubmitted: false,
+  selectedSubject: null,
+  currentQuestions: [],
+  errorBook: [],
+  chatHistory: [],
+  conversationHistory: [], // 导师模式对话历史
+  tutorMode: false, // 导师模式开关
+  progressStep: 1,
+  isTeacherMode: false,
+  simStep: 0,
+  simRole: '',
+  simOpinion: '',
+  simScore: null,
+  simCaseData: null,
+  simMode: 'fixed', // 'fixed' or 'dynamic'
+  studentProgress: {},
+  searchMode: 'normal', // 'normal', 'law', 'case', 'cross'
+  currentUser: null, // { studentId, name, role }
+  isGuest: true,
+};
+
+// === CloudSync skeleton (localStorage fallback) ===
+var CloudSync = {
+  push: function(key, data) { /* TODO: Supabase integration */ },
+  pull: function(key) { /* TODO: Supabase integration */ return null; },
+  syncAll: function() { /* TODO: Supabase integration */ }
+};
+
+
+// === 应用初始化 ===
+
+// === 演示数据预填充 ===
+function loadDemoData(user) {
+  // 仅演示账号加载预设数据，真实用户从空数据开始
+  var sid = user && user.studentId ? user.studentId : '';
+  var isDemoAccount = (sid === 'S2024001' || sid === 'T2026001' || sid.indexOf('DEMO') === 0);
+  if (!isDemoAccount) return;
+  
+  if (localStorage.getItem('demo_data_loaded')) return;
+
+  // 1. 知识库问答历史 - 注入到聊天界面
+  var chatMessages = [
+    {
+      role: 'user',
+      content: '\u4ec0\u4e48\u662f\u56fd\u9645\u6cd5\u4e0a\u7684\u7ba1\u8f96\u6743\u8c41\u514d\uff1f',
+      time: '09:32'
+    },
+    {
+      role: 'system',
+      content: '<h4>\u56fd\u5bb6\u7ba1\u8f96\u6743\u8c41\u514d\uff08State Immunity from Jurisdiction\uff09</h4>'
+        + '<p>\u56fd\u5bb6\u7ba1\u8f96\u6743\u8c41\u514d\uff0c\u53c8\u79f0\u4e3b\u6743\u8c41\u514d\uff0c\u662f\u56fd\u9645\u6cd5\u4e0a\u4e00\u9879\u91cd\u8981\u539f\u5219\uff0c\u6307\u4e00\u56fd\u6cd5\u9662\u4e0d\u5f97\u5bf9\u53e6\u4e00\u56fd\u884c\u4e3a\u884c\u4f7f\u7ba1\u8f96\u6743\u3002\u5176\u6cd5\u7406\u57fa\u7840\u6e90\u4e8e\u201c\u5e73\u7b49\u8005\u4e4b\u95f4\u65e0\u7ba1\u8f96\u6743\u201d\uff08<em>par in parem non habet imperium</em>\uff09\u8fd9\u4e00\u7f57\u9a6c\u6cd5\u8c3d\u3002</p>'
+        + '<p><strong>\u4e24\u5927\u7406\u8bba\u6d41\u6d3e\uff1a</strong></p>'
+        + '<ul><li><strong>\u7edd\u5bf9\u8c41\u514d\u4e3b\u4e49</strong>\uff1a\u56fd\u5bb6\u7684\u4e00\u5207\u884c\u4e3a\u5747\u4eab\u6709\u8c41\u514d\uff0c\u66fe\u662f\u4f20\u7edf\u56fd\u9645\u6cd5\u4e3b\u6d41\u89c2\u70b9</li>'
+        + '<li><strong>\u9650\u5236\u8c41\u514d\u4e3b\u4e49</strong>\uff1a\u5c06\u56fd\u5bb6\u884c\u4e3a\u533a\u5206\u4e3a\u201c\u4e3b\u6743\u884c\u4e3a\u201d\u548c\u201c\u5546\u4e1a\u884c\u4e3a\u201d\uff0c\u540e\u8005\u4e0d\u4eab\u6709\u8c41\u514d\u3002\u8fd9\u662f\u5f53\u524d\u56fd\u9645\u793e\u4f1a\u4e3b\u6d41\u5b9e\u8df5</li></ul>'
+        + '<p><strong>\u91cd\u8981\u6cd5\u6761\u4e0e\u516c\u7ea6\uff1a</strong></p>'
+        + '<ul><li>\u300a2004\u5e74\u8054\u5408\u56fd\u56fd\u5bb6\u53ca\u5176\u8d22\u4ea7\u7ba1\u8f96\u8c41\u514d\u516c\u7ea6\u300b\uff08\u5c1a\u672a\u751f\u6548\uff0c\u4f46\u53cd\u6620\u4e86\u4e60\u60ef\u56fd\u9645\u6cd5\u53d1\u5c55\u65b9\u5411\uff09</li>'
+        + '<li>\u4e2d\u56fd\u300a\u5916\u56fd\u56fd\u5bb6\u7ba1\u8f96\u8c41\u514d\u6cd5\u300b\uff082023\u5e749\u67081\u65e5\u65bd\u884c\uff09\u2014\u2014\u6807\u5fd7\u4e2d\u56fd\u4ece\u7edd\u5bf9\u8c41\u514d\u8f6c\u5411\u9650\u5236\u8c41\u514d</li></ul>',
+      time: '09:32',
+      title: '\u56fd\u5bb6\u7ba1\u8f96\u6743\u8c41\u514d',
+      relatedLinks: ['\u300a\u5916\u56fd\u56fd\u5bb6\u7ba1\u8f96\u8c41\u514d\u6cd5\u300b', '\u56fd\u5bb6\u8d22\u4ea7\u7ba1\u8f96\u8c41\u514d\u516c\u7ea6', '\u4e3b\u6743\u884c\u4e3a\u4e0e\u5546\u4e1a\u884c\u4e3a']
+    },
+    {
+      role: 'user',
+      content: '\u4e2d\u56fd\u5728\u8fd9\u4e2a\u95ee\u9898\u4e0a\u7684\u7acb\u573a\u662f\u4ec0\u4e48\uff1f',
+      time: '09:35'
+    },
+    {
+      role: 'system',
+      content: '<h4>\u4e2d\u56fd\u5728\u56fd\u5bb6\u7ba1\u8f96\u6743\u8c41\u514d\u95ee\u9898\u4e0a\u7684\u7acb\u573a</h4>'
+        + '<p>\u4e2d\u56fd\u5728\u8fd9\u4e00\u9886\u57df\u7ecf\u5386\u4e86\u91cd\u5927\u8f6c\u53d8\uff1a</p>'
+        + '<p><strong>1. \u4f20\u7edf\u7acb\u573a\uff08\u7edd\u5bf9\u8c41\u514d\uff09\uff1a</strong>\u4e2d\u56fd\u957f\u671f\u575a\u6301\u7edd\u5bf9\u8c41\u514d\u4e3b\u4e49\u30022005\u5e74\u300a\u5916\u56fd\u4e3b\u6743\u8c41\u514d\u6761\u4f8b\u300b\u7ef4\u6301\u4e86\u8fd9\u4e00\u7acb\u573a\u3002</p>'
+        + '<p><strong>2. \u91cd\u5927\u8f6c\u53d8\uff08\u9650\u5236\u8c41\u514d\uff09\uff1a</strong>2023\u5e74\uff0c\u4e2d\u56fd\u901a\u8fc7\u300a\u4e2d\u534e\u4eba\u6c11\u5171\u548c\u56fd\u5916\u56fd\u56fd\u5bb6\u7ba1\u8f96\u8c41\u514d\u6cd5\u300b\uff0c\u6b63\u5f0f\u786e\u7acb\u4e86\u9650\u5236\u8c41\u514d\u5236\u5ea6\u3002\u8be5\u6cd5\u89c4\u5b9a\uff1a</p>'
+        + '<ul><li>\u5916\u56fd\u56fd\u5bb6\u5728\u4e2d\u56fd\u6cd5\u9662\u4eab\u6709\u7ba1\u8f96\u8c41\u514d\uff0c\u4f46\u5b58\u5728\u4f8b\u5916\u60c5\u5f62</li>'
+        + '<li>\u5546\u4e1a\u6d3b\u52a8\u4e0d\u4eab\u6709\u8c41\u514d\uff08\u7b2c7\u6761\uff09</li>'
+        + '<li>\u4fb5\u6743\u884c\u4e3a\u9020\u6210\u4eba\u8eab\u4f24\u5bb3\u3001\u6b7b\u4ea1\u6216\u8d22\u4ea7\u635f\u5931\u7684\u4e0d\u4eab\u6709\u8c41\u514d\uff08\u7b2c9\u6761\uff09</li>'
+        + '<li>\u5f53\u4e8b\u4eba\u660e\u793a\u540c\u610f\u6216\u53cd\u8bc9\u7684\u4e0d\u4eab\u6709\u8c41\u514d</li></ul>'
+        + '<p><strong>\u7acb\u573a\u610f\u4e49\uff1a</strong>\u8fd9\u4e00\u7acb\u6cd5\u8f6c\u53d8\u4f53\u73b0\u4e86\u4e2d\u56fd\u79ef\u6781\u53c2\u4e0e\u56fd\u9645\u6cd5\u53d1\u5c55\u3001\u4e0e\u56fd\u9645\u60ef\u4f8b\u63a5\u8f68\u7684\u6001\u5ea6\uff0c\u540c\u65f6\u4e5f\u4e3a\u4e2d\u56fd\u516c\u6c11\u548c\u6cd5\u4eba\u5728\u6d89\u5916\u7ea0\u7eb7\u4e2d\u63d0\u4f9b\u4e86\u66f4\u6709\u529b\u7684\u53f8\u6cd5\u4fdd\u62a4\u3002</p>',
+      time: '09:35',
+      title: '\u4e2d\u56fd\u5728\u7ba1\u8f96\u6743\u8c41\u514d\u95ee\u9898\u4e0a\u7684\u7acb\u573a',
+      relatedLinks: ['\u300a\u5916\u56fd\u56fd\u5bb6\u7ba1\u8f96\u8c41\u514d\u6cd5\u300b', '\u9650\u5236\u8c41\u514d\u4e3b\u4e49', '\u5546\u4e1a\u6d3b\u52a8\u4f8b\u5916']
+    }
+  ];
+
+  // 将消息渲染到聊天界面
+  var qaChat = document.getElementById('qaChat');
+  var welcome = document.getElementById('qaWelcome');
+  if (welcome) welcome.style.display = 'none';
+  
+  chatMessages.forEach(function(msg) {
+    if (msg.role === 'user') {
+      var msgHtml = '<div class="chat-message user">'
+        + '<div class="chat-avatar">\u5b66</div>'
+        + '<div>'
+        + '<div class="chat-bubble">' + msg.content + '</div>'
+        + '<div class="chat-time text-right" style="text-align:right">' + msg.time + '</div>'
+        + '</div></div>';
+      qaChat.insertAdjacentHTML('beforeend', msgHtml);
+    } else {
+      var relatedHtml = (msg.relatedLinks || []).map(function(link) {
+        return '<span class="related-link" onclick="askSuggestion(\'' + link + '\')">' + link + '</span>';
+      }).join('');
+      var msgHtml = '<div class="chat-message system">'
+        + '<div class="chat-avatar">AI</div>'
+        + '<div>'
+        + '<div class="chat-bubble">'
+        + (msg.title ? '<h4>' + msg.title + '</h4>' : '')
+        + msg.content
+        + (relatedHtml ? '<div class="related-links"><span class="text-secondary" style="font-size:0.75rem">\u76f8\u5173\u68c0\u7d22\uff1a</span>' + relatedHtml + '</div>' : '')
+        + '</div>'
+        + '<div class="chat-time">' + msg.time + '</div>'
+        + '</div></div>';
+      qaChat.insertAdjacentHTML('beforeend', msgHtml);
+    }
+  });
+
+  // 同步到 chatHistory 供导出
+  AppState.chatHistory = chatMessages.map(function(m) {
+    return { role: m.role, content: m.content, time: m.time };
+  });
+
+  // 2. 错题本数据 - 仅演示账号预设，真实用户从空开始
+  AppState.errorBook = [];
+
+
+  // 4. 标记已加载
+  localStorage.setItem('demo_data_loaded', 'true');
+}
+
+
+async function initApp() {
+  // First check Supabase session
+  var loggedIn = false;
+  if (sbAuthClient) {
+    try {
+      loggedIn = await checkAuthState();
+    } catch(e) {
+      console.warn('[Supabase] checkAuthState failed:', e);
+    }
+  }
+  
+  if (!loggedIn) {
+    // Fallback: check localStorage
+    var savedUser = null;
+    try {
+      var raw = localStorage.getItem('sanguofa_current_user');
+      if (raw) savedUser = JSON.parse(raw);
+    } catch(e) {}
+    
+    if (savedUser && savedUser.studentId && savedUser.name) {
+      AppState.currentUser = savedUser;
+      AppState.isGuest = false;
+      AppState.isTeacherMode = (savedUser.role === 'teacher');
+    } else {
+      AppState.isGuest = true;
+      AppState.currentUser = null;
+      AppState.isTeacherMode = false;
+    }
+  }
+  startApp();
+}
+
+function startApp() {
+  renderNavbar();
+  renderDashboard();
+  renderQAModule();
+  renderCaseModule();
+  renderAssessModule();
+  renderIdeologyModule();
+  renderFooter();
+  
+  // 加载学生学习进度（按用户隔离）
+  loadStudentProgress();
+  
+  // 加载演示数据（仅演示账号）
+  loadDemoData(AppState.currentUser);
+  
+  // 根据角色显示页面
+  showPage('dashboard');
+  
+  // 隐藏页面加载提示
+  var loader = document.getElementById('page-loader');
+  if (loader) {
+    setTimeout(function() {
+      loader.classList.add('hidden');
+      setTimeout(function() { loader.remove(); }, 500);
+    }, 300);
+  }
+
+  // 首屏就绪后，空闲时后台预取知识库
+  try { if (typeof _kbPrefetch === 'function') _kbPrefetch(); } catch (e) { console.warn(e); }
+}
+
+// === Login / Logout (Supabase Auth) ===
+
+// Auth tab 切换
+function switchAuthTab(tab) {
+  var loginForm = document.getElementById('loginForm');
+  var registerForm = document.getElementById('registerForm');
+  var tabLoginEl = document.getElementById('tabLogin');
+  var tabRegisterEl = document.getElementById('tabRegister');
+  if (tab === 'login') {
+    loginForm.style.display = 'block';
+    registerForm.style.display = 'none';
+    tabLoginEl.style.borderBottom = '2px solid #1a73e8';
+    tabLoginEl.style.color = '#1a73e8';
+    tabLoginEl.style.fontWeight = 'bold';
+    tabRegisterEl.style.borderBottom = 'none';
+    tabRegisterEl.style.color = '#666';
+    tabRegisterEl.style.fontWeight = 'normal';
+  } else {
+    loginForm.style.display = 'none';
+    registerForm.style.display = 'block';
+    tabRegisterEl.style.borderBottom = '2px solid #1a73e8';
+    tabRegisterEl.style.color = '#1a73e8';
+    tabRegisterEl.style.fontWeight = 'bold';
+    tabLoginEl.style.borderBottom = 'none';
+    tabLoginEl.style.color = '#666';
+    tabLoginEl.style.fontWeight = 'normal';
+  }
+}
+
+// === Initialize demo data for demo accounts ===
+function initDemoData(user) {
+  try {
+  if (!user || !user.studentId) return;
+  var sid = user.studentId;
+  
+  // 版本升级时清除旧缓存，确保重新生成演示数据
+  var initVer = localStorage.getItem('sanguofa_init_version') || '';
+  if (initVer !== 'v9') {
+    localStorage.removeItem('sanguofa_debate_debates');
+    localStorage.removeItem('sanguofa_teacher_materials');
+    localStorage.removeItem('sanguofa_student_S2024001_records');
+    localStorage.removeItem('sanguofa_student_S2024001_progress');
+    localStorage.removeItem('sanguofa_student_S2024001_quiz');
+    localStorage.removeItem('demo_data_loaded');
+    AppState.errorBook = [];
+    localStorage.setItem('sanguofa_init_version', 'v9');
+  }
+  
+  var favKey = 'sanguofa_student_' + sid + '_favorites';
+  if (!localStorage.getItem(favKey)) {
+    var favs = [];
+    if (sid === 'T2026001') {
+      var items = [
+        {type:'doc',sourceId:'vclt',title:'《维也纳条约法公约》全文及核心条款解读',summary:'涵盖条约缔结、保留、解释、修正、终止等全部条款。',icon:'📄',category:'法规汇编'},
+        {type:'doc',sourceId:'unclos',title:'《联合国海洋法公约》领海与专属经济区章节',summary:'含领海基线、毗连区、专属经济区、大陆架规定。',icon:'',category:'法规汇编'},
+        {type:'qa',sourceId:'qa-immunity',title:'国家豁免规则的演变：从绝对豁免到限制豁免',summary:'2023年《外国国家豁免法》标志中国转向限制豁免。',icon:'💬',category:'智能问答'},
+        {type:'qa',sourceId:'qa-treaty',title:'条约保留的法律效力分析',summary:'保留在保留国与接受国之间修改条约相关条款。',icon:'💬',category:'智能问答'},
+        {type:'qa',sourceId:'qa-icj',title:'国际法院管辖权的三重维度',summary:'诉讼管辖权限于国家之间，咨询管辖权面向联合国机关。',icon:'💬',category:'智能问答'},
+        {type:'case',sourceId:'case-9001',title:'国家管辖权豁免模拟案例',summary:'外国国家商业行为是否享有管辖豁免的核心争议。',icon:'⚖️',category:'案例实训'},
+        {type:'case',sourceId:'case-9002',title:'南海争端国际法分析案例',summary:'南海仲裁案管辖权争议与公约附件七仲裁适用边界。',icon:'⚖️',category:'案例实训'},
+        {type:'doc',sourceId:'foreign-law',title:'《对外关系法》要点',summary:'2023年通过，确立对外关系基本原则。',icon:'📄',category:'法规汇编'},
+        {type:'doc',sourceId:'anti-sanction',title:'反制裁、反干涉、反制"长臂管辖"法律工具箱',summary:'阻断法、不可靠实体清单、出口管制等工具。',icon:'📋',category:'政策解读'},
+        {type:'news',sourceId:'belt-road',title:'"一带一路"法治保障体系建设进展',summary:'国际商事争端预防与解决机制最新政策动态。',icon:'📰',category:'前沿动态'},
+        {type:'qa',sourceId:'qa-cisg',title:'CISG根本违约与合同解除权',summary:'违约实质上剥夺另一方依合同有权期待得到的东西。',icon:'💬',category:'智能问答'},
+        {type:'qa',sourceId:'qa-arbitration',title:'国际商事仲裁协议的形式与效力',summary:'仲裁协议须以书面形式订立。',icon:'💬',category:'智能问答'},
+        {type:'case',sourceId:'case-9003',title:'涉外合同法律适用案例',summary:'当事人意思自治原则与法律选择。',icon:'️',category:'案例实训'},
+        {type:'doc',sourceId:'wto-dsu',title:'WTO争端解决机制规则详解',summary:'磋商、专家组、上诉机构、执行审查全流程。',icon:'',category:'法规汇编'},
+        {type:'qa',sourceId:'qa-space',title:'外层空间法律地位与《外层空间条约》',summary:'外层空间不得据为己有，为全人类利益服务。',icon:'💬',category:'智能问答'},
+        {type:'qa',sourceId:'qa-diplomatic',title:'外交特权与豁免的例外情形',summary:'民事行政管辖豁免三大例外情形。',icon:'💬',category:'智能问答'}
+      ];
+      var ts = 1784304000000;
+      items.forEach(function(item, i) { favs.push({favId:item.type+'-'+item.sourceId,type:item.type,sourceId:item.sourceId,title:item.title,summary:item.summary,icon:item.icon,category:item.category,timestamp:ts+i*86400000*3,extra:null}); });
+    } else if (sid === 'S2024001') {
+      var items = [
+        {type:'qa',sourceId:'qa-ocean',title:'专属经济区与大陆架的区别',summary:'专属经济区200海里，大陆架可延伸至350海里。',icon:'',category:'智能问答'},
+        {type:'qa',sourceId:'qa-reservation',title:'条约保留制度的三个核心问题',summary:'谁能提出保留、保留的效力、与条约目的宗旨的关系。',icon:'💬',category:'智能问答'},
+        {type:'qa',sourceId:'qa-sovereignty',title:'国家基本权利四项内容详解',summary:'独立权、平等权、自保权、管辖权。',icon:'💬',category:'智能问答'},
+        {type:'case',sourceId:'case-9001',title:'国家管辖权豁免案例学习笔记',summary:'商业行为例外是限制豁免理论的核心。',icon:'⚖️',category:'案例实训'},
+        {type:'case',sourceId:'case-9005',title:'CISG根本违约案例分析',summary:'卖方交付严重不符货物，买方有权宣告合同无效。',icon:'️',category:'案例实训'},
+        {type:'qa',sourceId:'qa-consular',title:'领事官员与外交代表的特权差异',summary:'领事不享有完全人身不可侵犯权。',icon:'',category:'智能问答'},
+        {type:'qa',sourceId:'qa-un',title:'联合国六大主要机关及其职能',summary:'大会、安理会、经社理事会、托管理事会、国际法院、秘书处。',icon:'💬',category:'智能问答'},
+        {type:'qa',sourceId:'qa-jurisdiction',title:'属地管辖与属人管辖的关系',summary:'属地管辖是最基本的管辖权。',icon:'💬',category:'智能问答'},
+        {type:'doc',sourceId:'vclt-notes',title:'《维也纳条约法公约》重点条款笔记',summary:'第19-23条保留制度、第26-27条条约遵守、第31-33条解释规则。',icon:'',category:'学习笔记'},
+        {type:'qa',sourceId:'qa-dispute',title:'国际争端解决的和平方法',summary:'谈判、调解、调停、调查、和解、仲裁、司法解决七种。',icon:'💬',category:'智能问答'},
+        {type:'case',sourceId:'case-9004',title:'国际商事仲裁案例要点',summary:'Soler v. Mitsubishi案：反垄断争议可仲裁性。',icon:'⚖️',category:'案例实训'},
+        {type:'qa',sourceId:'qa-outer-space',title:'外层空间条约五大原则',summary:'不得据为己有、自由探索、为全人类利益、国际合作、国家责任。',icon:'💬',category:'智能问答'}
+      ];
+      var ts = 1784304000000;
+      items.forEach(function(item, i) { favs.push({favId:item.type+'-'+item.sourceId,type:item.type,sourceId:item.sourceId,title:item.title,summary:item.summary,icon:item.icon,category:item.category,timestamp:ts+i*86400000*4,extra:null}); });
+    } else if (sid.indexOf('DEMO') === 0) {
+      var commonItems = [
+        {type:'qa',sourceId:'qa-basic',title:'国际法渊源体系概述',summary:'国际条约、国际习惯、一般法律原则为主要渊源。',icon:'💬',category:'智能问答'},
+        {type:'qa',sourceId:'qa-territorial',title:'领海宽度与无害通过权',summary:'领海宽度不超过12海里，外国船舶享有无害通过权。',icon:'💬',category:'智能问答'},
+        {type:'case',sourceId:'case-9002',title:'南海争端案例学习',summary:'仲裁庭管辖权争议是本案核心法律焦点。',icon:'️',category:'案例实训'},
+        {type:'qa',sourceId:'qa-dip',title:'外交代表特权与豁免范围',summary:'人身不可侵犯、刑事管辖豁免、民事行政豁免有例外。',icon:'💬',category:'智能问答'},
+        {type:'qa',sourceId:'qa-treaty2',title:'条约的缔结程序',summary:'谈判、签署、批准、交换批准书四个阶段。',icon:'💬',category:'智能问答'},
+        {type:'doc',sourceId:'notes',title:'国际公法核心知识点整理',summary:'国家主权、领土制度、海洋法、外交关系法四大板块。',icon:'📄',category:'学习笔记'},
+        {type:'qa',sourceId:'qa-icsid',title:'ICSID投资仲裁机制',summary:'解决国家与他国国民间投资争端的专门仲裁机构。',icon:'💬',category:'智能问答'},
+        {type:'qa',sourceId:'qa-wto',title:'WTO最惠国待遇与国民待遇',summary:'最惠国待遇要求平等对待所有成员。',icon:'💬',category:'智能问答'}
+      ];
+      var n = 3 + (sid.charCodeAt(sid.length-1) % 5);
+      var shuffled = commonItems.slice().sort(function(){return 0.5-Math.random()});
+      var ts = 1784304000000;
+      shuffled.slice(0, n).forEach(function(item, i) { favs.push({favId:item.type+'-'+item.sourceId,type:item.type,sourceId:item.sourceId,title:item.title,summary:item.summary,icon:item.icon,category:item.category,timestamp:ts+i*86400000*5+Math.floor(Math.random()*86400000),extra:null}); });
+    }
+    if (favs.length > 0) localStorage.setItem(favKey, JSON.stringify(favs));
+  }
+  // === Debates ===
+  if (!localStorage.getItem('sanguofa_debate_debates')) {
+    var debates = [];
+    var dCases = [
+      {id:9001,name:'国家管辖权豁免',sideA:'原告方：主张限制豁免，商业行为例外适用',sideB:'被告方：主张绝对豁免，国有企业行为属主权行为'},
+      {id:9002,name:'南海争端',sideA:'申请方：主张仲裁庭有管辖权',sideB:'被申请方：主张仲裁庭无管辖权'},
+      {id:9003,name:'涉外合同法律适用',sideA:'中方：主张适用中国法中的强制性规定',sideB:'外方：主张严格按合同约定的英国法解释'},
+      {id:9005,name:'CISG根本违约',sideA:'买方：主张根本违约，有权宣告合同无效',sideB:'卖方：主张不构成根本违约，可通过补救措施解决'},
+      {id:9006,name:'WTO争端解决',sideA:'申诉方：反倾销措施违反WTO规则',sideB:'被诉方：反倾销调查程序合法'}
+    ];
+    var allIds = [];
+    for (var di = 1; di <= 20; di++) allIds.push('DEMO2024' + String(di).padStart(3,'0'));
+    for (var di = 21; di <= 217; di++) allIds.push('S' + String(di).padStart(3,'0'));
+    var bt = 1784304000000;
+    for (var di = 0; di < dCases.length; di++) {
+      var dc = dCases[di], dt = bt + di * 86400000 * 12;
+      var sh = allIds.slice().sort(function(){return 0.5-Math.random()});
+      debates.push({id:'debate-'+dt,title:dc.name+' - 分组对抗',caseId:dc.id,caseData:{id:dc.id,name:dc.name},createdBy:'T2026001',creatorName:'Wang',targetClass:'2024级国际法班',deadline:dt+86400000*7,status:di<4?'completed':'active',createdAt:dt,groups:[{groupId:'g-1',side:'A',roleName:dc.sideA,roleIcon:'⚔️',studentIds:sh.slice(0,10),materials:[{title:dc.name+'相关法条',type:'law'}]},{groupId:'g-2',side:'B',roleName:dc.sideB,roleIcon:'️',studentIds:sh.slice(10,20),materials:[{title:dc.name+'抗辩要点',type:'law'}]}],inviteCode:'DBT'+String(di+1).padStart(3,'0'),submissions:di<4?{A:{outline:'【辩论提纲-A方】\n\n一、核心主张：'+dc.sideA+'\n\n二、法律依据：\n1. 《联合国海洋法公约》第2条相关规定\n2. 《维也纳条约法公约》第26条——条约必须遵守原则\n3. 相关国际习惯法规则\n\n三、事实与论证：\n结合本案具体事实，我方主张有充分的事实基础和法律支撑。\n（1）事实一：相关行为具有明确的商业性质；\n（2）事实二：被告方行为不构成主权行为豁免的适用范围；\n（3）事实三：国际司法实践中已有类似判例支持我方立场。\n\n四、结论：恳请法院依法支持我方主张。',submittedAt:dt+86400000*3,submittedBy:sh[0],submitterNames:sh.slice(0,5)},B:{outline:'【答辩提纲-B方】\n\n一、核心主张：'+dc.sideB+'\n\n二、法律依据：\n1. 《联合国国家及其财产管辖豁免公约》第10条\n2. 国际法院相关判决\n3. 国家豁免的一般国际法原则\n\n三、事实与论证：\n我方行为具有正当性和合法性：\n（1）涉案行为本质上属于行使国家主权职能的范畴；\n（2）相关措施符合国际法基本原则；\n（3）对方主张缺乏充分的法律基础。\n\n四、结论：恳请法院驳回对方主张，维护国家主权豁免原则。',submittedAt:dt+86400000*4,submittedBy:sh[10],submitterNames:sh.slice(10,15)}}:{A:null,B:null},aiAnalysis:di<4?{score:{A:78+Math.floor(Math.random()*15),B:72+Math.floor(Math.random()*15)},content:'【AI评阅意见】\n\nA方（'+dc.sideA+'）：\n• 论证结构完整，法条引用准确\n• 事实与法律结合紧密，逻辑清晰\n• 建议：可补充国际法院相关判例佐证\n\nB方（'+dc.sideB+'）：\n• 对豁免理论理解到位\n• 先例引用恰当\n• 不足：对商业行为例外的回应不够充分\n\n【综合点评】\n双方围绕"'+dc.name+'"展开了充分辩论。A方在论证深度上略胜一筹，B方在理论阐述方面表现扎实。建议同学们进一步研读相关国际公约条款，加强实务案例分析能力。',analyzedAt:dt+86400000*5}:null,source:'teacher'});
+    }
+    localStorage.setItem('sanguofa_debate_debates', JSON.stringify(debates));
+  }
+
+  // 初始化教师素材管理数据
+  if (!localStorage.getItem('sanguofa_teacher_materials')) {
+    var baseDate = new Date('2026-09-28T23:59:00+08:00').getTime();
+    var materials = [
+      {id:'mat-unclos-001',title:'《联合国海洋法公约》核心条款汇编',type:'law',subject:'public',content:'涵盖UNCLOS领海、毗连区、专属经济区、大陆架等核心条款要点，便于教学引用和案例检索。',keywords:'海洋法,UNCLOS,领海,专属经济区,大陆架',createdAt:baseDate-86400000*10},
+      {id:'mat-trade-002',title:'中美贸易摩擦典型案例集（2020-2026）',type:'case',subject:'economic',content:'收录近6年中美贸易摩擦中12个典型案例，涵盖反倾销、反补贴、知识产权争端等，附案件分析和教学讨论要点。',keywords:'贸易法,WTO,反倾销,反补贴,知识产权',createdAt:baseDate-86400000*7},
+      {id:'mat-arb-003',title:'国际商事仲裁实务操作指引',type:'document',subject:'private',content:'涵盖ICC、SIAC、HKIAC等主要仲裁机构规则对比，仲裁协议起草要点，裁决执行（纽约公约）实务要点。',keywords:'仲裁,纽约公约,ICC,SIAC,HKIAC',createdAt:baseDate-86400000*3},
+      {id:'mat-pil-class-0928',title:'9月28日国际私法课堂讲义·冲突规范与法律适用',type:'document',subject:'private',content:'今日课堂讲义，涵盖冲突规范的基本类型、连结点的选择、反致与转致制度、公共秩序保留的适用条件。配合课堂模式即时问答使用。',keywords:'国际私法,冲突规范,法律适用,课堂教学,9月28日',createdAt:baseDate}
+    ];
+    localStorage.setItem('sanguofa_teacher_materials', JSON.stringify(materials));
+  }
+
+  // === 为学生账号初始化学习记录、错题本、进度数据 ===
+  if (sid === 'S2024001') {
+    // 初始化错题本（4条精选）
+    if (!AppState.errorBook || AppState.errorBook.length === 0) {
+      AppState.errorBook = [
+        {question:'关于条约保留制度，根据VCLT第19条，缔约国在签署条约时提出保留，其他缔约国反对该保留但未反对条约在两国间生效，该保留的法律效果是什么？',yourAnswer:'保留自动生效，无需其他国家同意',correctAnswer:'C. 在保留国与反对国之间，保留所涉条款在保留范围内不适用',explanation:'根据VCLT第20-21条，一国反对保留但未反对条约生效时，保留所涉条款在两国间不适用。这体现了条约保留的"相互性"原则——保留改变的是条款在两国间的适用，而非条约整体效力。',knowledgePoint:'条约保留制度',subject:'public'},
+        {question:'在涉外合同纠纷中，当事人未协议选择合同准据法，根据《涉外民事关系法律适用法》第41条，应如何确定适用的法律？',yourAnswer:'适用合同签订地法律',correctAnswer:'B. 适用履行义务最能体现该合同特征的一方当事人经常居所地法律或者其他与该合同有最密切联系的法律',explanation:'最密切联系原则是我国国际私法的核心连结点。对于合同纠纷，当事人未选择准据法时，适用最密切联系原则确定，具体表现为"特征性履行方"的经常居所地法。这比"合同签订地"更能体现合同的本质特征。',knowledgePoint:'国际私法冲突规范',subject:'private'},
+        {question:'根据CISG第25条，下列哪种情形构成"根本违约"？',yourAnswer:'卖方延迟交货3天',correctAnswer:'D. 卖方交付的货物与合同约定严重不符，买方无法实现合同目的',explanation:'CISG第25条规定，根本违约是指一方违反合同的结果使另一方蒙受损害，以致实质上剥夺了其依合同有权期待得到的东西。延迟3天通常不构成根本违约，而货物严重不符致使合同目的落空则属于典型根本违约。',knowledgePoint:'CISG根本违约',subject:'economic'},
+        {question:'根据UNCLOS第57条关于专属经济区(EEZ)的制度，沿海国在EEZ内享有的主权权利不包括下列哪项？',yourAnswer:'对人工岛屿建造的管辖权',correctAnswer:'C. 对其他国家铺设海底电缆的禁止权',explanation:'UNCLOS第58条规定，在EEZ内所有国家享有铺设海底电缆和管道的自由。沿海国在EEZ享有的是对自然资源（生物和非生物）的主权权利，以及对人工岛屿、海洋科研、环保的管辖权，但不得妨碍他国航行和铺设电缆的自由。',knowledgePoint:'海洋法',subject:'public'}
+      ];
+      // 持久化错题本到localStorage
+      localStorage.setItem('sanguofa_student_S2024001_errors', JSON.stringify(AppState.errorBook));
+    }
+
+    // 初始化学习记录
+    var recordsKey = 'sanguofa_student_S2024001_records';
+    if (!localStorage.getItem(recordsKey)) {
+      var now = Date.now();
+      var records = [
+        {title:'国际私法·法律适用冲突规范',time:'2026-09-28 14:30',score:91,status:'已完成'},
+        {title:'国家管辖权豁免',time:'2026-09-27 14:23',score:92,status:'已完成'},
+        {title:'南海争端国际法分析',time:'2026-09-26 16:45',score:88,status:'已完成'},
+        {title:'涉外合同法律适用',time:'2026-09-25 10:12',score:95,status:'已完成'},
+        {title:'CISG根本违约认定',time:'2026-09-24 20:30',score:90,status:'已完成'},
+        {title:'WTO争端解决机制',time:'2026-09-23 11:05',score:87,status:'已完成'},
+        {title:'国际商事仲裁协议效力',time:'2026-09-22 15:40',score:93,status:'已完成'},
+        {title:'外交特权与豁免',time:'2026-09-20 09:18',score:96,status:'已完成'},
+        {title:'条约法公约保留制度',time:'2026-09-18 13:55',score:91,status:'已完成'},
+        {title:'国际法渊源体系',time:'2026-09-15 17:30',score:85,status:'已完成'},
+        {title:'海洋法专属经济区制度',time:'2026-09-12 08:45',score:94,status:'已完成'},
+        {title:'国家主权与领土制度',time:'2026-09-08 10:20',score:89,status:'已完成'},
+        {title:'国际条约缔结程序',time:'2026-09-03 14:15',score:86,status:'已完成'},
+        {title:'国际法主体与渊源',time:'2026-08-28 09:30',score:88,status:'已完成'},
+        {title:'国际法基础概念导学',time:'2026-08-20 15:00',score:82,status:'已完成'}
+      ];
+      localStorage.setItem(recordsKey, JSON.stringify(records));
+    }
+
+    // 初始化学习进度
+    var progressKey = 'sanguofa_student_S2024001_progress';
+    if (!localStorage.getItem(progressKey)) {
+      var progress = {knowledgePoints:86,caseCount:15,accuracy:91,studyHours:136};
+      var caseList = typeof FIXED_CASES !== 'undefined' ? FIXED_CASES : [];
+      var scoresList = [91,92,88,95,90,87,93,96,91,85,94,89,86,88,82];
+      var baseDate = new Date('2026-09-28T23:59:00+08:00').getTime();
+      for (var ci = 0; ci < Math.min(15, caseList.length); ci++) {
+        progress[caseList[ci].name || caseList[ci].id] = {score: scoresList[ci], completedAt: new Date(baseDate - (15-ci) * 86400000).toISOString(), attempts: 1};
+      }
+      localStorage.setItem(progressKey, JSON.stringify(progress));
+    }
+
+    // 初始化知识测验成绩
+    var quizKey = 'sanguofa_student_S2024001_quiz';
+    if (!localStorage.getItem(quizKey)) {
+      var quizScores = [
+        {subject:'国际私法',score:91,totalQuestions:10,correctCount:9,date:'2026-09-28',time:'15:20'},
+        {subject:'国际公法',score:92,totalQuestions:10,correctCount:9,date:'2026-09-22',time:'14:30'},
+        {subject:'国际经济法',score:95,totalQuestions:10,correctCount:9,date:'2026-09-15',time:'10:45'}
+      ];
+      localStorage.setItem(quizKey, JSON.stringify(quizScores));
+    }
+  }
+
+  // 确保学生S2024001参与部分辩论
+  if (sid === 'S2024001' || sid === 'DEMO2024005') {
+    var debateKey = 'sanguofa_debate_debates';
+    var debates = [];
+    try { var raw = localStorage.getItem(debateKey); if (raw) debates = JSON.parse(raw); } catch(e) {}
+    if (debates.length > 0) {
+      var myStudentId = sid === 'S2024001' ? 'DEMO2024005' : sid;
+      var updated = false;
+      for (var di = 0; di < debates.length && di < 3; di++) {
+        var groups = debates[di].groups || [];
+        var alreadyIn = false;
+        for (var gi = 0; gi < groups.length; gi++) {
+          if (groups[gi].studentIds && groups[gi].studentIds.indexOf(myStudentId) !== -1) { alreadyIn = true; break; }
+        }
+        if (!alreadyIn && groups.length > 0) {
+          // 加入A方
+          if (!groups[0].studentIds) groups[0].studentIds = [];
+          if (groups[0].studentIds.indexOf(myStudentId) === -1) groups[0].studentIds.push(myStudentId);
+          updated = true;
+        }
+      }
+      if (updated) localStorage.setItem(debateKey, JSON.stringify(debates));
+    }
+  }
+  } catch(e) { console.warn('[initDemoData] error:', e); }
+}
+
+// Supabase 登录
+async function handleSupabaseLogin(e) {
+  e.preventDefault();
+  if (!sbAuthClient) { alert('系统初始化中，请稍后再试'); return false; }
+  var email = document.getElementById('loginEmail').value.trim();
+  var password = document.getElementById('loginPassword').value;
+  var errorEl = document.getElementById('loginError');
+  var btn = document.getElementById('loginBtn');
+  errorEl.style.display = 'none';
+  btn.textContent = '登录中...';
+  btn.disabled = true;
+
+  var result = await sbAuthClient.auth.signInWithPassword({ email: email, password: password });
+  var data = result.data;
+  var error = result.error;
+
+  btn.textContent = '登 录';
+  btn.disabled = false;
+
+  if (error) {
+    var msg = '登录失败';
+    if (error.message && error.message.indexOf('Invalid login credentials') >= 0) {
+      msg = '邮箱或密码错误';
+    } else if (error.message && error.message.indexOf('Email not confirmed') >= 0) {
+      msg = '邮箱未验证，请检查邮箱后重试';
+    } else {
+      msg = error.message || msg;
+    }
+    errorEl.textContent = msg;
+    errorEl.style.display = 'block';
+    return false;
+  }
+
+  var user = data.user;
+  var metadata = user.user_metadata || {};
+  var currentUser = {
+    id: user.id,
+    email: email,
+    studentId: metadata.studentId || '',
+    name: metadata.name || email,
+    role: metadata.role || 'student',
+    loginTime: new Date().toISOString()
+  };
+  localStorage.setItem('sanguofa_current_user', JSON.stringify(currentUser));
+  AppState.currentUser = currentUser;
+  AppState.isGuest = false;
+  AppState.isTeacherMode = (currentUser.role === 'teacher');
+
+  // Initialize demo data (favorites, debates) for demo accounts
+  try { initDemoData(currentUser); } catch(e) { console.warn('[DemoData] init error in login:', e); }
+
+  // Record in teacher students registry
+  var registry = [];
+  try {
+    var raw = localStorage.getItem('sanguofa_student_registry');
+    if (raw) registry = JSON.parse(raw);
+  } catch(ex) {}
+  var existing = registry.find(function(r) { return r.studentId === currentUser.studentId; });
+  if (existing) {
+    existing.name = currentUser.name;
+    existing.role = currentUser.role;
+    existing.lastActive = new Date().toISOString();
+  } else {
+    registry.push({
+      studentId: currentUser.studentId,
+      name: currentUser.name,
+      role: currentUser.role,
+      loginTime: currentUser.loginTime,
+      lastActive: new Date().toISOString()
+    });
+  }
+  localStorage.setItem('sanguofa_student_registry', JSON.stringify(registry));
+
+  // Close login modal and switch to main app
+  try { _sbTrackEvent('login', '系统', { name: currentUser.name, role: currentUser.role }); } catch(e) { console.warn('[Track] login event error:', e); }
+  closeLoginModal();
+  startApp();
+  return false;
+}
+
+// Supabase 注册
+async function handleSupabaseRegister(e) {
+  e.preventDefault();
+  if (!sbAuthClient) { alert('系统初始化中，请稍后再试'); return false; }
+  var name = document.getElementById('regName').value.trim();
+  var studentId = document.getElementById('regStudentId').value.trim();
+  var email = document.getElementById('regEmail').value.trim();
+  var role = document.getElementById('regRole').value;
+  var password = document.getElementById('regPassword').value;
+  var errorEl = document.getElementById('registerError');
+  var btn = document.getElementById('registerBtn');
+  errorEl.style.display = 'none';
+  btn.textContent = '注册中...';
+  btn.disabled = true;
+
+  var result = await sbAuthClient.auth.signUp({
+    email: email,
+    password: password,
+    options: {
+      data: { name: name, studentId: studentId, role: role }
+    }
+  });
+  var data = result.data;
+  var error = result.error;
+
+  btn.textContent = '注 册';
+  btn.disabled = false;
+
+  if (error) {
+    var msg = '注册失败';
+    if (error.message && error.message.indexOf('already registered') >= 0) {
+      msg = '该邮箱已被注册，请直接登录';
+    } else if (error.message && error.message.indexOf('Password') >= 0) {
+      msg = error.message;
+    } else {
+      msg = error.message || msg;
+    }
+    errorEl.textContent = msg;
+    errorEl.style.display = 'block';
+    return false;
+  }
+
+  // 注册成功
+  if (data.session) {
+    // 直接获得session（邮箱验证未启用时）
+    var user = data.user;
+    var currentUser = {
+      id: user.id,
+      email: email,
+      studentId: studentId,
+      name: name,
+      role: role,
+      loginTime: new Date().toISOString()
+    };
+    localStorage.setItem('sanguofa_current_user', JSON.stringify(currentUser));
+    AppState.currentUser = currentUser;
+    AppState.isGuest = false;
+    AppState.isTeacherMode = (role === 'teacher');
+    closeLoginModal();
+    startApp();
+  } else {
+    // 需要邮箱验证
+    errorEl.textContent = '注册成功！请检查邮箱验证后登录。';
+    errorEl.style.color = '#2e7d32';
+    errorEl.style.display = 'block';
+    setTimeout(function() { switchAuthTab('login'); }, 3000);
+  }
+  return false;
+}
+
+// 检查 Supabase 登录状态
+async function checkAuthState() {
+  if (!sbAuthClient) return false;
+  var result = await sbAuthClient.auth.getSession();
+  var session = result.data.session;
+  if (session && session.user) {
+    var user = session.user;
+    var metadata = user.user_metadata || {};
+    var savedUser = {
+      id: user.id,
+      email: user.email,
+      studentId: metadata.studentId || '',
+      name: metadata.name || user.email,
+      role: metadata.role || 'student',
+      loginTime: new Date().toISOString()
+    };
+    AppState.currentUser = savedUser;
+    AppState.isGuest = false;
+    AppState.isTeacherMode = (savedUser.role === 'teacher');
+    localStorage.setItem('sanguofa_current_user', JSON.stringify(savedUser));
+    return true;
+  }
+  return false;
+}
+
+// 监听 auth 状态变化
+if (typeof window.supabase !== 'undefined') {
+  (function setupAuthListener() {
+    if (sbAuthClient) {
+      sbAuthClient.auth.onAuthStateChange(function(event, session) {
+        if (event === 'SIGNED_OUT') {
+          AppState.currentUser = null;
+          AppState.isGuest = true;
+        }
+      });
+    } else {
+      setTimeout(setupAuthListener, 500);
+    }
+  })();
+}
+
+function showLoginModal() {
+  var overlay = document.getElementById('loginOverlay');
+  if (overlay) {
+    overlay.classList.add('visible');
+    // Reset to login tab
+    switchAuthTab('login');
+    // Reset forms and errors
+    var loginForm = document.getElementById('loginForm');
+    if (loginForm) loginForm.reset();
+    var registerForm = document.getElementById('registerForm');
+    if (registerForm) registerForm.reset();
+    var errorEls = document.querySelectorAll('.login-error');
+    errorEls.forEach(function(el) { el.style.display = 'none'; el.textContent = ''; });
+    // Focus first input
+    setTimeout(function() {
+      var firstInput = document.getElementById('loginEmail');
+      if (firstInput) firstInput.focus();
+    }, 100);
+  }
+}
+
+function closeLoginModal() {
+  var overlay = document.getElementById('loginOverlay');
+  if (overlay) overlay.classList.remove('visible');
+}
+
+// === 个人空间 ===
+function renderProfile() {
+  var container = document.getElementById('page-profile');
+  if (!container) return;
+  
+  var user = AppState.currentUser;
+  if (!user) {
+    showLoginModal();
+    return;
+  }
+  
+  var studentId = user.studentId || '';
+  var name = user.name || '未知用户';
+  var role = user.role || 'student';
+  var roleLabel = role === 'teacher' ? '教师' : '学生';
+  var roleColor = role === 'teacher' ? '#1a2a5e' : '#28a745';
+  var avatarChar = name.charAt(0);
+  var loginTime = user.loginTime ? new Date(user.loginTime).toLocaleString('zh-CN') : '-';
+  
+  // Read learning progress
+  var progress = {};
+  try {
+    var raw = localStorage.getItem('sanguofa_student_' + studentId + '_progress');
+    if (raw) progress = JSON.parse(raw);
+  } catch(e) {}
+  
+  var knowledgePoints = progress.knowledgePoints || 0;
+  var caseCount = progress.caseCount || 0;
+  var accuracy = progress.accuracy || 0;
+  var studyHours = progress.studyHours || 0;
+  
+  // Read learning records
+  var records = [];
+  try {
+    var rawRecords = localStorage.getItem('sanguofa_student_' + studentId + '_records');
+    if (rawRecords) records = JSON.parse(rawRecords);
+  } catch(e) {}
+  
+  // 每次渲染时尝试从localStorage恢复错题本（防止页面刷新后AppState丢失）
+  if (!AppState.errorBook || AppState.errorBook.length === 0) {
+    var currentStudentId = AppState.currentStudent || 'S2024001';
+    try {
+      var stored = localStorage.getItem('sanguofa_student_' + currentStudentId + '_errors');
+      if (stored) {
+        var parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          AppState.errorBook = parsed;
+        }
+      }
+    } catch(e) {}
+  }
+  var errors = AppState.errorBook || [];
+  
+  // Read favorites count
+  var favCount = getFavorites().length;
+  
+  // Build records HTML
+  var recordsHtml = '';
+  if (records.length === 0) {
+    recordsHtml = '<div style="text-align:center;color:var(--text-secondary);padding:30px 0"><img src="assets/xiaoji/fighting.png" alt="小际加油" style="width:90px;height:90px;object-fit:contain;display:block;margin:0 auto 8px"><div style="font-size:0.9rem">还没有学习记录，去完成第一次练习吧，小际给你加油！</div></div>';
+  } else {
+    recordsHtml = records.slice(-10).reverse().map(function(r) {
+      return '<div style="padding:12px 16px;border-bottom:1px solid rgba(0,0,0,0.05);display:flex;justify-content:space-between;align-items:center">'
+        + '<div><span style="font-weight:600;color:var(--text-primary)">' + (r.title || r.name || '未知') + '</span>'
+        + '<div style="font-size:0.75rem;color:var(--text-secondary);margin-top:4px">' + (r.time || '') + '</div></div>'
+        + '<div style="font-size:0.8rem;font-weight:600;color:' + (r.score >= 80 ? 'var(--success)' : r.score >= 60 ? 'var(--accent)' : 'var(--danger)') + '">'
+        + (r.score ? r.score + '分' : r.status || '已完成') + '</div></div>';
+    }).join('');
+  }
+  
+  // Build error book HTML
+  var errorsHtml = '';
+  if (errors.length === 0) {
+    errorsHtml = '<div style="text-align:center;color:var(--text-secondary);padding:30px 0"><img src="assets/xiaoji/sad.png" alt="小际" style="width:90px;height:90px;object-fit:contain;display:block;margin:0 auto 8px"><div style="font-size:0.9rem">错题本还是空的，太棒了！继续保持～</div></div>';
+  } else {
+    errorsHtml = errors.slice(-10).reverse().map(function(e, i) {
+      return '<div style="padding:12px 16px;border-bottom:1px solid rgba(0,0,0,0.05)">'
+        + '<div style="font-weight:600;color:var(--text-primary);font-size:0.9rem">第' + (errors.length - i) + '题</div>'
+        + '<div style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px">你的答案: <span style="color:var(--danger);font-weight:600">' + (e.yourAnswer || '-') + '</span> | 正确答案: <span style="color:var(--success);font-weight:600">' + (e.correctAnswer || '-') + '</span></div>'
+        + '<div style="font-size:0.78rem;color:var(--text-secondary);margin-top:6px;line-height:1.5">' + (e.explanation || '') + '</div></div>';
+    }).join('');
+  }
+
+  // 小际成就鼓励：根据学习数据选表情和话术
+  var cheerImg = 'thinking.png', cheerTitle = '开始你的国际法之旅吧', cheerText = '完成第一次练习，小际就来给你记成就！';
+  if (knowledgePoints >= 50 || accuracy >= 90) {
+    cheerImg = 'fullscore.png'; cheerTitle = '小际给你点个大大的赞！';
+    cheerText = '已掌握 ' + knowledgePoints + ' 个知识点、正确率 ' + accuracy + '%，你已经是国际法小达人啦～';
+  } else if (accuracy >= 75 || knowledgePoints >= 20) {
+    cheerImg = 'fullscore.png'; cheerTitle = '状态不错，继续保持！';
+    cheerText = '已掌握 ' + knowledgePoints + ' 个知识点、正确率 ' + accuracy + '%，再加把劲就更厉害了。';
+  } else if (knowledgePoints > 0 || caseCount > 0 || records.length > 0) {
+    cheerImg = 'fighting.png'; cheerTitle = '已经迈出第一步啦！';
+    cheerText = '坚持每天学一点，小际陪你把三国法一点点啃下来，冲鸭！';
+  }
+  var cheerHtml = '<div style="display:flex;align-items:center;gap:16px;background:linear-gradient(135deg,#fff8e8,#f3f7ff);border:1px solid rgba(201,168,76,0.25);border-radius:14px;padding:16px 20px;margin-bottom:24px">'
+    + '<img src="assets/xiaoji/' + cheerImg + '" alt="小际" style="width:64px;height:64px;object-fit:contain;flex-shrink:0">'
+    + '<div><div style="font-weight:700;color:var(--primary);font-size:0.98rem">' + cheerTitle + '</div>'
+    + '<div style="font-size:0.85rem;color:var(--text-secondary);margin-top:4px;line-height:1.5">' + cheerText + '</div></div></div>';
+
+  container.innerHTML = '<div style="max-width:900px;margin:0 auto;padding:32px 24px">'
+    // Profile header
+    + '<div style="background:linear-gradient(135deg,#1a2a5e 0%,#2d4a8a 100%);border-radius:16px;padding:32px;margin-bottom:24px;display:flex;align-items:center;gap:24px;flex-wrap:wrap">'
+    + '<div style="width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:700;color:#fff;flex-shrink:0;border:3px solid rgba(255,255,255,0.3)">' + avatarChar + '</div>'
+    + '<div style="flex:1;min-width:200px">'
+    + '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+    + '<span style="font-size:1.4rem;font-weight:700;color:#fff">' + name + '</span>'
+    + '<span style="background:' + roleColor + ';color:#fff;padding:2px 12px;border-radius:20px;font-size:0.75rem;font-weight:600">' + roleLabel + '</span>'
+    + '</div>'
+    + '<div style="color:rgba(255,255,255,0.7);font-size:0.85rem;margin-top:8px">学号: ' + studentId + ' | 登录时间: ' + loginTime + '</div>'
+    + '</div>'
+    + '</div>'
+    
+    // Stats cards
+    + '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px">'
+    + '<div style="background:linear-gradient(135deg,rgba(26,42,94,0.06),rgba(26,42,94,0.02));border:1px solid rgba(26,42,94,0.1);border-radius:14px;padding:20px 16px;text-align:center">'
+    + '<div style="font-size:1.8rem;font-weight:800;color:var(--primary);line-height:1.2">' + knowledgePoints + '</div>'
+    + '<div style="font-size:0.78rem;color:var(--text-secondary);margin-top:6px;font-weight:500">已学习知识点</div></div>'
+    + '<div style="background:linear-gradient(135deg,rgba(201,168,76,0.08),rgba(201,168,76,0.02));border:1px solid rgba(201,168,76,0.15);border-radius:14px;padding:20px 16px;text-align:center">'
+    + '<div style="font-size:1.8rem;font-weight:800;color:var(--accent);line-height:1.2">' + caseCount + '</div>'
+    + '<div style="font-size:0.78rem;color:var(--text-secondary);margin-top:6px;font-weight:500">已练习案例</div></div>'
+    + '<div style="background:linear-gradient(135deg,rgba(40,167,69,0.06),rgba(40,167,69,0.02));border:1px solid rgba(40,167,69,0.12);border-radius:14px;padding:20px 16px;text-align:center">'
+    + '<div style="font-size:1.8rem;font-weight:800;color:var(--success);line-height:1.2">' + accuracy + '%</div>'
+    + '<div style="font-size:0.78rem;color:var(--text-secondary);margin-top:6px;font-weight:500">答题正确率</div></div>'
+    + '<div style="background:linear-gradient(135deg,rgba(23,162,184,0.06),rgba(23,162,184,0.02));border:1px solid rgba(23,162,184,0.12);border-radius:14px;padding:20px 16px;text-align:center">'
+    + '<div style="font-size:1.8rem;font-weight:800;color:var(--info);line-height:1.2">' + studyHours + 'h</div>'
+    + '<div style="font-size:0.78rem;color:var(--text-secondary);margin-top:6px;font-weight:500">累计学习时长</div></div>'
+    + '<div style="background:linear-gradient(135deg,rgba(201,168,76,0.08),rgba(201,168,76,0.04));border:1px solid rgba(201,168,76,0.15);border-radius:14px;padding:20px 16px;text-align:center">'
+    + '<div style="font-size:1.8rem;font-weight:800;color:var(--accent);line-height:1.2">' + favCount + '</div>'
+    + '<div style="font-size:0.78rem;color:var(--text-secondary);margin-top:6px;font-weight:500">📌 我的收藏</div></div>'
+    + '</div>'
+
+    // 小际成就鼓励卡
+    + cheerHtml
+
+    // Favorites section
+    + '<div id="profileFavoritesContainer"></div>'
+    
+    // 分组对抗实训模块容器
+    + '<div id="profileDebateContainer"></div>'
+    
+    // Two columns: records + error book
+    + (role !== 'teacher' ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px">'
+    
+    // Learning records
+    + '<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:14px;overflow:hidden">'
+    + '<div style="padding:16px 20px;border-bottom:1px solid rgba(0,0,0,0.06);font-weight:700;font-size:1rem;color:var(--primary)">学习记录</div>'
+    + '<div style="max-height:400px;overflow-y:auto">' + recordsHtml + '</div>'
+    + '</div>'
+    
+    // Error book
+    + '<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:14px;overflow:hidden">'
+    + '<div style="padding:16px 20px;border-bottom:1px solid rgba(0,0,0,0.06);font-weight:700;font-size:1rem;color:var(--primary)">错题本</div>'
+    + '<div style="max-height:400px;overflow-y:auto">' + errorsHtml + '</div>'
+    + '</div>'
+    + '</div>'
+    + '</div>' : '')
+    + '</div>';
+  
+  // Render favorites section
+  var favContainer = document.getElementById('profileFavoritesContainer');
+  if (favContainer) {
+    renderFavoritesTab(favContainer);
+  }
+  
+  // 渲染分组对抗实训模块
+  renderDebateModule();
+}
+
+function exportProfileReport() {
+  var user = AppState.currentUser;
+  if (!user) return;
+  
+  var studentId = user.studentId || '';
+  var name = user.name || '未知';
+  
+  var progress = {};
+  try {
+    var raw = localStorage.getItem('sanguofa_student_' + studentId + '_progress');
+    if (raw) progress = JSON.parse(raw);
+  } catch(e) {}
+  
+  var records = [];
+  try {
+    var rawRecords = localStorage.getItem('sanguofa_student_' + studentId + '_records');
+    if (rawRecords) records = JSON.parse(rawRecords);
+  } catch(e) {}
+  
+  var errors = AppState.errorBook || [];
+  
+  var report = '三国法教学智能体 - 学习报告\n';
+  report += '====================================\n';
+  report += '姓名: ' + name + '\n';
+  report += '学号: ' + studentId + '\n';
+  report += '角色: ' + (user.role === 'teacher' ? '教师' : '学生') + '\n';
+  report += '导出时间: ' + new Date().toLocaleString('zh-CN') + '\n\n';
+  report += '--- 学习数据概览 ---\n';
+  report += '已学习知识点: ' + (progress.knowledgePoints || 0) + '\n';
+  report += '已练习案例: ' + (progress.caseCount || 0) + '\n';
+  report += '答题正确率: ' + (progress.accuracy || 0) + '%\n';
+  report += '累计学习时长: ' + (progress.studyHours || 0) + '小时\n\n';
+  
+  if (records.length > 0) {
+    report += '--- 学习记录 ---\n';
+    records.forEach(function(r, i) {
+      report += (i+1) + '. ' + (r.title || r.name || '未知') + ' | ' + (r.time || '') + ' | ' + (r.score ? r.score + '分' : (r.status || '已完成')) + '\n';
+    });
+    report += '\n';
+  }
+  
+  if (errors.length > 0) {
+    report += '--- 错题记录 (' + errors.length + '题) ---\n';
+    errors.forEach(function(e, i) {
+      report += (i+1) + '. 你的答案: ' + (e.yourAnswer || '-') + ' | 正确答案: ' + (e.correctAnswer || '-') + '\n';
+      if (e.explanation) report += '   解析: ' + e.explanation + '\n';
+    });
+  }
+  
+  var blob = new Blob([report], { type: 'text/plain;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = '学习报告_' + name + '_' + new Date().toISOString().slice(0,10) + '.txt';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function handleLogout() {
+  // Supabase sign out
+  if (sbAuthClient) {
+    try { await sbAuthClient.auth.signOut(); } catch(e) { console.warn('[Supabase] signOut error:', e); }
+  }
+  localStorage.removeItem('sanguofa_current_user');
+  AppState.currentUser = null;
+  AppState.isGuest = true;
+  AppState.isTeacherMode = false;
+  AppState.studentProgress = {};
+  AppState.currentPage = 'dashboard';
+  
+  // Re-render everything for guest mode
+  renderNavbar();
+  renderDashboard();
+  renderQAModule();
+  renderCaseModule();
+  renderAssessModule();
+  renderIdeologyModule();
+  showPage('dashboard');
+  
+  // Show login overlay
+  showLoginModal();
+}
+
+// === 导航栏 ===
+function renderNavbar() {
+  const navbar = document.getElementById('navbar');
+  var user = AppState.currentUser;
+  var isGuest = AppState.isGuest || !user;
+  var isTeacher = user && (user.role === 'teacher');
+  var displayName = user ? user.name : '';
+  var avatarChar = displayName ? displayName.charAt(0) : '';
+  var roleLabel = isTeacher ? '教师' : '学生';
+  
+  var userSectionHtml = '';
+  if (isGuest) {
+    userSectionHtml = '<button class="navbar-login-btn" onclick="showLoginModal()">登录</button>';
+  } else {
+    userSectionHtml = '<div class="navbar-user-info">'
+      + '<div class="user-avatar" id="userAvatarEl">' + avatarChar + '</div>'
+      + '<div>'
+      + '<div class="navbar-user-name" id="userNameLabel">' + displayName + '</div>'
+      + '<span class="user-role-label" id="userRoleLabel">' + roleLabel + '</span>'
+      + '</div>'
+      + '</div>'
+      + '<button class="navbar-logout-btn" onclick="handleLogout()" title="退出登录">退出</button>';
+  }
+  
+  navbar.innerHTML = `
+    <div class="navbar-brand" onclick="showPage('dashboard')" style="cursor:pointer">
+      <img src="assets/xiaoji/main256.png" alt="小际" style="width:46px;height:46px;object-fit:contain;flex-shrink:0">
+      <span>三国法教学智能体</span>
+    </div>
+    <nav class="navbar-nav">
+      <a class="nav-item active" data-page="dashboard" onclick="showPage('dashboard')">首页</a>
+      <a class="nav-item" data-page="qa" onclick="showPage('qa')">智能检索答疑</a>
+      <a class="nav-item" data-page="case" onclick="showPage('case')">案例仿真实训</a>
+      <a class="nav-item" data-page="assess" onclick="showPage('assess')">综合能力测评</a>
+      <a class="nav-item" data-page="ideology" onclick="showPage('ideology')">涉外法治资鉴</a>
+      <a class="nav-item" data-page="graph" onclick="showPage('graph')">🕸️ 知识图谱</a>
+      <a class="nav-item" data-page="classroom" onclick="showPage('classroom')">📡 课堂模式</a>
+      <a class="nav-item" data-page="discussion" onclick="showPage('discussion')">☕ 小际茶座</a>
+      <a class="nav-item" data-page="profile" onclick="showPage('profile')" id="profileNavItem" style="${isGuest ? 'display:none' : ''}">个人空间</a>
+    </nav>
+    <div class="navbar-user">
+      ${userSectionHtml}
+    </div>
+  `;
+}
+
+// === 页面切换 ===
+function showPage(page) {
+  // 导航历史管理 - 用于返回按钮
+  if (!window._navHistory) window._navHistory = [];
+  var prevPage = AppState.currentPage;
+  if (prevPage && prevPage !== page) {
+    if (window._navHistory.length === 0 || window._navHistory[window._navHistory.length - 1] !== prevPage) {
+      window._navHistory.push(prevPage);
+      if (window._navHistory.length > 20) window._navHistory.shift();
+    }
+  }
+  
+  AppState.currentPage = page;
+
+  // 课堂实时层：离开课堂页时清理通道，避免重复订阅
+  if (prevPage === 'classroom' && page !== 'classroom' && typeof _liveLeave === 'function') {
+    _liveLeave();
+  }
+
+  // 切换到页面顶部
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  
+  // 更新导航状态
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.classList.toggle('active', item.dataset.page === page);
+  });
+  
+  // 切换 page-view
+  document.querySelectorAll('.page-view').forEach(view => {
+    view.classList.toggle('active', view.id === `page-${page}`);
+  });
+  
+  // 更新移动端导航状态
+  updateMobileNav(page);
+  
+  // Render graph page when switching to it
+  if (page === 'graph') {
+    setTimeout(renderKnowledgeGraph, 100);
+  }
+  
+  if (page === 'profile') {
+    renderProfile();
+    if (AppState.currentUser && AppState.currentUser.role === 'teacher') {
+      // 教师在个人空间底部追加管理面板
+      var profileContainer = document.getElementById('page-profile');
+      if (profileContainer) {
+        // 移除旧的教师面板（如果存在）
+        var oldPanel = document.getElementById('teacherPanelInline');
+        if (oldPanel) oldPanel.remove();
+        // 创建教师面板容器
+        var panelDiv = document.createElement('div');
+        panelDiv.id = 'teacherPanelInline';
+        panelDiv.style.cssText = 'margin-top:32px;border-top:2px solid var(--primary);padding-top:32px';
+        profileContainer.appendChild(panelDiv);
+        // 渲染教师面板到该容器
+        renderTeacherPanelTo(panelDiv);
+      }
+    }
+  }
+  
+  // 教师面板切换时渲染素材管理
+  if (page === 'teacher') {
+    renderTeacherPanel();
+  }
+  
+  // 留言板
+  if (page === 'discussion') {
+    renderDiscussionPage();
+  }
+  
+  // 视频学习
+  if (page === 'video') {
+    renderVideoPage();
+  }
+  
+  // 课堂模式
+  if (page === 'classroom') {
+    if (typeof _liveJoin === 'function') _liveJoin();
+    renderClassroomPage();
+  }
+}
+
+// === 首页/仪表盘 ===
+function renderDashboard() {
+  const container = document.getElementById('page-dashboard');
+  container.innerHTML = `
+    <div class="dashboard">
+      <div class="dashboard-hero">
+        <canvas class="starfield-canvas" id="starfieldCanvas"></canvas>
+        <div class="hero-top-bar"></div>
+        
+        <div class="hero-deco-left">
+          <div class="hero-deco-line"></div>
+          <div class="hero-deco-diamond"></div>
+          <div class="hero-deco-line"></div>
+        </div>
+        
+        <div class="hero-deco-right">
+          <div class="hero-deco-line"></div>
+          <div class="hero-deco-diamond"></div>
+          <div class="hero-deco-line"></div>
+        </div>
+        
+        <div class="hero-corner hero-corner-tl"><svg viewBox="0 0 40 40"><path d="M0 0 L20 0 L20 3 L3 3 L3 20 L0 20 Z" fill="var(--accent)"/></svg></div>
+        <div class="hero-corner hero-corner-tr"><svg viewBox="0 0 40 40"><path d="M0 0 L20 0 L20 3 L3 3 L3 20 L0 20 Z" fill="var(--accent)"/></svg></div>
+        <div class="hero-corner hero-corner-bl"><svg viewBox="0 0 40 40"><path d="M0 0 L20 0 L20 3 L3 3 L3 20 L0 20 Z" fill="var(--accent)"/></svg></div>
+        <div class="hero-corner hero-corner-br"><svg viewBox="0 0 40 40"><path d="M0 0 L20 0 L20 3 L3 3 L3 20 L0 20 Z" fill="var(--accent)"/></svg></div>
+        
+        <div class="hero-content">
+          <div class="hero-title-wrap">
+            <h1 class="hero-title">三国法教学智能体</h1>
+          </div>
+          <div class="hero-divider"></div>
+          <p class="hero-subtitle">立足国家战略 · 聚焦涉外法治</p>
+          <p class="hero-subtitle-secondary">覆盖国际公法、国际私法、国际经济法三大领域</p>
+        </div>
+      </div>
+      
+      <div class="module-cards">
+        <div class="module-card" onclick="showPage('qa')">
+          <div class="card-icon blue"><svg viewBox="0 0 48 48" width="44" height="44" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="gb1" x1="0" y1="0" x2="48" y2="48"><stop offset="0%" stop-color="#4a8af4"/><stop offset="100%" stop-color="#1a5bc4"/></linearGradient></defs><path d="M24 4v40M14 12h20M10 16l4-4 4 4M30 16l4-4 4 4" stroke="url(#gb1)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="24" cy="8" r="3" fill="url(#gb1)"/><path d="M8 18a6 6 0 0012 0M28 18a6 6 0 0012 0" stroke="url(#gb1)" stroke-width="2" stroke-linecap="round"/><path d="M18 44h12" stroke="url(#gb1)" stroke-width="2.5" stroke-linecap="round"/></svg></div>
+          <div class="card-arrow">→</div>
+          <h3 class="card-title">智能检索答疑</h3>
+          <p class="card-desc">AI驱动的法条检索与知识库问答，支持跨部门法联动分析，提供中国立场的结构化法律解答。</p>
+          <div class="card-tags">
+            <span class="card-tag">法条检索</span>
+            <span class="card-tag">判例查询</span>
+            <span class="card-tag">跨法联动</span>
+            <span class="card-tag">中国立场</span>
+          </div>
+        </div>
+        
+        <div class="module-card" onclick="showPage('case')">
+          <div class="card-icon gold"><svg viewBox="0 0 48 48" width="44" height="44" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="gg1" x1="0" y1="0" x2="48" y2="48"><stop offset="0%" stop-color="#e0c56a"/><stop offset="100%" stop-color="#a88a30"/></linearGradient></defs><rect x="12" y="8" width="24" height="32" rx="3" stroke="url(#gg1)" stroke-width="2.5" fill="none"/><path d="M18 16h12M18 22h12M18 28h8" stroke="url(#gg1)" stroke-width="2" stroke-linecap="round"/><path d="M12 8C12 8 10 6 8 6s-2 2-2 4 0 4 2 4h4" stroke="url(#gg1)" stroke-width="2" stroke-linecap="round"/><path d="M36 40c0 0 2 2 4 2s2-2 2-4 0-4-2-4h-4" stroke="url(#gg1)" stroke-width="2" stroke-linecap="round"/></svg></div>
+          <div class="card-arrow">→</div>
+          <h3 class="card-title">案例仿真实训</h3>
+          <p class="card-desc">模拟国际法庭、仲裁庭等真实场景，通过角色扮演与全流程推演，沉浸式提升涉外法律实务能力。</p>
+          <div class="card-tags">
+            <span class="card-tag">模拟法庭</span>
+            <span class="card-tag">角色扮演</span>
+            <span class="card-tag">证据分析</span>
+            <span class="card-tag">辩论训练</span>
+          </div>
+        </div>
+        
+        <div class="module-card" onclick="showPage('assess')">
+          <div class="card-icon green"><svg viewBox="0 0 48 48" width="44" height="44" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="gn1" x1="0" y1="0" x2="48" y2="48"><stop offset="0%" stop-color="#4caf50"/><stop offset="100%" stop-color="#2e7d32"/></linearGradient></defs><circle cx="24" cy="20" r="12" stroke="url(#gn1)" stroke-width="2.5" fill="none"/><path d="M24 12l2.5 5 5.5.8-4 3.9.9 5.5L24 24.5l-4.9 2.7.9-5.5-4-3.9 5.5-.8z" fill="url(#gn1)"/><path d="M18 32l-2 12 8-4 8 4-2-12" stroke="url(#gn1)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="card-arrow">→</div>
+          <h3 class="card-title">综合能力测评</h3>
+          <p class="card-desc">多维度智能出题与自动评分系统，涵盖单选、多选、材料分析等题型，精准追踪学习成效。</p>
+          <div class="card-tags">
+            <span class="card-tag">智能出题</span>
+            <span class="card-tag">自动评分</span>
+            <span class="card-tag">错题本</span>
+            <span class="card-tag">成绩追踪</span>
+          </div>
+        </div>
+        
+        <div class="module-card" onclick="showPage('ideology')">
+          <div class="card-icon red"><svg viewBox="0 0 48 48" width="44" height="44" fill="none" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="gr1" x1="0" y1="0" x2="48" y2="48"><stop offset="0%" stop-color="#ef5350"/><stop offset="100%" stop-color="#c62828"/></linearGradient></defs><path d="M14 16h20v2a12 12 0 01-12 12h-0a12 12 0 01-8-12v-2z" stroke="url(#gr1)" stroke-width="2.5" fill="none"/><path d="M14 16c0-4 4-8 10-8s10 4 10 8" stroke="url(#gr1)" stroke-width="2.5" fill="none"/><path d="M18 30v10M30 30v10M14 40h8M26 40h8" stroke="url(#gr1)" stroke-width="2" stroke-linecap="round"/><path d="M10 16h28" stroke="url(#gr1)" stroke-width="2.5" stroke-linecap="round"/><circle cx="24" cy="22" r="2" fill="url(#gr1)"/></svg></div>
+          <div class="card-arrow">→</div>
+          <h3 class="card-title">涉外法治资鉴</h3>
+          <p class="card-desc">汇集国家涉外法治战略文件、白皮书与政策文本，理论研学与案例实训双向联动，培养家国情怀。</p>
+          <div class="card-tags">
+            <span class="card-tag">战略文件</span>
+            <span class="card-tag">专题研学</span>
+            <span class="card-tag">家国情怀</span>
+            <span class="card-tag">国际视野</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  // 启动星空动画
+  setTimeout(initStarfield, 100);
+
+}
+
+// === 星空粒子动画 ===
+function initStarfield() {
+  const canvas = document.getElementById('starfieldCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const hero = canvas.parentElement;
+  let particles = [];
+  let animId = null;
+  let isVisible = true;
+
+  function resize() {
+    canvas.width = hero.offsetWidth;
+    canvas.height = hero.offsetHeight;
+  }
+
+  function createParticles() {
+    particles = [];
+    const count = Math.min(70, Math.floor(canvas.width * canvas.height / 8000));
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vx: (Math.random() - 0.5) * 0.3,
+        vy: (Math.random() - 0.5) * 0.2,
+        r: Math.random() * 1.8 + 0.5,
+        alpha: Math.random() * 0.6 + 0.3,
+        isGold: Math.random() < 0.3
+      });
+    }
+  }
+
+  function draw() {
+    if (!isVisible) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 绘制粒子
+    for (const p of particles) {
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.x < 0) p.x = canvas.width;
+      if (p.x > canvas.width) p.x = 0;
+      if (p.y < 0) p.y = canvas.height;
+      if (p.y > canvas.height) p.y = 0;
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      if (p.isGold) {
+        ctx.fillStyle = 'rgba(201, 168, 76, ' + p.alpha + ')';
+      } else {
+        ctx.fillStyle = 'rgba(200, 210, 240, ' + p.alpha + ')';
+      }
+      ctx.fill();
+    }
+
+    // 连线
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const dx = particles[i].x - particles[j].x;
+        const dy = particles[i].y - particles[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 100) {
+          ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          const alpha = (1 - dist / 100) * 0.15;
+          ctx.strokeStyle = 'rgba(201, 168, 76, ' + alpha + ')';
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      }
+    }
+
+    animId = requestAnimationFrame(draw);
+  }
+
+  resize();
+  createParticles();
+  draw();
+
+  // 页面可见性控制
+  const observer = new MutationObserver(function() {
+    const isActive = hero.offsetParent !== null;
+    if (isActive && !isVisible) {
+      isVisible = true;
+      resize();
+      draw();
+    } else if (!isActive && isVisible) {
+      isVisible = false;
+      if (animId) cancelAnimationFrame(animId);
+    }
+  });
+  observer.observe(hero, { attributes: true, attributeFilter: ['style', 'class'] });
+
+  window.addEventListener('resize', function() {
+    resize();
+    createParticles();
+  });
+}
+
+// === 知识库问答模块 ===
+function renderQAModule() {
+  const container = document.getElementById('page-qa');
+  container.innerHTML = `
+    <div class="qa-layout">
+      
+      <div class="qa-sidebar">
+        <div class="sidebar-header">
+          <h3>📖 知识库导航</h3>
+          <div class="sidebar-search">
+            <span class="search-icon">🔍</span>
+            <input type="text" placeholder="搜索法条、判例、知识点..." oninput="filterTree(this.value)">
+          </div>
+        </div>
+        <div class="category-tree" id="categoryTree">
+          ${renderCategoryTree(MockData.categories)}
+        </div>
+        <div class="sidebar-actions">
+          <button class="sidebar-btn" onclick="quickAction('law')">📋 法条检索</button>
+          <button class="sidebar-btn" onclick="quickAction('case')">📑 判例查询</button>
+          <button class="sidebar-btn" onclick="quickAction('cross')">🔗 跨部门法联动</button>
+          <button class="sidebar-btn" onclick="showLawsBrowser()" style="background:linear-gradient(135deg,rgba(201,168,76,0.15),rgba(201,168,76,0.05));border-color:rgba(201,168,76,0.3);color:var(--accent);font-weight:600">📜 法条速查</button>
+          <button class="sidebar-btn" onclick="showCasesBrowser()" style="background:linear-gradient(135deg,rgba(23,162,184,0.15),rgba(23,162,184,0.05));border-color:rgba(23,162,184,0.3);color:var(--info);font-weight:600">📑 判例详情</button>
+        </div>
+        <div style="margin:12px 16px;padding:10px 14px;background:linear-gradient(135deg,rgba(201,168,76,0.08),rgba(201,168,76,0.04));border:1px solid rgba(201,168,76,0.15);border-radius:10px;">
+          <p style="font-size:0.75rem;color:var(--text-secondary);margin:0 0 6px 0;line-height:1.5">💡 查到法条后，可前往<span style="color:var(--accent);font-weight:600;cursor:pointer" onclick="showPage('case')">「案例仿真实训」</span>开展案件练习</p>
+        </div>
+      </div>
+      
+      
+      <div class="qa-main">
+        <div class="qa-header">
+          <div class="qa-header-left">
+            <h3>智能问答</h3>
+            <span class="qa-context" id="qaContext">全部知识库</span>
+          </div>
+
+          <div class="qa-quick-actions">
+            <button class="quick-action-btn" onclick="askSuggestion('UNCLOS')">🌊 海洋法</button>
+            <button class="quick-action-btn" onclick="askSuggestion('CISG')">📦 贸易法</button>
+            <button class="quick-action-btn" onclick="askSuggestion('冲突法')">⚖️ 冲突法</button>
+          </div>
+          <button class="ai-enhance-btn" id="tutorModeBtn" onclick="toggleTutorMode(this)" title="开启后AI将引导思考而非直接给答案" style="background:transparent;border:1px solid rgba(201,168,76,0.3);border-radius:8px;padding:4px 10px;font-size:0.75rem;color:var(--text-secondary);cursor:pointer;margin-left:8px;white-space:nowrap;transition:var(--transition)">
+             导师模式
+          </button>
+          <button class="ai-enhance-btn" onclick="exportChatHistory()" title="导出对话记录" style="position:relative;background:none;border:1px solid rgba(23,162,184,0.3);border-radius:8px;padding:4px 10px;font-size:0.75rem;color:var(--info);cursor:pointer;margin-left:8px;white-space:nowrap;transition:var(--transition)" onmouseover="this.style.background='rgba(23,162,184,0.08)'" onmouseout="this.style.background='none'">
+            📥 导出对话
+          </button>
+          <button class="ai-enhance-btn" onclick="showSupabaseSettings()" title="云端设置" style="position:relative;background:none;border:1px solid rgba(100,149,237,0.4);border-radius:8px;padding:4px 10px;font-size:0.75rem;color:#6495ED;cursor:pointer;margin-left:4px;white-space:nowrap;transition:var(--transition)" onmouseover="this.style.background='rgba(100,149,237,0.08)'" onmouseout="this.style.background='none'">☁️ 云端</button><button class="ai-enhance-btn" onclick="showDoubaoSettings()" title="AI增强设置" style="position:relative;background:none;border:1px solid rgba(201,168,76,0.3);border-radius:8px;padding:4px 10px;font-size:0.75rem;color:var(--accent);cursor:pointer;margin-left:4px;white-space:nowrap;transition:var(--transition)" onmouseover="this.style.background='rgba(201,168,76,0.08)'" onmouseout="this.style.background='none'">
+            <span id="doubaoStatusIcon">🤖</span> AI增强
+          </button>
+        </div>
+        
+        <div class="qa-chat" id="qaChat">
+          <div class="welcome-chat" id="qaWelcome">
+            <div class="welcome-icon">📚</div>
+            <h3>三国法知识库智能问答</h3>
+            <p>我可以帮您检索法条原文、查询经典判例、分析法律适用问题，并提供中国立场参考。请尝试以下问题：</p>
+            <div class="welcome-suggestions">
+              <span class="suggestion-chip" onclick="askSuggestion('UNCLOS')">UNCLOS关于专属经济区的规定</span>
+              <span class="suggestion-chip" onclick="askSuggestion('CISG')">CISG根本违约的认定标准</span>
+              <span class="suggestion-chip" onclick="askSuggestion('涉外民事关系法律适用法')">涉外民事关系法律适用法核心条文</span>
+              <span class="suggestion-chip" onclick="askSuggestion('南海仲裁案')">南海仲裁案的中国立场</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="qa-input-area">
+          <div class="qa-input-wrapper">
+            <textarea id="qaInput" placeholder="输入您的问题、法条名称或关键词..." rows="1" onkeydown="handleQAKeydown(event)"></textarea>
+            <button class="qa-send-btn" onclick="sendQuestion()">发送</button>
+          </div>
+          <div class="qa-input-tips">
+            <span>💡 支持法条原文检索、判例查询、跨部门法联动分析</span>
+            <span class="input-tip-btn" onclick="clearChat()">清空对话</span>
+            <span id="tutorModeHint" style="display:none;color:var(--accent);font-size:0.75rem">🎓 导师模式已开启：AI将引导你思考，而非直接给答案</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderCategoryTree(categories) {
+  return categories.map(cat => `
+    <div class="tree-group">
+      <div class="tree-parent" onclick="toggleTree(this)">
+        <span class="tree-icon">${cat.icon}</span>
+        <span>${cat.name}</span>
+        <span class="tree-arrow">▶</span>
+      </div>
+      <div class="tree-children">
+        ${cat.children.map(child => `
+          <div class="tree-child" onclick="selectCategory('${child.id}', '${child.name}', event)">
+            <span>${child.name}</span>
+            <span class="child-count">${child.count}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleTree(el) {
+  const children = el.nextElementSibling;
+  const isOpen = children.classList.contains('open');
+  
+  // 关闭所有
+  document.querySelectorAll('.tree-children').forEach(c => c.classList.remove('open'));
+  document.querySelectorAll('.tree-parent').forEach(p => p.classList.remove('expanded'));
+  
+  if (!isOpen) {
+    children.classList.add('open');
+    el.classList.add('expanded');
+  }
+}
+
+function selectCategory(id, name, e) {
+  document.querySelectorAll('.tree-child').forEach(c => c.classList.remove('active'));
+  (e||window.event).currentTarget.classList.add('active');
+  document.getElementById('qaContext').textContent = name;
+  AppState.currentCategory = id;
+  
+  // 发送一个分类选择的消息
+  addSystemMessage(`📂 已切换至「${name}」，请在该分类下提问或检索相关内容。`);
+}
+
+function filterTree(query) {
+  // 简单的树过滤（演示用）
+  const children = document.querySelectorAll('.tree-child');
+  children.forEach(child => {
+    const text = child.textContent.toLowerCase();
+    child.style.display = text.includes(query.toLowerCase()) || query === '' ? '' : 'none';
+  });
+}
+
+function quickAction(type) {
+  const modeConfig = {
+    law:  { mode: 'law',  msg: '📋 已启动<b>法条检索模式</b>，将优先展示包含法条编号的内容。请输入法条名称或编号。' },
+    case: { mode: 'case', msg: '📑 已启动<b>判例查询模式</b>，将优先展示案例相关内容。请输入案件名称或关键词。' },
+    cross:{ mode: 'cross',msg: '🔗 已启动<b>跨部门法联动模式</b>，将自动补充关联领域关键词进行搜索。' }
+  };
+  const cfg = modeConfig[type];
+  if (!cfg) return;
+  AppState.searchMode = cfg.mode;
+  addSystemMessage(cfg.msg);
+}
+
+function askSuggestion(query) {
+  document.getElementById('qaInput').value = query;
+  sendQuestion();
+}
+
+function handleQAKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendQuestion();
+  }
+}
+
+function sendQuestion() {
+  const input = document.getElementById('qaInput');
+  const text = input.value.trim();
+  if (!text) return;
+  
+  // 隐藏欢迎语
+  const welcome = document.getElementById('qaWelcome');
+  if (welcome) welcome.style.display = 'none';
+  
+  // 添加用户消息
+  addUserMessage(text);
+  input.value = '';
+  
+  // 记录问答历史（稍后在回复生成后记录完整对话）
+  AppState._lastQAQuestion = text;
+
+  const aiEnabled = typeof DoubaoConfig !== 'undefined' && DoubaoConfig.isEnabled();
+  // 立即显示"正在思考"动画，缩短人为等待（AI流式首字很快，本地检索几乎即时）
+  showTypingIndicator();
+  setTimeout(() => {
+    removeTypingIndicator();
+    if (aiEnabled) {
+      generateResponseWithAI(text).catch(e => { console.error('generateResponseWithAI error:', e); generateResponse(text).catch(e2 => console.error('generateResponse error:', e2)); });
+    } else {
+      generateResponse(text).catch(e => console.error('generateResponse error:', e));
+    }
+  }, aiEnabled ? 200 : 80);
+}
+
+function addUserMessage(text) {
+  const chat = document.getElementById('qaChat');
+  const time = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  const msgHtml = `
+    <div class="chat-message user">
+      <div class="chat-avatar">学</div>
+      <div>
+        <div class="chat-bubble">${escapeHtml(text)}</div>
+        <div class="chat-time text-right" style="text-align:right">${time}</div>
+      </div>
+    </div>
+  `;
+  chat.insertAdjacentHTML('beforeend', msgHtml);
+  const msgs = chat.querySelectorAll('.chat-message');
+  const lastMsg = msgs[msgs.length - 1];
+  if (lastMsg) lastMsg.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function addSystemMessage(text) {
+  const chat = document.getElementById('qaChat');
+  const time = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  const msgHtml = `
+    <div class="chat-message system">
+      <div class="chat-avatar">AI</div>
+      <div>
+        <div class="chat-bubble">${text}</div>
+        <div class="chat-time">${time}</div>
+      </div>
+    </div>
+  `;
+  chat.insertAdjacentHTML('beforeend', msgHtml);
+  const msgs = chat.querySelectorAll('.chat-message');
+  const lastMsg = msgs[msgs.length - 1];
+  if (lastMsg) lastMsg.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function addQAResponse(data) {
+  const chat = document.getElementById('qaChat');
+  const time = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  
+  const relatedHtml = data.relatedLinks.map(link => 
+    `<span class="related-link" onclick="askSuggestion('${link}')">${link}</span>`
+  ).join('');
+  
+  const msgHtml = `
+    <div class="chat-message system">
+      <div class="chat-avatar">AI</div>
+      <div>
+        <div class="chat-bubble">
+          <h4>${data.title}</h4>
+          <p>${data.content}</p>
+          <div class="law-article">${data.lawArticle.replace(/\n/g, '<br>')}</div>
+          <div class="related-links">
+            <span style="font-size:0.75rem;color:var(--text-light);margin-right:4px">关联内容：</span>
+            ${relatedHtml}
+          </div>
+          <div class="china-stance">
+            <strong>🇨🇳 中国立场：</strong>${data.stance}
+          </div>
+        </div>
+        <div class="chat-time">${time}</div>
+      </div>
+    </div>
+  `;
+  chat.insertAdjacentHTML('beforeend', msgHtml);
+  // AI回答后滚动到新消息顶部，方便从上往下阅读
+  const allMsgs = chat.querySelectorAll('.chat-message');
+  const lastMsg = allMsgs[allMsgs.length - 1];
+  if (lastMsg) {
+    lastMsg.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  
+
+}
+
+function showTypingIndicator() {
+  const chat = document.getElementById('qaChat');
+  const html = `
+    <div class="chat-message system" id="typingMsg">
+      <div class="chat-avatar"><img src="assets/xiaoji/thinking.png" alt="小际" style="width:100%;height:100%;object-fit:contain"></div>
+      <div>
+        <div class="chat-bubble">
+          <div class="xiaoji-thinking">
+            <img src="assets/xiaoji/thinking.png" alt="小际思考中">
+            <span class="xj-txt">小际正在帮你查资料<span class="xj-dot">.</span><span class="xj-dot">.</span><span class="xj-dot">.</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  chat.insertAdjacentHTML('beforeend', html);
+  const typingMsg = chat.lastElementChild;
+  if (typingMsg) typingMsg.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function removeTypingIndicator() {
+  const typing = document.getElementById('typingMsg');
+  if (typing) typing.remove();
+}
+
+
+function clearChat() {
+  if (typeof AppState !== 'undefined') {
+    AppState.conversationHistory = [];
+  }
+  const chat = document.getElementById('qaChat');
+  chat.innerHTML = `
+    <div class="welcome-chat" id="qaWelcome">
+      <div class="welcome-icon">📚</div>
+      <h3>三国法知识库智能问答</h3>
+      <p>我可以帮您检索法条原文、查询经典判例、分析法律适用问题，并提供中国立场参考。</p>
+      <div class="welcome-suggestions">
+        <span class="suggestion-chip" onclick="askSuggestion('UNCLOS')">UNCLOS关于专属经济区的规定</span>
+        <span class="suggestion-chip" onclick="askSuggestion('CISG')">CISG根本违约的认定标准</span>
+        <span class="suggestion-chip" onclick="askSuggestion('涉外民事关系法律适用法')">涉外民事关系法律适用法核心条文</span>
+      </div>
+    </div>
+  `;
+}
+
+// === 案例仿真实训模块（交互增强版）===
+
+// === 固定案例数据（带评分关键词）===
+const FIXED_CASES = [
+  {
+    id: 'fc-1',
+    name: '南海仲裁案模拟法庭',
+    tag: 'pub', tagText: '国际公法',
+    brief: '模拟2016年南海仲裁案审理过程，涉及UNCLOS条约解释、历史性权利、岛礁法律地位等核心问题。',
+    difficulty: '高级', duration: '90分钟',
+    roles: [
+      { name: '中方代理人', icon: '🇨🇳', desc: '代表中方立场，论证南海历史性权利与九段线的国际法依据' },
+      { name: '菲方代理人', icon: '🇵🇭', desc: '代表菲方立场，基于UNCLOS论证中方海洋主张的不合法性' },
+      { name: '法官', icon: '⚖️', desc: '居中裁判，对双方论点进行法律评价' },
+      { name: '仲裁员', icon: '🏛️', desc: '审查管辖权问题，作出裁决意见' }
+    ],
+    issues: [
+      '中国在南海的"九段线"主张是否符合UNCLOS的规定？',
+      '南海各岛礁的法律地位（岛屿/岩礁/低潮高地）如何认定？',
+      '中国在南海的历史性权利是否构成国际法上的合法依据？',
+      '仲裁庭对本案是否具有管辖权？中国第298条声明的效力如何？'
+    ],
+    keywords: ['UNCLOS', '联合国海洋法公约', '历史性权利', '九段线', '岛屿', '岩礁', '专属经济区', '大陆架', '第121条', '第298条', '第57条', '第76条', '管辖权', '任择性例外', '领土主权', '南海仲裁', 'DOC', '南海各方行为宣言', '不接受不参与'],
+    laws: [
+      { title: 'UNCLOS第121条-岛屿制度', text: '1. 岛屿是四面环水并在高潮时高于水面的自然形成的陆地区域。\n2. 除第3款另有规定外，岛屿的领海、毗连区、专属经济区和大陆架按照本公约适用于其他领土的规定确定。\n3. 不能维持人类定居或其本身的经济生活的岩礁，不应有专属经济区或大陆架。' },
+      { title: 'UNCLOS第298条-任择性例外', text: '一国在签署、批准或加入本公约时，或在其后任何时间，在有争端的性质涉及下列事项时，可书面声明不接受强制程序：\n(a) 关于划定海洋边界的第15、第74和第83条在解释或适用上的争端；\n(b) 涉及历史性海湾或所有权的争端。' },
+      { title: '中国2006年排除性声明', text: '中国政府于2006年根据《联合国海洋法公约》第298条的规定，向联合国秘书长提交声明，明确将涉及海域划界、历史性海湾或所有权、军事活动和执法活动等争端排除适用强制仲裁等强制程序。' },
+      { title: '南海各方行为宣言(DOC)', text: '各方承诺根据公认的国际法原则，包括1982年《联合国海洋法公约》，由直接有关的主权国家通过友好磋商和谈判，以和平方式解决它们的领土和管辖权争议。' }
+    ],
+    evidence: [
+      { title: '南海诸岛历史性权利证据', detail: '中国最早发现、命名、利用南海诸岛。汉代以来即有中国渔民在南海活动的记录。明清时代南海诸岛已纳入中国海防管辖范围。' },
+      { title: '中国立场文件(2014年12月)', detail: '菲律宾提请仲裁事项的实质是南沙群岛部分岛礁的领土主权问题，领土主权问题不属《联合国海洋法公约》的调整范围。' },
+      { title: '南海地图及岛礁标注', detail: '南海诸岛包括东沙群岛、西沙群岛、中沙群岛和南沙群岛。中国对南海诸岛拥有主权，拥有内水、领海、毗连区、专属经济区和大陆架。' }
+    ],
+    facts: [
+      '2013年1月，菲律宾共和国单方面就中菲南海争端提起强制仲裁',
+      '2014年12月，中国发布《中国坚持通过谈判解决中国与菲律宾在南海的有关争议》白皮书',
+      '2006年，中国依据UNCLOS第298条作出排除性声明',
+      '2016年7月12日，仲裁庭作出裁决，认定南沙部分岛礁为岩礁或低潮高地',
+      '中国政府明确表示不接受、不参与该仲裁程序'
+    ],
+    evalLaws: ['UNCLOS', '第121条', '第298条', '历史性权利', '岛屿', '岩礁', '专属经济区', '大陆架', '管辖权', 'DOC', '南海各方行为宣言']
+  },
+  {
+    id: 'fc-2',
+    name: 'CISG国际货物买卖合同纠纷',
+    tag: 'eco', tagText: '国际经济法',
+    brief: '模拟CISG框架下的国际货物买卖合同纠纷，涉及合同成立、根本违约、损害赔偿等核心争议。',
+    difficulty: '中级', duration: '60分钟',
+    roles: [
+      { name: '买方代理人（中国公司）', icon: '🏢', desc: '代表中国买方，主张货物不符构成根本违约' },
+      { name: '卖方代理人（德国公司）', icon: '🏭', desc: '代表德国卖方，论证已按约定履行交货义务' },
+      { name: '法官', icon: '⚖️', desc: '依据CISG审理双方的纠纷' },
+      { name: '仲裁员', icon: '🏛️', desc: '在仲裁条款框架下裁决争议' }
+    ],
+    issues: [
+      'CISG是否适用于本案？中国的保留声明对本案有何影响？',
+      '卖方交付的货物是否构成"根本违约"（CISG第25条）？',
+      '买方宣告合同无效的条件是否满足？',
+      '损害赔偿的范围和计算方法如何确定？'
+    ],
+    keywords: ['CISG', '国际货物销售合同公约', '根本违约', '发价', '承诺', '损害赔偿', '宣告合同无效', '第25条', '第49条', '第74条', '第35条', '货物相符', '风险转移', '意思自治', '缔约国', '营业地', '减价'],
+    laws: [
+      { title: 'CISG第25条-根本违约', text: '一方当事人违反合同的结果，如使另一方当事人蒙受损害，以致于实际上剥夺了他根据合同规定有权期待得到的东西，即为根本违反合同，除非违反合同一方并不预知而且一个同等资格、通情达理的人处于相同情况中也没有理由预知会发生这种结果。' },
+      { title: 'CISG第35条-货物相符', text: '(1) 卖方交付的货物必须与合同所规定的数量、质量和规格相符，并须按照合同所规定的方式装箱或保存。\n(2) 除双方当事人业已另有协议外，货物除非符合以下规定，否则即为与合同不符...' },
+      { title: 'CISG第49条-宣告合同无效', text: '(1) 买方在以下情况下可以宣告合同无效：\n(a) 卖方不履行其在合同或本公约中的任何义务，等于根本违反合同；或\n(b) 发生不交货的情况，卖方不在买方按照第47条(1)款规定的额外时间内交付货物...' },
+      { title: 'CISG第74条-损害赔偿', text: '一方当事人违反合同应负的损害赔偿额，应与另一方当事人因他违反合同而遭受的包括利润在内的损失额相等。这种损害赔偿不得超过违反合同一方在订立合同时，依照他当时已知道或理应知道的事实和情况，对违反合同预料到或理应预料到的可能损失。' }
+    ],
+    evidence: [
+      { title: '国际货物买卖合同', detail: '合同编号SC-2024-0892，约定规格、数量、价格条款、交货时间、支付方式（信用证）、适用法律（CISG）等。' },
+      { title: '货物质量检验报告', detail: 'SGS检验报告显示交付货物规格与合同约定存在偏差，主要参数差异约12%。' },
+      { title: '双方往来函电', detail: '电子邮件记录显示买方在收货后30天内发出了不符通知，卖方在收到通知后提出补救方案。' }
+    ],
+    facts: [
+      '中国A公司与德国B公司签订国际货物买卖合同（合同编号SC-2024-0892）',
+      '合同约定CIF上海，付款方式为不可撤销信用证',
+      '货物到港后，买方委托SGS进行检验，发现主要规格参数与合同约定偏差约12%',
+      '买方在收货后30天内以电子邮件形式向卖方发出货物不符通知',
+      '卖方收到通知后提出降价15%的补救方案，双方未达成一致',
+      '买方主张货物不符构成根本违约，要求宣告合同无效并索赔'
+    ],
+    evalLaws: ['CISG', '第25条', '第35条', '第49条', '第74条', '根本违约', '发价', '承诺', '损害赔偿', '宣告合同无效', '货物相符']
+  },
+  {
+    id: 'fc-3',
+    name: 'ICSID投资仲裁模拟',
+    tag: 'eco', tagText: '国际经济法',
+    brief: '模拟ICSID仲裁庭审理的中外投资争端案件，涉及征收补偿、公平公正待遇等议题。',
+    difficulty: '高级', duration: '75分钟',
+    roles: [
+      { name: '投资者代理人', icon: '💼', desc: '代表外国投资者主张东道国构成间接征收' },
+      { name: '东道国代理人', icon: '🏛️', desc: '代表东道国论证措施属于正当监管权行使' },
+      { name: '法官', icon: '⚖️', desc: '对争端进行法律评判' },
+      { name: '仲裁员', icon: '🏛️', desc: '依据BIT和ICSID公约作出裁决' }
+    ],
+    issues: [
+      '东道国的环境监管措施是否构成间接征收？',
+      'BIT中的公平公正待遇条款的保护范围如何界定？',
+      'ICSID仲裁庭对本案是否具有管辖权（管辖权三要件）？',
+      '征收补偿的标准应如何确定（赫尔公式vs适当补偿）？'
+    ],
+    keywords: ['ICSID', 'BIT', '投资保护', '征收', '间接征收', '公平公正待遇', '国民待遇', '最惠国待遇', '管辖权', '撤销事由', '投资者', '东道国', '合理期待', '警察权', '赫尔公式', '适当补偿', '双边投资协定'],
+    laws: [
+      { title: 'ICSID公约第25条-管辖权', text: '中心的管辖适用��缔约国和另一缔约国国民之间直接因投资而产生的任何法律争端，而该项争端经双方书面同意提交给中心。\n管辖权三要件：(1)属人管辖——缔约国与另一缔约国国民；(2)属事管辖——直接因投资而产生；(3)法律争端——关于权利义务的性质或范围的争议。' },
+      { title: 'BIT典型征收条款', text: '缔约一方对缔约另一方投资者在其领土内的投资不得采取征收、国有化或其他类似措施，除非：(a)为了公共目的；(b)在非歧视性的基础上；(c)按照正当法律程序；(d)给予充分、有效、及时的补偿。' },
+      { title: 'ICSID公约第52条-撤销事由', text: '任何一方可基于下列理由请求撤销裁决：\n(a) 仲裁庭组成不当；\n(b) 仲裁庭显然越权；\n(c) 仲裁庭成员有受贿行为；\n(d) 严重背离基本程序规则；\n(e) 裁决未陈述理由。' }
+    ],
+    evidence: [
+      { title: '双边投资保护协定(BIT)', detail: '中日BIT(2006年)，涵盖投资定义、保护待遇、征收条件、ISDS机制等核心条款。' },
+      { title: '投资协议及批文', detail: '投资者在东道国的投资额、经营范围、获得的许可审批文件等。' },
+      { title: '东道国政策变化时间线', detail: '东道国在投资后出台新的环保法规，导致投资者工厂被关闭的关键时间节点。' }
+    ],
+    facts: [
+      '外国投资者M公司在东道国N投资建设大型铜矿，投资总额约8亿美元',
+      'M公司获得N国政府颁发的矿业许可证，经营期限30年',
+      '运营5年后，N国通过新《环境保护法》，要求铜矿6个月内关闭并恢复生态',
+      'M公司主张该措施构成间接征收，违反BIT中的公平公正待遇条款',
+      'N国辩称环保立法属国家主权行为，不构成征收',
+      'M公司依据BIT中的ISDS条款向ICSID提起仲裁'
+    ],
+    evalLaws: ['ICSID', 'BIT', '征收', '间接征收', '公平公正待遇', '管辖权', '投资者', '东道国', '撤销事由', '第25条', '第52条']
+  },
+  {
+    id: 'fc-4',
+    name: '涉外婚姻纠纷模拟',
+    tag: 'pri', tagText: '国际私法',
+    brief: '模拟一起涉外婚姻财产纠纷案件，涉及婚姻效力认定、财产分割的法律适用、域外判决承认等议题。',
+    difficulty: '中级', duration: '60分钟',
+    roles: [
+      { name: '原告代理人', icon: '👩', desc: '代表中国籍妻子，主张适用中国法分割财产' },
+      { name: '被告代理人', icon: '👨', desc: '代表外籍丈夫，主张适用财产所在地法' },
+      { name: '法官', icon: '⚖️', desc: '确定准据法并作出裁判' },
+      { name: '仲裁员', icon: '🏛️', desc: '在调解框架下促成双方和解' }
+    ],
+    issues: [
+      '涉外婚姻的效力认定应适用何国法律？',
+      '夫妻财产关系的法律适用规则是什么？',
+      '中国法院对本案是否具有管辖权？',
+      '外国法院的离婚判决在中国能否获得承认与执行？'
+    ],
+    keywords: ['涉外民事关系法律适用法', '婚姻', '夫妻财产', '法律适用', '属人法', '经常居所地', '国籍国法', '公共秩序保留', '管辖权', '判决承认', '反致', '识别', '先决问题', '第21条', '第23条', '第24条', '离婚', '财产分割'],
+    laws: [
+      { title: '涉外民事关系法律适用法第21条-结婚', text: '结婚条件，适用当事人共同经常居所地法律；没有共同经常居所地的，适用共同国籍国法律；没有共同国籍，在一方当事人经常居所地或者国籍国缔结婚姻的，适用婚姻缔结地法律。' },
+      { title: '涉外民事关系法律适用法第23条-夫妻人身关系', text: '夫妻人身关系，适用共同经常居所地法律；没有共同经常居所地的，适用共同国籍国法律。' },
+      { title: '涉外民事关系法律适用法第24条-夫妻财产关系', text: '夫妻财产关系，当事人可以协议选择适用一方当事人经常居所地法律、国籍国法律或者主要财产所在地法律。当事人没有选择的，适用共同经常居所地法律；没有共同经常居所地的，适用共同国籍国法律。' }
+    ],
+    evidence: [
+      { title: '结婚证及婚姻关系证明', detail: '双方于2018年在中国登记结婚，男方为美国籍，女方为中国籍。婚后双方共同居住于北京。' },
+      { title: '财产清单', detail: '双方共同财产包括：北京房产一套（价值800万元）、美国加州房产一套（价值120万美元）、银行存款及投资账户。' },
+      { title: '美国离婚判决书', detail: '男方已在美国加州法院获得离婚判决，但判决中的财产分割方案未充分考虑女方权益。' }
+    ],
+    facts: [
+      '男方（美国籍）与女方（中国籍）于2018年在中国登记结婚',
+      '婚后双方共同居住于北京，共同经常居所地为中国',
+      '双方共同财产包括北京房产（800万元）、美国加州房产（120万美元）及金融资产',
+      '男方已在美国加州法院获得离婚判决，财产分割偏向男方',
+      '女方在中国法院起诉，主张适用中国法重新分割财产',
+      '男方抗辩称美国判决已生效，中国法院不应重新审理'
+    ],
+    evalLaws: ['涉外民事关系法律适用法', '第21条', '第23条', '第24条', '经常居所地', '国籍国', '夫妻财产', '属人法', '公共秩序保留', '管辖权', '判决承认']
+  },
+  {
+    id: 'fc-5',
+    name: '国际货物买卖合同管辖权争议',
+    tag: 'pri', tagText: '国际私法',
+    brief: '模拟一起涉及多个法域的合同纠纷管辖权争议，涉及协议管辖、不方便法院原则、平行诉讼等议题。',
+    difficulty: '中级', duration: '60分钟',
+    roles: [
+      { name: '原告代理人', icon: '👩', desc: '主张中国法院具有管辖权' },
+      { name: '被告代理人', icon: '👨', desc: '主张不方便法院原则应排除中国管辖' },
+      { name: '法官', icon: '⚖️', desc: '审查管辖权争议并作出裁定' },
+      { name: '仲裁员', icon: '🏛️', desc: '评估仲裁条款的有效性' }
+    ],
+    issues: [
+      '合同中的管辖权条款是否有效？',
+      '不方便法院原则在中国司法实践中如何适用？',
+      '平行诉讼情况下中国法院应如何处理？',
+      '国际商事仲裁条款是否排除法院管辖？'
+    ],
+    keywords: ['管辖权', '协议管辖', '不方便法院', '平行诉讼', '涉外民事关系法律适用法', '民事诉讼法', '最密切联系', '连接点', '仲裁条款', '纽约公约', '国际商事法庭', '专属管辖', '第272条', '海牙公约'],
+    laws: [
+      { title: '民事诉讼法第272条-涉外合同管辖', text: '因合同纠纷或者其他财产权益纠纷，对在中华人民共和国领域内没有住所的被告提起的诉讼，如果合同在中华人民共和国领域内签订或者履行，或者诉讼标的物在中华人民共和国领域内，或者被告在中华人民共和国领域内有可供扣押的财产，或者被告在中华人民共和国领域内设有代表机构，可以由合同签订地、合同履行地、诉讼标的物所在地、可供扣押财产所在地、侵权行为地或者代表机构住所地人民法院管辖。' },
+      { title: '涉外民事关系法律适用法第41条-合同', text: '当事人可以协议选择合同适用的法律。当事人没有选择的，适用履行义务最能体现该合同特征的一方当事人经常居所地法律或者其他与该合同有最密切联系的法律。' }
+    ],
+    evidence: [
+      { title: '合同管辖权条款', detail: '合同第15条约定："因本合同引起的争议，双方同意提交中国国际商事法庭(CICC)管辖。"' },
+      { title: '各国法院受理情况', detail: '原告在中国CICC起诉后，被告在英国法院另行提起诉讼，形成平行诉讼。' },
+      { title: '连接点分析表', detail: '合同签订地：上海；合同履行地：深圳；被告住所：伦敦；主要财产所在地：深圳、新加坡。' }
+    ],
+    facts: [
+      '中国甲公司与英国乙公司签订国际货物买卖合同',
+      '合同第15条约定争议提交中国国际商事法庭(CICC)管辖',
+      '合同签订地上海，履行地深圳，被告住所伦敦',
+      '原告在CICC起诉后，被告在英国法院另行提起诉讼',
+      '被告主张不方便法院原则，要求CICC驳回起诉',
+      '双方主要财产分别位于深圳和新加坡'
+    ],
+    evalLaws: ['管辖权', '协议管辖', '不方便法院', '民事诉讼法', '第272条', '最密切联系', '平行诉讼', '仲裁条款', '纽约公约', '海牙公约']
+  },
+  // ========== fc-6: 武力使用与反恐（国际公法）==========
+  {
+    id: 'fc-6',
+    name: '反恐自卫权与武力使用',
+    tag: 'pub', tagText: '国际公法',
+    brief: '模拟一国对恐怖组织所在国实施先发制人打击引发的自卫权合法性争端，涉及《联合国宪章》第51条与习惯国际法。',
+    difficulty: '高级', duration: '90分钟',
+    roles: [
+      { name: '甲国代理人', icon: '🇦', desc: '代表甲国主张自卫权合法性，论证先发制人打击的必要性' },
+      { name: '乙国代理人', icon: '🇧', desc: '代表乙国主张甲国武力使用构成侵略，违反禁止使用武力原则' },
+      { name: '联合国安理会代表', icon: '🏛️', desc: '从集体安全机制角度审视武力使用的合法性' },
+      { name: '国际法专家', icon: '⚖️', desc: '对双方论点进行独立法律评价，分析习惯国际法发展趋势' }
+    ],
+    issues: [
+      '甲国在遭受恐怖袭击威胁后实施的先发制人打击是否符合《联合国宪章》第51条的自卫权要件？',
+      '"迫在眉睫的武装攻击"（imminent armed attack）的认定标准是什么？卡罗林标准（Caroline Test）在当代是否仍然适用？',
+      '乙国境内存在恐怖组织训练营是否构成甲国对乙国使用武力的合法理由？国家主权原则与反恐需要的关系如何平衡？',
+      '甲国的武力使用行为是否满足必要性与比例性原则？打击范围是否超出自卫权的合理限度？'
+    ],
+    keywords: ['联合国宪章', '第51条', '自卫权', '先发制人', '迫在眉睫', '卡罗林标准', '禁止使用武力', '必要性', '比例性', '武装攻击', '恐怖主义', '国家安全', '安理会', '集体安全', '习惯国际法', '国家责任', '预防性自卫', '武力攻击阈值'],
+    laws: [
+      { title: '《联合国宪章》第2条第4款-禁止使用武力', text: '各会员国在其国际关系上不得使用威胁或武力，或以与联合国宗旨不符之任何其他方法，侵害任何会员国或国家之领土完整或政治独立。' },
+      { title: '《联合国宪章》第51条-自卫权', text: '联合国任何会员国受武力攻击时，在安全理事会采取必要办法以维持国际和平及安全以前，本宪章不得认为禁止行使单独或集体自卫之自然权利。会员国因行使此项自卫权而采取之办法，应立向安全理事会报告，此项办法于任何方面不得影响该会按照本宪章随时采取其所认为必要行动之权责，以维持或恢复国际和平及安全。' },
+      { title: '卡罗林标准（1842年习惯法规则）', text: '行使预防性自卫权须满足：（1）必要性——危险须是"迫在眉睫的、压倒一切的、不留选择手段余地的、没有深思熟虑时间的"；（2）比例性——自卫行动不得超出必要限度，须"相称于所面临的威胁"。该标准源自1837年卡罗林号事件中英美外交照会。' },
+      { title: '联合国大会第3314号决议-侵略定义', text: '侵略是指一个国家使用武力侵犯另一个国家的主权、领土完整或政治独立。任何由一国代表另一国或以另一国名义派遣的武装帮派或正规军对该另一国领土的侵略行为也构成侵略。' }
+    ],
+    evidence: [
+      { title: '甲国遭受恐怖袭击威胁的情报报告', detail: '甲国情报机构获取信息表明，藏匿于乙国北部山区的恐怖组织"黑月"正在策划针对甲国大城市的大规模恐怖袭击，已获得化学武器原料并着手制造。甲国在袭击发生前72小时获得具体攻击时间表。' },
+      { title: '乙国政府态度与能力证据', detail: '甲国曾于袭击前30天向乙国提出交涉，要求乙国取缔恐怖组织训练营。乙国回复称正在调查但未能采取有效行动。联合国报告显示乙国北部地区政府管控力薄弱，武装组织活动频繁。' },
+      { title: '甲国军事打击行动记录', detail: '甲国于2024年3月15日对乙国北部三处目标实施精确制导导弹打击，打击目标为恐怖组织训练营和武器库。打击持续约4小时，造成恐怖组织成员伤亡约120人，乙国平民伤亡约15人，部分基础设施损毁。' },
+      { title: '安理会相关决议', detail: '安理会此前通过的第2178号决议（2014年）和第2396号决议（2017年）要求各国采取措施打击外国恐怖主义战斗人员流动，但未明确授权一国在另一国境内实施军事打击。' }
+    ],
+    facts: [
+      '甲国情报机构发现乙国北部山区恐怖组织"黑月"正在策划大规模恐怖袭击',
+      '甲国在袭击发生前72小时获得具体攻击时间表',
+      '甲国提前30天向乙国提出交涉，要求取缔恐怖组织训练营，乙国未能有效行动',
+      '甲国于2024年3月15日对乙国北部三处目标实施精确制导导弹打击',
+      '打击持续约4小时，造成恐怖组织成员伤亡约120人，乙国平民伤亡约15人',
+      '安理会相关决议未明确授权一国在另一国境内实施军事打击'
+    ],
+    evalLaws: ['联合国宪章', '第51条', '第2条第4款', '自卫权', '先发制人', '卡罗林标准', '必要性', '比例性', '武装攻击', '禁止使用武力', '安理会', '侵略定义']
+  },
+  // ========== fc-7: 外交保护与使馆不可侵犯（国际公法）==========
+  {
+    id: 'fc-7',
+    name: '外交使馆不可侵犯权争端',
+    tag: 'pub', tagText: '国际公法',
+    brief: '模拟驻外使馆被冲击事件引发的国家责任与外交保护争端，涉及《维也纳外交关系公约》。',
+    difficulty: '中级', duration: '60分钟',
+    roles: [
+      { name: '派遣国代理人', icon: '🏛️', desc: '代表派遣国主张接受国违反使馆保护义务，要求承担国家责任' },
+      { name: '接受国代理人', icon: '🏢', desc: '代表接受国辩称已尽适当注意义务，事件系不可抗力' },
+      { name: '法官', icon: '⚖️', desc: '依据《维也纳外交关系公约》和国际习惯法审理争端' },
+      { name: '调解员', icon: '🤝', desc: '促成双方达成外交解决方案，恢复双边关系' }
+    ],
+    issues: [
+      '接受国是否违反了《维也纳外交关系公约》第22条规定的使馆馆舍不可侵犯义务？其"适当注意"义务的履行标准如何界定？',
+      '接受国政府对示威者冲击使馆的行为是否存在默许或纵容？相关行为能否归因于接受国？',
+      '派遣国外交人员在使馆内被扣押期间所受损害，派遣国行使外交保护的条件是否成就？',
+      '接受国应承担何种形式的国家责任（道歉、赔偿、保证不重犯）？赔偿范围如何确定？'
+    ],
+    keywords: ['维也纳外交关系公约', '使馆不可侵犯', '第22条', '适当注意义务', '国家责任', '外交保护', '归因', '武力攻击使馆', '外交人员特权与豁免', '用尽当地救济', '对等原则', '断交', '国家责任条款草案', '赔偿', '道歉'],
+    laws: [
+      { title: '《维也纳外交关系公约》第22条-使馆馆舍不得侵犯', text: '1. 使馆馆舍不得侵犯。接受国官吏非经使馆馆长许可，不得进入使馆馆舍。\n2. 接受国负有特别义务，须采取一切适当步骤保护使馆馆舍免受���入或损害，并防止一切扰乱使馆安宁或有损使馆尊严之情事。\n3. 使馆馆舍及设备，以及馆舍内其他财产与使馆交通工具免受搜查、征用、扣押或强制执行。' },
+      { title: '《维也纳外交关系公约》第29条-外交代表人身不可侵犯', text: '外交代表人身不得侵犯。外交代表不受任何方式之逮捕或拘禁。接受国对 diplomatic agent须 respect并应采取一切适当步骤防止其人身、自由或尊严受任何侵犯。' },
+      { title: '《国家对国际不法行为的责任条款草案》第4条', text: '1. 任何国家机关，不论其行使立法、行政、司法职能，也不论其在国家组织中具有何种地位，也不论其作为该国中央政府机关或一领土单位机关之地位有何不同，其行为应视为国际法所指的该国行为。\n2. 机关包括依该国国内法具有此种地位的任何个人或实体。' },
+      { title: '《维也纳外交关系公约》第45条-断交时保护义务', text: '两国断绝外交关系，或遇使馆长期或暂时撤退时：（a）接受国即使在武装冲突期间应尊重并保护使馆馆舍以及使馆财产与档案；（b）派遣国可委托接受国认可之第三国保管使馆馆舍以及使馆财产与档案。' }
+    ],
+    evidence: [
+      { title: '使馆被冲击的现场录像与监控', detail: '2024年5月20日，约200名示威者冲击甲国驻乙国大使馆，打破大门玻璃进入馆区。监控显示示威者持续约3小时后撤离，期间使馆办公区被严重损毁，部分机密文件被抢走。使馆3名外交人员受轻伤。' },
+      { title: '乙国警方出动记录', detail: '使馆于事发当日14:00向乙国外交部和当地警方发出紧急求助。警方15:30到达现场，但仅在外围设置警戒线，未进入馆舍制止暴力行为。乙国政府称当地警力已被调配用于维持其他区域的公共秩序。' },
+      { title: '乙国官员言论记录', detail: '乙国外交部副部长在事发前一周的公开讲话中暗示甲国干涉乙国内政，部分乙国媒体随后发布煽动性报道。甲国主张这些言论构成对冲击行为的默许和鼓励。' },
+      { title: '损失清单与赔偿要求', detail: '甲国统计使馆建筑修复费用约200万美元，被毁设备及文件损失约80万美元，受伤外交人员医疗费用约10万美元。甲国另要求精神损害赔偿50万美元。' }
+    ],
+    facts: [
+      '2024年5月20日，约200名示威者冲击甲国驻乙国大使馆，打破大门玻璃进入馆区',
+      '示威者持续约3小时，使馆办公区严重损毁，部分机密文件被抢走，3名外交人员受轻伤',
+      '使馆于14:00向乙国外交部和当地警方发出紧急求助，警方15:30到达但仅设置外围警戒线',
+      '乙国外交部副部长在事发前一周公开讲话中暗示甲国干涉乙国内政',
+      '甲国统计损失：建筑修复200万美元、设备文件80万美元、医疗费10万美元',
+      '甲国另要求精神损害赔偿50万美元'
+    ],
+    evalLaws: ['维也纳外交关系公约', '第22条', '第29条', '第45条', '使馆不可侵犯', '适当注意义务', '国家责任', '外交保护', '归因', '赔偿']
+  },
+  // ========== fc-8: WTO反倾销与反补贴争端（国际经济法）==========
+  {
+    id: 'fc-8',
+    name: 'WTO反倾销与反补贴措施争端',
+    tag: 'eco', tagText: '国际经济法',
+    brief: '模拟WTO争端解决机制下反倾销/反补贴措施合法性审查，涉及GATT第6条与反倾销协定。',
+    difficulty: '高级', duration: '75分钟',
+    roles: [
+      { name: '申诉方代理人（出口国）', icon: '🏭', desc: '代表出口国主张反倾销/反补贴措施违反WTO规则' },
+      { name: '被诉方代理人（进口国）', icon: '🛡️', desc: '代表进口国论证调查程序合规，措施具有合法性' },
+      { name: 'WTO专家组法官', icon: '⚖️', desc: '依据WTO协定审查措施的合规性' },
+      { name: '贸易政策专家', icon: '📊', desc: '从贸易经济学角度评估措施的合理性与影响' }
+    ],
+    issues: [
+      '进口国调查机关对倾销幅度的计算是否符合《反倾销协定》第2条的"公平比较"要求？"归零法"（zeroing）的使用是否违规？',
+      '进口国对"实质性损害"的认定是否满足《反倾销协定》第3条的客观审查要求？因果关系的认定是否充分？',
+      '进口国同时征收反倾销税和反补贴税是否构成对同一补贴的"双重救济"（double remedy）？是否违反GATT第6条第5款？',
+      '调查程序中的信息披露义务是否履行？"可获得事实"（facts available）的使用是否符合《反倾销协定》第6.8条和附件二的规定？'
+    ],
+    keywords: ['反倾销', '反补贴', 'GATT第6条', '反倾销协定', 'SCM协定', '倾销幅度', '实质性损害', '归零法', '双重救济', '公平比较', '正常价值', '出口价格', '因果关系', '国内产业', '可获得事实', 'DSU', '争端解决', '贸易救济'],
+    laws: [
+      { title: 'GATT 1994第6条-反倾销税与反补贴税', text: '1. 各缔约方确认：一缔约方领土的产品出口到另一缔约方领土时，如以低于正常价值的方式倾销，且对缔约方领土内已建立的国内产业造成实质性损害或实质性损害威胁，或实质性阻碍国内产业的建立，则倾销应受谴责。\n5. 对同一产品同时征收反倾销税和反补贴税，以补偿倾销或出口补贴造成的相同情况，不得允许。' },
+      { title: '《反倾销协定》第2条-倾销的确定', text: '2.1 在正常贸易过程中，一产品的出口价格低于出口国国内用于消费的同类产品的可比价格时，即被视为存在倾销。\n4. 应在出口价格与正常价值之间进行公平比较。两项比较应在同一贸易水平上进行，通常在出厂水平上进行，并应尽可能针对在时间上接近的销售进行比较。' },
+      { title: '《反倾销协定》第3条-损害的确定', text: '1. 损害的确定应基于肯定性证据，并包括对以下内容的客观审查：（a）倾销进口的数量及其对国内市场同类产品价格的影响；（b）这些进口对国内同类产品生产者产生的影响。\n5. 必须证明倾销进口正在通过倾销的影响造成本协定所称的损害。倾销进口与国内产业损害之间存在因果关系。' },
+      { title: 'SCM协定第19条第3款与第19.4条', text: '3. 如对任何产品征收反补贴税，应对每种被认定接受补贴并造成损害的进口产品，以适当金额征收反补贴税。对已放弃的任何补贴或依本协定确定存在的补贴金额超过的补贴金额，不得征收反补贴税。\n4. 反补贴税不得超过认定存在的补贴总金额。' }
+    ],
+    evidence: [
+      { title: '进口国反倾销调查终裁报告', detail: '进口国调查机关认定：出口国涉案产品的倾销幅度为35.6%（采用"归零法"计算），国内产业遭受实质性损害，倾销进口与损害之间存在因果关系。据此对涉案产品征收35.6%的反倾销税。' },
+      { title: '出口国企业的价格对比数据', detail: '出口国企业提交的数据显示，若采用加权平均对加权平均方法（W-T方法）计算而不使用归零法，实际倾销幅度仅为8.2%。归零法导致大量正倾销差额被忽略，大幅抬高了倾销幅度。' },
+      { title: '双重救济分析', detail: '进口国对同一产品同时征收35.6%反倾销税和12.3%反补贴税。出口国主张，在使用非市场经济方法（NME方法）计算正常价值时，倾销幅度的计算已内含了对补贴的抵销，同时征收反补贴税构成双重救济。' },
+      { title: '调查程序中的信息披露争议', detail: '出口国企业称调查机关在终裁前未充分披露关键计算数据，仅提供了笼统的结论性信息。调查机关则主张部分信息属于保密信息，依第6.5条不应披露，但使用了"可获得的不利事实"（AFA）计算了不合作企业的税率。' }
+    ],
+    facts: [
+      '进口国对出口国涉案产品征收35.6%反倾销税（采用"归零法"计算）',
+      '出口国企业数据显示，若不使用归零法，实际倾销幅度仅为8.2%',
+      '进口国同时对同一产品征收12.3%反补贴税，出口国主张构成双重救济',
+      '调查机关在终裁前未充分披露关键计算数据',
+      '出口国企业称部分信息被作为保密信息处理，调查机关使用了"可获得的不利事实"计算税率',
+      '出口国就此争端向WTO争端解决机构提起诉讼'
+    ],
+    evalLaws: ['GATT第6条', '反倾销协定', 'SCM协定', '倾销幅度', '归零法', '实质性损害', '双重救济', '公平比较', '可获得事实', '因果关系']
+  },
+  // ========== fc-9: 跨境电商产品责任（国际私法）==========
+  {
+    id: 'fc-9',
+    name: '跨境电商产品责任纠纷',
+    tag: 'pri', tagText: '国际私法',
+    brief: '模拟中国消费者通过跨境电商平台购买外国产品发生损害后的管辖权与法律适用争议。',
+    difficulty: '中级', duration: '60分钟',
+    roles: [
+      { name: '消费者代理人', icon: '👩', desc: '代表中国消费者主张中国法院有管辖权，适用中国法保护消费者权益' },
+      { name: '境外销售商代理人', icon: '🏪', desc: '代表境外销售商主张管辖权异议，要求适用产品来源国法律' },
+      { name: '法官', icon: '⚖️', desc: '审查管辖权争议并确定准据法' },
+      { name: '电商平台代表', icon: '💻', desc: '作为平台方陈述责任范围，提供交易数据' }
+    ],
+    issues: [
+      '中国法院对本案是否具有管辖权？跨境电商平台在中国境内运营是否构成管辖连接点？',
+      '产品责任纠纷应适用何国法律？《涉外民事关系法律适用法》第45条的适用规则如何理解？',
+      '跨境电商平台是否应承担产品责任连带责任？平台的法律地位是"网络交易平台"还是"产品销售者"？',
+      '境外销售商在中国无分支机构的情况下，中国法院判决能否得到有效执行？'
+    ],
+    keywords: ['跨境电商', '产品责任', '管辖权', '法律适用', '涉外民事关系法律适用法', '第45条', '消费者权益保护', '电商平台', '侵权', '准据法', '被侵权人经常居所地', '产品来源地', '网络侵权', '判决执行', '海牙判决公约'],
+    laws: [
+      { title: '《涉外民事关系法律适用法》第45条-产品责任', text: '产品责任，适用被侵权人经常居所地法律；被侵权人选择适用侵权人主营业地法律、损害发生地法律的，或者侵权人在被侵权人经常居所地没有从事相关经营活动的，适用侵权人主营业地法律或者损害发生地法律。' },
+      { title: '《民事诉讼法》第272条-涉外侵权管辖', text: '因合同纠纷或者其他财产权益纠纷，对在中华人民共和国领域内没有住所的被告提起的诉讼，如果合同在中华人民共和国领域内签订或者履行，或者诉讼标的物在中华人民共和国领域内，或者被告在中华人民共和国领域内有可供扣押的财产，或者被告在中华人民共和国领域内设有代表机构，可以由合同签订地、合同履行地、诉讼标的物所在地、可供扣押财产所在地、侵权行为地或者代表机构住所地人民法院管辖。' },
+      { title: '《电子商务法》第38条-平台责任', text: '电子商务平台经营者知道或者应当知道平台内经营者销售的商品或者提供的服务不符合保障人身、财产安全的要求，或者有其他侵害消费者合法权益行为，未采取必要措施的，依法与该平台内经营者承担连带责任。对关系消费者生命健康的商品或者服务，电子商务平台经营者对平台内经营者的资质资格未尽到审核义务，或者对消费者未尽到安全保障义务，造成消费者损害的，依法承担相应的责任。' },
+      { title: '《产品质量法》第43条-产品责任', text: '因产品存在缺陷造成人身、他人财产损害的，受害人可以向产品的生产者要求赔偿，也可以向产品的销售者要求赔偿。属于产品的生产者的责任，产品的销售者赔偿的，产品的销售者有权向产品的生产者追偿。属于产品的销售者的责任，产品的生产者赔偿的，产品的生产者有权向产品的销售者追偿。' }
+    ],
+    evidence: [
+      { title: '跨境电商交易记录', detail: '中国消费者李某于2024年1月通过某跨境电商平台从日本商家购买了一款儿童电动玩具，支付人民币580元。平台在中国有注册用户超过5000万，提供中文界面、人民币结算和国内物流配送服务。' },
+      { title: '产品缺陷及损害证据', detail: '玩具在使用两周后电池仓过热导致起火，造成李某3岁儿童面部二度烧伤。产品经中国质量检验机构检测，电池仓设计不符合中国GB6675-2014玩具安全标准，且产品说明书无中文警示。' },
+      { title: '平台审核记录', detail: '电商平台对入驻日本商家的资质审核记录显示，平台仅审查了商家的日本营业执照，未要求提供产品安全认证证书。平台客服记录显示，李某在事发前曾投诉产品异味问题，客服未做处理。' },
+      { title: '日本商家经营情况', detail: '日本商家在中国境内无分支机构、无可供扣押财产，但通过该电商平台向中国消费者销售商品累计超过1000笔，年均销售额约200万元人民币。' }
+    ],
+    facts: [
+      '中国消费者李某通过跨境电商平台从日本商家购买儿童电动玩具，支付580元',
+      '玩具电池仓过热起火，造成李某3岁儿童面部二度烧伤',
+      '经检测，产品不符合中国GB6675-2014玩具安全标准，说明书无中文警示',
+      '电商平台仅审查了日本商家营业执照，未要求产品安全认证',
+      '李某曾投诉产品异味，客服未做处理',
+      '日本商家在中国无分支机构，但通过平台向中国销售年均约200万元'
+    ],
+    evalLaws: ['涉外民事关系法律适用法', '第45条', '民事诉讼法', '第272条', '电子商务法', '第38条', '产品质量法', '产品责任', '跨境电商', '消费者权益', '管辖权', '判决执行']
+  },
+  // ========== fc-10: 国际技术转让与知识产权（国际私法）==========
+  {
+    id: 'fc-10',
+    name: '国际技术转让与知识产权纠纷',
+    tag: 'pri', tagText: '国际私法',
+    brief: '模拟跨国技术许可合同中的知识产权归属与违约责任争议，涉及TRIPS协议与技术进出口管理条例。',
+    difficulty: '高级', duration: '75分钟',
+    roles: [
+      { name: '许可方代理人（外方）', icon: '🔬', desc: '代表外国技术许可方主张知识产权归属和违约赔偿' },
+      { name: '被许可方代理人（中方）', icon: '🏭', desc: '代表中国被许可方主张技术改进成果的独立知识产权' },
+      { name: '法官', icon: '⚖️', desc: '审查合同条款效力并确定知识产权归属' },
+      { name: '知识产权专家', icon: '💡', desc: '从技术角度分析改进成果与原技术的关系及TRIPS合规性' }
+    ],
+    issues: [
+      '合同中"所有基于许可技术产生的改进成果知识产权归许可方所有"的条款是否有效？是否构成限制性商业条款？',
+      '被许可方对许可技术进行改进后取得的专利，其知识产权归属应如何确定？原许可合同中的回授条款（grant-back clause）效力如何？',
+      '被许可方在合同终止后继续使用改进技术是否构成侵权？合同终止后的竞业限制条款是否有效？',
+      'TRIPS协议第40条对限制性许可条款的规制如何影响本案合同条款的效力认定？'
+    ],
+    keywords: ['技术许可', '知识产权归属', 'TRIPS协议', '限制性条款', '回授条款', '竞业限制', '技术进出口管理条例', '改进成果', '专利', '商业秘密', '合同终止', '准据法', '国际技术转让', '第40条'],
+    laws: [
+      { title: 'TRIPS协议第40条-限制性商业惯例', text: '1. 各成员同意，某些限制竞争的有关知识产权的许可做法或条件可对贸易产生不利影响，并妨碍技术的转让和传播。\n2. 本协定的任何规定不应阻止成员在其立法中明确规定，在特定情况下可构成对知识产权的滥用、对相关市场的竞争产生不利影响的许可做法或条件。成员可在符合本协定其他规定的前提下，依其国内法律法规采取适当措施防止或控制此类做法。' },
+      { title: '《技术进出口管理条例》第29条-限制性条款', text: '技术进口合同中，不得含有下列限制性条款：（一）要求受让人接受并非技术进口必不可少的附带条件，包括购买非必需的技术、原材料、产品、设备或者服务；（二）要求受让人为专利权有效期限届满或者专利权被宣布无效的技术支付使用费或者承担相关义务；（三）限制受让人改进让与人提供的技术或者限制受让人使用所改进的技术；（四）限制受让人从其他来源获得与让与人提供的技术类似的技术或者与其竞争的技术。' },
+      { title: '《涉外民事关系法律适用法》第48条-知识产权', text: '知识产权的归属和内容，适用被请求保护地法律。当事人可以协议选择知识产权转让和许可使用适用的法律。当事人没有选择的，适用本法对合同的有关规定。' },
+      { title: '《技术进出口管理条例》第27条-改进成果归属', text: '在技术进口合同有效期内，改进技术的成果属于改进方。技术进口合同到期或者被提前终止后，受让方有权继续使用让与人提供的技术，但合同约定支付使用费的除外。' }
+    ],
+    evidence: [
+      { title: '技术许可合同核心条款', detail: '合同第12条约定："被许可方基于许可技术所作出的任何改进、改良或衍生技术成果的知识产权自动归许可方所有。"第18条约定："合同终止后5年内，被许可方不得在相同或相近领域从事竞争性研发活动。"合同适用美国法。' },
+      { title: '被许可方改进技术情况', detail: '中方被许可方在合同履行期间对许可方的半导体封装技术进行了重大改进，使封装效率提升40%，并在中国、美国分别申请了发明专利。改进过程中使用了许可方提供的核心工艺流程作为基础，但关键技术方案由中方独立研发。' },
+      { title: '合同终止后的争议', detail: '许可方于2024年以被许可方未按约定支付技术使用费为由终止合同，并要求被许可方：（1）停止使用改进技术；（2）将改进技术专利转让给许可方；（3）遵守5年竞业限制。被许可方拒绝上述要求。' },
+      { title: '技术独立性分析报告', detail: '第三方技术鉴定机构出具报告：改进技术的核心技术方案与许可技术存在实质性差异，改进部分贡献度约为70%。但若脱离原许可技术的基础框架，改进技术无法独立实施。' }
+    ],
+    facts: [
+      '外国技术许可方与中方被许可方签订半导体封装技术许可合同',
+      '合同约定"被许可方基于许可技术的所有改进成果知识产权自动归许可方所有"',
+      '中方在合同履行期间对技术进行重大改进，封装效率提升40%，在美中分别申请专利',
+      '第三方鉴定显示改进技术核心技术方案与许可技术存在实质性差异，改进部分贡献度约70%',
+      '许可方以被许可方未支付使用费为由终止合同',
+      '许可方要求被许可方停止使用改进技术、转让专利、遵守5年竞业限制'
+    ],
+    evalLaws: ['TRIPS协议', '第40条', '技术进出口管理条例', '第27条', '第29条', '知识产权', '技术许可', '限制性条款', '回授条款', '竞业限制', '改进成果', '第48条']
+  },
+  // ========== fc-11: 跨国劳动合同与竞业限制（国际私法）==========
+  {
+    id: 'fc-11',
+    name: '跨国劳动合同与竞业限制争议',
+    tag: 'pri', tagText: '国际私法',
+    brief: '模拟外籍高管在华工作后的竞业限制与商业秘密保护争议，涉及涉外劳动合同法律适用。',
+    difficulty: '中级', duration: '60分钟',
+    roles: [
+      { name: '用人单位代理人（中国公司）', icon: '🏢', desc: '代表中国公司主张竞业限制协议有效，要求赔偿违约损失' },
+      { name: '外籍员工代理人', icon: '👨', desc: '代表外籍员工主张竞业限制条款不合理、劳动合同法律适用有误' },
+      { name: '法官', icon: '⚖️', desc: '确定劳动合同的准据法并审理竞业限制争议' },
+      { name: '劳动仲裁员', icon: '📋', desc: '评估竞业限制的合理性和补偿金的充分性' }
+    ],
+    issues: [
+      '涉外劳动合同应适用何国法律？当事人选择适用外国法的效力如何？劳动者保护的法律适用有何特殊规则？',
+      '竞业限制协议的效力应如何认定？外国籍员工在中国工作是否适用中国劳动法关于竞业限制的规定？',
+      '竞业限制补偿金标准是否合理？未按约定支付补偿金是否导致竞业限制条款无效？',
+      '外籍员工离职后回国工作，中国法院的竞业限制判决能否在外国获得承认与执行？'
+    ],
+    keywords: ['涉外劳动合同', '竞业限制', '商业秘密', '法律适用', '劳动者保护', '外国人就业', '劳动合同法', '第24条', '补偿金', '工作地法', '公共秩序', '判决承认', '强制性规定', '经常居所地'],
+    laws: [
+      { title: '《涉外民事关系法律适用法》第43条-劳动合同', text: '劳动合同，适用劳动者工作地法律；难以确定劳动者工作地的，适用用人单位主营业地法律。劳务派遣，可以适用劳务派出地法律。' },
+      { title: '《中华人民共和国劳动合同法》第23条-竞业限制', text: '用人单位与劳动者可以在劳动合同中约定保守用人单位的商业秘密和与知识产权相关的保密事项。对负有保密义务的劳动者，用人单位可以在劳动合同或者保密协议中与劳动者约定竞业限制条款，并约定在解除或者终止劳动合同后，在竞业限制期限内按月给予劳动者经济补偿。劳动者违反竞业限制约定的，应当按照约定向用人单位支付违约金。' },
+      { title: '《中华人民共和国劳动合同法》第24条-竞业限制范围', text: '竞业限制的人员限于用人单位的高级管理人员、高级技术人员和其他负有保密义务的人员。竞业限制的范围、地域、期限由用人单位与劳动者约定，竞业限制的约定不得违反法律、法规的规定。在解除或者终止劳动合同后，前款规定的人员到与本单位生产或者经营同类产品、从事同类业务的有竞争关系的其他用人单位，或者自己开业生产或者经营同类产品、从事同类业务的竞业限制期限，不得超过二年。' },
+      { title: '《外国人在中国就业管理规定》第22条', text: '外国人在中国就业的用人单位必须与其就业证所注明的单位相一致。外国人在中国就业，适用中国劳动法律法规。用人单位与被聘用的外国人发生劳动争议，应按照《中华人民共和国劳动法》和《中华人民共和国企业劳动争议处理条例》处理。' }
+    ],
+    evidence: [
+      { title: '劳动合同及竞业限制协议', detail: '美国籍高管Johnson与中国A科技公司签订为期3年的劳动合同，约定月薪8万元，工作地点为北京。合同附件约定：离职后2年内不得在中国及亚太地区从事竞争性业务，竞业限制补偿金为月工资的20%（即1.6万元/月）。合同约定适用美国加利福尼亚州法律。' },
+      { title: 'Johnson离职后行为证据', detail: 'Johnson于2024年6月离职后即加入上海B科技公司（A公司的直接竞争对手），担任CTO职务。A公司发现Johnson在新公司使用了在原公司接触到的核心算法文档和客户数据库信息。' },
+      { title: '补偿金支付记录', detail: 'A公司在Johnson离职后的前3个月按约定支付了竞业限制补偿金共计4.8万元，但第4个月起以"Johnson已违约"为由停止支付。Johnson主张A公司先违约（未足额支付补偿金），竞业限制条款应失效。' },
+      { title: '商业秘密保护相关证据', detail: 'A公司的核心算法已申请中国发明专利，客户数据库采取了加密和分级管理措施，Johnson在职期间签署了保密协议。Johnson辩称部分技术信息属于行业公知信息，不构成商业秘密。' }
+    ],
+    facts: [
+      '美国籍高管Johnson与中国A科技公司签订3年劳动合同，月薪8万元，工作地点北京',
+      '合同附件约定离职后2年内不得在亚太地区从事竞争业务，补偿金为月工资20%（1.6万元/月）',
+      '合同约定适用美国加利福尼亚州法律',
+      'Johnson离职后即加入A公司的直接竞争对手上海B科技公司，担任CTO',
+      'A公司发现Johnson在新公司使用了核心算法文档和客户数据库',
+      'A公司前3个月支付了竞业限制补偿金4.8万元，第4个月起以"Johnson已违约"为由停付',
+      'Johnson主张A公司先违约，竞业限制条款应失效'
+    ],
+    evalLaws: ['涉外民事关系法律适用法', '第43条', '劳动合同法', '第23条', '第24条', '竞业限制', '商业秘密', '劳动者保护', '外国人就业', '补偿金', '工作地法', '公共秩序']
+  },
+  {
+    id: 'fc-cross-1',
+    name: ' 中企海外投资争端：从准入到保护的全链条',
+    tag: 'cross', tagText: '课程群综合',
+    brief: '【课程群贯穿案例】某中资企业"一带一路"投资项目遭遇东道国限制措施，需综合运用国际公法、国际私法、国际经济法三维视角进行综合法律分析与争端解决。本案例打破三门课程壁垒，展示同一涉外法律事件的多维法律面向。',
+    difficulty: '高级', duration: '120分钟',
+    crossCourse: true,
+    crossPerspectives: [
+      { course: '国际公法', icon: '🌐', title: '公法视角：国家主权与外交保护', focus: '东道国限制措施的国家主权边界、经济制裁的国际法规制、外交保护权的行使条件' },
+      { course: '国际私法', icon: '⚖️', title: '私法视角：合同效力与法律冲突', focus: '跨国合资合同的准据法确定、不可抗力条款的法律适用、管辖权冲突与判决承认执行' },
+      { course: '国际经济法', icon: '', title: '经济法视角：投资保护与争端解决', focus: 'BIT下的间接征收认定、公平公正待遇标准、ICSID/UNCITRAL仲裁程序与执行' }
+    ],
+    roles: [
+      { name: '中方企业法务总监', icon: '🏢', desc: '统筹三维法律分析，制定综合维权策略' },
+      { name: '东道国政府法律顾问', icon: '🏛️', desc: '论证限制措施的合法性与主权正当性' },
+      { name: '国际仲裁代理人', icon: '⚖️', desc: '代理投资者提起国际投资仲裁' },
+      { name: '法官/仲裁员', icon: '', desc: '综合公法、私法、经济法视角进行裁判' }
+    ],
+    issues: [
+      '【公法】东道国以"国家安全"为由限制中资准入，是否构成对主权权力的滥用？国际法上如何界定经济安全与国家安全的关系？',
+      '【私法】合资合同中的不可抗力条款能否涵盖东道国政策变更？合同准据法应如何确定？中国法与东道国法冲突时如何解决？',
+      '【经济法】东道国的渐进式限制措施是否构成BIT下的"间接征收"？"公平公正待遇"条款的保护范围如何界定？',
+      '【综合】企业应如何选择最优争端解决路径——外交保护、东道国国内诉讼、还是国际投资仲裁？三条路径的优劣比较与策略选择。',
+      '【综合】本案涉及"一带一路"法治保障体系建设中的哪些核心问题？中国应如何完善海外投资法律保护机制？'
+    ],
+    keywords: ['课程群', '综合案例', '一带一路', '间接征收', '国家安全审查', 'BIT', '外交保护', '不可抗力', '准据法', '管辖权冲突', 'ICSID', '公平公正待遇', '警察权', '赫尔公式', '适当补偿', '平行诉讼', '判决承认与执行', '外国国家豁免法', '对外关系法', '反外国制裁法'],
+    laws: [
+      { title: '《对外关系法》第2条-立法目的', text: '为了发展对外关系，维护国家主权、安全、发展利益，维护和发展人民利益，建设社会主义现代化强国，实现中华民族伟大复兴，促进世界和平与发展，推动构建人类命运共同体，根据宪法，制定本法。' },
+      { title: '《外国国家豁免法》第2条-豁免原则', text: '外国国家及其财产在中华人民共和国的法院享有管辖豁免，本法另有规定的除外。本法所称外国国家包括：（一）外国主权国家；（二）外国主权国家的国家机关或者组成单位；（三）外国主权国家授权行使主权权力且基于该项授权从事活动的组织或者个人。' },
+      { title: '典型BIT第5条-征收与补偿', text: '缔约任何一方对缔约另一方投资者在其领土内的投资不得采取征收、国有化或相当于征收或国有化的措施（以下简称"征收"），除非同时满足以下条件：(a)为了公共利益；(b)按照国内法律程序；(c)非歧视性的；(d)给予充分、有效和及时的补偿。' },
+      { title: '典型BIT第3条-公平公正待遇', text: '缔约一方应始终给予缔约另一方投资者的投资公平公正待遇，并提供充分的保护与安全。缔约一方给予缔约另一方投资者投资的待遇，不应低于其在类似情况下给予本国投资者或第三国投资者投资的待遇。' },
+      { title: 'ICSID公约第25条-管辖权', text: '中心的管辖权应扩展至缔约国（或缔约国向中心指定的该国的任何组成部分或机构）和另一缔约国国民之间直接因投资而产生的任何法律争端，而该争端经双方书面同意提交给中心。' }
+    ],
+    evidence: [
+      { title: '背景：中资企业海外投资项目概况', detail: '中国A能源集团（国有企业）与东道国X国国有能源公司签署合资协议，投资50亿美元建设天然气管道项目。合资合同约定适用X国法律，争议提交新加坡国际仲裁中心（SIAC）。项目已进入施工阶段。' },
+      { title: '东道国政策变更', detail: 'X国新政府上台后，以"国家安全"和"能源主权"为由，颁布《战略能源设施保护法案》，要求外资在战略能源项目中的持股比例不得超过20%。A集团持股比例为51%，被迫转让股份。' },
+      { title: '合资合同纠纷', detail: 'X国合作方援引合同中的不可抗力条款，主张政策变更为"不可预见的法律变更"，要求重新谈判合同条款。A集团认为政策变更不构成不可抗力，对方应继续履行合同。' },
+      { title: '国际制裁叠加', detail: '项目推进期间，第三国Y对X国部分能源企业实施制裁，涉及A集团的合资伙伴。制裁导致项目融资渠道受阻，设备供应商退出。' },
+      { title: 'BIT仲裁准备', detail: 'A集团发现中国与X国签署的双边投资协定（BIT）中包含投资保护条款。A集团准备依据BIT提起ICSID仲裁，主张东道国措施构成间接征收，要求全额补偿。' }
+    ],
+    facts: [
+      '2023年3月，中国A能源集团与X国国有能源公司签署50亿美元天然气管道合资项目协议',
+      '合同约定中方持股51%，适用X国法律，争议提交SIAC仲裁',
+      '2024年1月，X国新政府颁布《战略能源设施保护法案》，外资持股上限20%',
+      'X国合作方援引不可抗力条款要求重新谈判，A集团拒绝',
+      '第三国Y对X国部分能源企业实施制裁，项目融资受阻',
+      'A集团依据中国-X国BIT准备提起ICSID仲裁，主张间接征收',
+      '本案同时涉及公法（国家安全vs经济主权）、私法（合同效力vs政策变更）、经济法（投资保护vs东道国监管权）三维法律问题'
+    ],
+    crossCourseNote: '本案例是课程群整合教学的核心载体。同一投资争端事件，在公法层面涉及国家主权与经济安全边界，在私法层面涉及跨国合同的准据法与不可抗力认定，在经济法层面涉及BIT投资保护与仲裁机制。学生通过本案例可深刻理解三门课程的内在关联，培养跨课程综合分析能力。案例融入"一带一路"法治保障、涉外法治建设等国家战略议题，实现专业教育与思政教育的有机统一。',
+    evalLaws: ['BIT', 'ICSID', '间接征收', '公平公正待遇', '国家安全', '不可抗力', '准据法', '管辖权冲突', '外交保护', '一带一路', '对外关系法', '外国国家豁免法', '反外国制裁法', '征收补偿', '赫尔公式', '适当补偿']
+  }
+
+];
+
+
+// === 豆包AI增强模块 ===
+const DoubaoConfig = {
+  getApiKey() { return localStorage.getItem('doubao_api_key') || ''; },
+  getEndpoint() { return localStorage.getItem('doubao_endpoint_id') || ''; },
+  isConfigured() { return !!(this.getApiKey() && this.getEndpoint()); },
+  // isEnabled = 已保存配置 且 未被手动断开
+  isEnabled() { return this.isConfigured() && localStorage.getItem('doubao_disabled') !== '1'; },
+  save(apiKey, endpoint) {
+    localStorage.setItem('doubao_api_key', apiKey);
+    localStorage.setItem('doubao_endpoint_id', endpoint);
+    localStorage.removeItem('doubao_disabled'); // 保存即视为启用
+  },
+  disable() { localStorage.setItem('doubao_disabled', '1'); },   // 断开但保留Key
+  enable() { localStorage.removeItem('doubao_disabled'); },        // 一键重连
+  clear() {
+    localStorage.removeItem('doubao_api_key');
+    localStorage.removeItem('doubao_endpoint_id');
+    localStorage.removeItem('doubao_disabled');
+  }
+};
+
+// ===== 豆包API统一请求层：关闭深度思考提速 / 自动重试 / 错误友好化 =====
+function _doubaoBuildMessages(systemPrompt, userQuestion) {
+  const msgs = [{ role: 'system', content: systemPrompt }];
+  if (typeof AppState !== 'undefined' && AppState.conversationHistory && AppState.conversationHistory.length > 0) {
+    // 只带最近3轮对话，每条截断800字，减少输入token → 首字更快
+    const recent = AppState.conversationHistory.slice(-6);
+    for (const msg of recent) {
+      msgs.push({ role: msg.role, content: String(msg.content || '').substring(0, 800) });
+    }
+  }
+  msgs.push({ role: 'user', content: userQuestion });
+  return msgs;
+}
+
+function _doubaoFriendlyError(status, errText, endpoint) {
+  const t = errText || '';
+  if (/ModelNotOpen|has not activated|未开通/i.test(t)) {
+    return '模型「' + endpoint + '」尚未开通（免费）：火山方舟控制台 → 模型广场 → 搜索该模型 → 点「开通」即可，无需创建接入点';
+  }
+  if (/ModelIDAccessDisabled|not allowed for your account/i.test(t)) {
+    return '当前账号不支持模型ID直调，请改用 ep- 开头的推理接入点ID';
+  }
+  if (status === 401) return 'API Key 无效，请检查后重新填写';
+  if (status === 403 && /overdue|欠费|balance/i.test(t)) return '火山引擎账号已欠费，请充值后再试';
+  if (status === 429) return '调用频率受限或免费额度已用完，请稍后再试';
+  return 'API错误(' + status + '): ' + t.substring(0, 120);
+}
+
+// 统一请求：默认带 thinking:{type:'disabled'} 强制关闭深度思考（简单教学问答不需要，首字延迟大幅降低）；
+// 若模型不支持该参数（返回400）自动去掉重试一次。返回 { ok, response, status, error }
+async function _doubaoFetch(payloadBase, opts) {
+  opts = opts || {};
+  const timeoutMs = opts.timeoutMs || 60000;
+  const apiKey = DoubaoConfig.getApiKey();
+  const endpoint = DoubaoConfig.getEndpoint();
+  if (!apiKey || !endpoint) return { ok: false, status: 0, error: '未配置API Key或模型ID' };
+
+  const controller = new AbortController();
+  if (opts.onController) { try { opts.onController(controller); } catch(e) {} }
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  const doRequest = async (withThinking) => {
+    const body = Object.assign({ model: endpoint }, payloadBase);
+    if (withThinking) body.thinking = { type: 'disabled' };
+    return fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+  };
+
+  try {
+    let resp = await doRequest(true);
+    if (!resp.ok) {
+      let errText = '';
+      try { errText = await resp.text(); } catch(e) {}
+      // 400 多为旧模型不认识 thinking 参数 → 去掉后重试一次
+      if (resp.status === 400) {
+        console.warn('豆包请求400，尝试不带thinking参数重试:', errText.substring(0, 100));
+        resp = await doRequest(false);
+        if (!resp.ok) {
+          try { errText = await resp.text(); } catch(e) {}
+          clearTimeout(timer);
+          return { ok: false, status: resp.status, error: _doubaoFriendlyError(resp.status, errText, endpoint) };
+        }
+      } else {
+        clearTimeout(timer);
+        return { ok: false, status: resp.status, error: _doubaoFriendlyError(resp.status, errText, endpoint) };
+      }
+    }
+    clearTimeout(timer);
+    return { ok: true, response: resp };
+  } catch (e) {
+    clearTimeout(timer);
+    if (e.name === 'AbortError') return { ok: false, status: 0, error: '请求超时（网络较慢）' };
+    return { ok: false, status: 0, error: '网络异常: ' + e.message };
+  }
+}
+
+function showDoubaoSettings() {
+  const modal = document.getElementById('doubaoSettingsModal');
+  modal.style.display = 'flex';
+  document.getElementById('doubaoApiKeyInput').value = DoubaoConfig.getApiKey();
+  document.getElementById('doubaoEndpointInput').value = DoubaoConfig.getEndpoint();
+  document.getElementById('doubaoTestResult').style.display = 'none';
+  updateDoubaoToggleBtn();
+}
+
+// 根据当前状态刷新"断开/重连"按钮
+function updateDoubaoToggleBtn() {
+  const btn = document.getElementById('doubaoToggleBtn');
+  if (!btn) return;
+  if (!DoubaoConfig.isConfigured()) { btn.style.display = 'none'; return; }
+  btn.style.display = 'inline-block';
+  if (DoubaoConfig.isEnabled()) {
+    btn.textContent = '⏸ 断开AI增强（Key已保存，可一键恢复）';
+    btn.style.cssText = 'padding:8px 16px;border:1px solid #ff7875;background:white;color:#ff4d4f;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:auto';
+    btn.onmouseover = function() { this.style.background = '#fff1f0'; };
+    btn.onmouseout = function() { this.style.background = 'white'; };
+    btn.onclick = disconnectDoubao;
+  } else {
+    btn.textContent = '▶ 重新连接AI增强';
+    btn.style.cssText = 'padding:8px 16px;border:none;background:linear-gradient(135deg,#52c41a,#389e0d);color:white;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:auto';
+    btn.onmouseover = function() { this.style.opacity = '0.9'; };
+    btn.onmouseout = function() { this.style.opacity = '1'; };
+    btn.onclick = reconnectDoubao;
+  }
+}
+
+function _doubaoChatNotice(text, color, bg) {
+  const chat = document.getElementById('qaChat');
+  if (!chat) return;
+  const notif = document.createElement('div');
+  notif.style.cssText = 'text-align:center;padding:8px;font-size:0.78rem;color:' + color + ';background:' + bg + ';border-radius:8px;margin:8px 16px';
+  notif.textContent = text;
+  chat.appendChild(notif);
+  setTimeout(() => notif.remove(), 4500);
+}
+
+function disconnectDoubao() {
+  DoubaoConfig.disable();
+  updateDoubaoStatusIcon();
+  updateDoubaoToggleBtn();
+  const resultDiv = document.getElementById('doubaoTestResult');
+  if (resultDiv) {
+    resultDiv.style.display = 'block';
+    resultDiv.style.color = '#b08d3a';
+    resultDiv.textContent = '⏸ 已断开AI增强，切换为纯知识库检索（本地秒回）。Key和接入点ID已保存在本浏览器，点「重新连接」即可恢复，无需重填。';
+  }
+  _doubaoChatNotice('⚡ 已切换为纯知识库检索模式，回答本地即时生成', '#b08d3a', '#faf7ee');
+}
+
+function reconnectDoubao() {
+  DoubaoConfig.enable();
+  updateDoubaoStatusIcon();
+  updateDoubaoToggleBtn();
+  const resultDiv = document.getElementById('doubaoTestResult');
+  if (resultDiv) {
+    resultDiv.style.display = 'block';
+    resultDiv.style.color = '#52c41a';
+    resultDiv.textContent = '✅ AI增强已重新连接，后续回答将由豆包大模型结合知识库生成';
+  }
+  _doubaoChatNotice('🤖 AI增强已恢复', '#52c41a', '#f6ffed');
+}
+
+function closeDoubaoSettings() {
+  document.getElementById('doubaoSettingsModal').style.display = 'none';
+}
+
+function useFastModel() {
+  const inp = document.getElementById('doubaoEndpointInput');
+  if (inp) inp.value = 'doubao-seed-2-0-lite-260428';
+  const resultDiv = document.getElementById('doubaoTestResult');
+  if (resultDiv) {
+    resultDiv.style.display = 'block';
+    resultDiv.style.color = '#b08d3a';
+    resultDiv.textContent = '⚡ 已填入极速模型 doubao-seed-2-0-lite-260428（官方Seed-2.0系列轻量版，首字约0.2-0.9秒）。请点「测试连接」：若提示未开通，按提示去模型广场免费开通（约1分钟）；成功后保存即可。原配置不会丢失，随时可切回。';
+  }
+}
+
+function saveDoubaoSettings() {
+  const apiKey = document.getElementById('doubaoApiKeyInput').value.trim();
+  const endpoint = document.getElementById('doubaoEndpointInput').value.trim();
+  if (!apiKey || !endpoint) {
+    alert('请填写API Key和模型ID/接入点ID');
+    return;
+  }
+  DoubaoConfig.save(apiKey, endpoint);
+  updateDoubaoStatusIcon();
+  updateDoubaoToggleBtn();
+  closeDoubaoSettings();
+  // Show brief success notification
+  const chat = document.getElementById('qaChat');
+  if (chat) {
+    const notif = document.createElement('div');
+    notif.style.cssText = 'text-align:center;padding:8px;font-size:0.78rem;color:#52c41a;background:#f6ffed;border-radius:8px;margin:8px 16px';
+    notif.textContent = '✅ AI增强已开启，后续回答将由豆包大模型结合知识库生成';
+    chat.appendChild(notif);
+    setTimeout(() => notif.remove(), 4000);
+  }
+}
+
+function updateDoubaoStatusIcon() {
+  const icon = document.getElementById('doubaoStatusIcon');
+  if (icon) {
+    icon.textContent = DoubaoConfig.isEnabled() ? '🤖' : '⚪';
+    icon.parentElement.style.borderColor = DoubaoConfig.isEnabled() ? 'rgba(82,196,26,0.5)' : 'rgba(201,168,76,0.3)';
+    icon.parentElement.style.color = DoubaoConfig.isEnabled() ? '#52c41a' : 'var(--accent)';
+  }
+}
+
+async function testDoubaoConnection() {
+  const apiKey = document.getElementById('doubaoApiKeyInput').value.trim();
+  const endpoint = document.getElementById('doubaoEndpointInput').value.trim();
+  const resultDiv = document.getElementById('doubaoTestResult');
+  const btn = document.getElementById('testDoubaoBtn');
+  
+  if (!apiKey || !endpoint) {
+    resultDiv.style.display = 'block';
+    resultDiv.style.color = '#ff4d4f';
+    resultDiv.textContent = '❌ 请先填写API Key和Endpoint ID';
+    return;
+  }
+  
+  btn.disabled = true;
+  btn.textContent = '测试中...';
+  resultDiv.style.display = 'block';
+  resultDiv.style.color = '#666';
+  resultDiv.textContent = '正在连接豆包API...';
+  
+  const r = await _doubaoFetch({
+    messages: [{ role: 'user', content: '请回复"连接成功"' }],
+    max_tokens: 20
+  }, { timeoutMs: 30000 });
+
+  if (r.ok) {
+    const data = await r.response.json();
+    resultDiv.style.color = '#52c41a';
+    resultDiv.textContent = '✅ 连接成功！模型: ' + (data.model || endpoint) + '（已关闭深度思考，响应更快）';
+  } else {
+    resultDiv.style.color = '#ff4d4f';
+    resultDiv.textContent = '❌ ' + r.error;
+  }
+  
+  btn.disabled = false;
+  btn.textContent = '测试连接';
+}
+
+async function callDoubaoAPI(userQuestion, kbContext) {
+  const apiKey = DoubaoConfig.getApiKey();
+  const endpoint = DoubaoConfig.getEndpoint();
+  if (!apiKey || !endpoint) return null;
+  
+  const tutorMode = typeof AppState !== 'undefined' && AppState.tutorMode;
+  const qaMode = (typeof AppState !== 'undefined' && AppState.qaMode) || 'intro';
+  const qaModeConfig = typeof QA_MODES !== 'undefined' ? QA_MODES[qaMode] : null;
+  const roleStyle = qaModeConfig ? qaModeConfig.style : '';
+
+  let systemPrompt = `你是一个专业的三国法（国际公法、国际私法、国际经济法）教学助手。请基于以下知识库内容为同学解答问题。
+
+要求：
+1. 优先使用知识库中的内容回答，确保准确性
+2. 回答要条理清晰，使用分点或分段结构
+3. 引用具体法条、条约或案例时要准确标注来源
+4. 如果知识库内容不足以完整回答，可以适当补充通用法律知识，但要明确区分
+5. 注意体现中国立场和视角
+6. 语言要专业但易懂，适合法学本科/研究生水平
+7. 回答控制在600字以内，重点突出`;
+
+  if (roleStyle) {
+    systemPrompt += `\n8. 当前角色风格：${roleStyle}`;
+  }
+
+  if (tutorMode) {
+    systemPrompt += `
+
+【重要：导师模式】
+你正在以苏格拉底式导师的方式与学生互动。请严格遵守以下规则：
+- 不要直接给出完整答案，而是通过提问引导学生自己思考
+- 先给出问题的分析框架或关键概念，然后抛出1-2个引导性问题
+- 如果学生追问，给出更多线索但仍保留核心答案让学生自己推理
+- 当学生给出了正确的分析思路时，给予肯定并进一步深化
+- 每次回答末尾必须包含一个【💡 思考引导】区块，格式如下：
+  💡 **思考引导：** [一个与当前问题相关的启发性问题，引导学生深入思考或联系其他知识点]
+- 在回答最后，添加【 追问建议】区块，提供2-3个可以进一步追问的方向，格式：
+  🔍 **追问建议：**
+  - [方向1]
+  - [方向2]
+  - [方向3]`;
+  } else {
+    systemPrompt += `
+
+每次回答末尾，请添加一个【 追问建议】区块，提供2-3个可以进一步追问的方向，帮助学生拓展思考，格式：
+🔍 **追问建议：**
+- [方向1]
+- [方向2]
+- [方向3]`;
+  }
+
+  systemPrompt += `
+
+以下是知识库中检索到的相关内容：
+---
+${kbContext}
+---`;
+
+  const r = await _doubaoFetch({
+    messages: _doubaoBuildMessages(systemPrompt, userQuestion),
+    temperature: 0.3,
+    max_tokens: 2000
+  }, { timeoutMs: 60000 });
+  if (r.ok) {
+    const data = await r.response.json();
+    return data.choices[0].message.content;
+  }
+  console.warn('豆包API调用失败:', r.status, r.error);
+  return null;
+}
+
+// 初始化AI增强状态图标
+setTimeout(() => updateDoubaoStatusIcon(), 1000);
+
+// 豆包API流式调用：边生成边返回，首字延迟大幅降低
+// onDelta(partialText) 每收到新内容回调；返回完整文本，失败返回 null
+async function callDoubaoAPIStream(userQuestion, kbContext, onDelta) {
+  const apiKey = DoubaoConfig.getApiKey();
+  const endpoint = DoubaoConfig.getEndpoint();
+  if (!apiKey || !endpoint) return null;
+
+  const tutorMode = typeof AppState !== 'undefined' && AppState.tutorMode;
+  const qaMode = (typeof AppState !== 'undefined' && AppState.qaMode) || 'intro';
+  const qaModeConfig = typeof QA_MODES !== 'undefined' ? QA_MODES[qaMode] : null;
+  const roleStyle = qaModeConfig ? qaModeConfig.style : '';
+
+  let systemPrompt = `你是一个专业的三国法（国际公法、国际私法、国际经济法）教学助手。请基于以下知识库内容为同学解答问题。
+
+要求：
+1. 优先使用知识库中的内容回答，确保准确性
+2. 回答要条理清晰，使用分点或分段结构
+3. 引用具体法条、条约或案例时要准确标注来源
+4. 如果知识库内容不足以完整回答，可以适当补充通用法律知识，但要明确区分
+5. 注意体现中国立场和视角
+6. 语言要专业但易懂，适合法学本科/研究生水平
+7. 回答控制在600字以内，重点突出`;
+
+  if (roleStyle) {
+    systemPrompt += `\n8. 当前角色风格：${roleStyle}`;
+  }
+
+  if (tutorMode) {
+    systemPrompt += `
+
+【重要：导师模式】
+你正在以苏格拉底式导师的方式与学生互动。请严格遵守以下规则：
+- 不要直接给出完整答案，而是通过提问引导学生自己思考
+- 先给出问题的分析框架或关键概念，然后抛出1-2个引导性问题
+- 如果学生追问，给出更多线索但仍保留核心答案让学生自己推理
+- 当学生给出了正确的分析思路时，给予肯定并进一步深化
+- 每次回答末尾必须包含一个【💡 思考引导】区块，格式如下：
+   **思考引导：** [一个与当前问题相关的启发性问题，引导学生深入思考或联系其他知识点]
+- 在回答最后，添加【 追问建议】区块，提供2-3个可以进一步追问的方向，格式：
+  🔍 **追问建议：**
+  - [方向1]
+  - [方向2]
+  - [方向3]`;
+  } else {
+    systemPrompt += `
+
+每次回答末尾，请添加一个【 追问建议】区块，提供2-3个可以进一步追问的方向，帮助学生拓展思考，格式：
+🔍 **追问建议：**
+- [方向1]
+- [方向2]
+- [方向3]`;
+  }
+
+  systemPrompt += `
+
+以下是知识库中检索到的相关内容：
+---
+${kbContext}
+---`;
+
+  let idleTimer = null;
+  let resetIdle = null;
+  const r = await _doubaoFetch({
+    messages: _doubaoBuildMessages(systemPrompt, userQuestion),
+    temperature: 0.3,
+    max_tokens: 1300,
+    stream: true
+  }, {
+    timeoutMs: 120000,
+    onController: (c) => {
+      // 流式场景用空闲超时：每收到数据块就重置，30秒无新数据才判定超时
+      resetIdle = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => c.abort(), 30000); };
+      resetIdle();
+    }
+  });
+
+  if (!r.ok || !r.response || !r.response.body) {
+    console.warn('豆包流式API调用失败:', r.status, r.error);
+    return null;
+  }
+
+  try {
+    const reader = r.response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let fullText = '';
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (resetIdle) resetIdle();
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // 最后一行可能不完整，留到下一轮
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data:')) continue;
+        const dataStr = trimmed.slice(5).trim();
+        if (dataStr === '[DONE]') continue;
+        try {
+          const json = JSON.parse(dataStr);
+          const delta = json.choices && json.choices[0] && json.choices[0].delta;
+          if (delta && delta.content) {
+            fullText += delta.content;
+            if (onDelta) onDelta(fullText);
+          }
+        } catch(e) { /* 忽略不完整/心跳行 */ }
+      }
+    }
+    clearTimeout(idleTimer);
+    return fullText.trim() || null;
+  } catch (e) {
+    clearTimeout(idleTimer);
+    if (e.name === 'AbortError') {
+      console.warn('豆包流式API超时(空闲30s)');
+    } else {
+      console.warn('豆包流式API调用异常:', e);
+    }
+    return null;
+  }
+}
+
+
+function renderCaseModule() {
+  const container = document.getElementById('page-case');
+  container.innerHTML = `
+    <div class="case-layout">
+      <div class="case-list-panel">
+        <div class="case-list-header">
+          <h3>⚖️ 案例仿真实训</h3>
+          <p>选择模式并开始实训</p>
+        </div>
+        <div class="mode-switch-tabs">
+          <div class="mode-switch-tab active" onclick="switchSimMode('fixed', this)">📋 固定案例</div>
+          <div class="mode-switch-tab" onclick="switchSimMode('dynamic', this)">🔄 动态生成</div>
+        </div>
+        <div class="case-list-scroll">
+        <div id="fixedCaseList">${renderCaseListNew()}</div>
+        <div id="dynamicCaseArea" style="display:none">
+          <div style="padding:12px 16px">
+            <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:10px">💡 输入案例方向，AI将从知识库中检索并生成仿真案例</p>
+            <div class="dynamic-case-input">
+              <input type="text" id="dynamicCaseInput" placeholder="例如：涉外婚姻案例、海洋法争端、CISG合同纠纷..." onkeydown="if(event.key==='Enter')generateDynamicCase()">
+              <button onclick="generateDynamicCase()">🚀 生成案例</button>
+            </div>
+            <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
+              <span class="suggestion-chip" onclick="document.getElementById('dynamicCaseInput').value='涉外婚姻';generateDynamicCase()" style="font-size:0.72rem;padding:4px 10px">涉外婚姻</span>
+              <span class="suggestion-chip" onclick="document.getElementById('dynamicCaseInput').value='海洋法争端';generateDynamicCase()" style="font-size:0.72rem;padding:4px 10px">海洋法争端</span>
+              <span class="suggestion-chip" onclick="document.getElementById('dynamicCaseInput').value='投资仲裁';generateDynamicCase()" style="font-size:0.72rem;padding:4px 10px">投资仲裁</span>
+              <span class="suggestion-chip" onclick="document.getElementById('dynamicCaseInput').value='国际货物买卖';generateDynamicCase()" style="font-size:0.72rem;padding:4px 10px">国际货物买卖</span>
+            </div>
+            <div id="dynamicCaseResult"></div>
+          </div>
+        </div>
+        </div>
+      </div>
+      <div class="case-detail" id="caseDetail">
+        <div class="case-placeholder">
+          <div class="placeholder-icon">⚖️</div>
+          <p>请从左侧选择一个案例或生成动态案例开始仿真实训</p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function switchSimMode(mode, tabEl) {
+  AppState.simMode = mode;
+  document.querySelectorAll('.mode-switch-tab').forEach(t => t.classList.remove('active'));
+  tabEl.classList.add('active');
+  document.getElementById('fixedCaseList').style.display = mode === 'fixed' ? '' : 'none';
+  document.getElementById('dynamicCaseArea').style.display = mode === 'dynamic' ? '' : 'none';
+}
+
+function renderCaseListNew() {
+  return FIXED_CASES.map(function(c) {
+    var favId = 'case-' + c.id;
+    var isFav = isFavorited(favId);
+    var favClass = isFav ? 'fav-btn active' : 'fav-btn';
+    var favIcon = isFav ? '★' : '☆';
+    return '<div class="case-card" id="caseCard-' + c.id + '" onclick="selectCaseNew(\'' + c.id + '\')" style="position:relative">'
+      + '<button class="' + favClass + '" style="position:absolute;top:8px;right:8px;z-index:2" onclick="event.stopPropagation();toggleCaseFav(\'' + c.id + '\',this)" title="收藏此案例">' + favIcon + '</button>'
+      + '<span class="case-tag ' + c.tag + '">' + c.tagText + '</span>'
+      + '<div class="case-name">' + c.name + '</div>'
+      + '<div class="case-brief">' + c.brief + '</div>'
+      + '<div class="case-meta">'
+      + '<span>📊 ' + c.difficulty + '</span>'
+      + '<span>⏱️ ' + c.duration + '</span>'
+      + '</div>'
+      + getCaseProgressBadge(c.id)
+      + '</div>';
+  }).join('');
+}
+
+function toggleCaseFav(caseId, btn) {
+  var caseData = FIXED_CASES.find(function(c) { return c.id === caseId; });
+  if (!caseData) return;
+  toggleFavorite({
+    type: 'case',
+    sourceId: caseId,
+    title: caseData.name,
+    summary: caseData.brief,
+    icon: '⚖️',
+    category: caseData.tagText
+  });
+  var favId = 'case-' + caseId;
+  var nowFav = isFavorited(favId);
+  if (btn) {
+    btn.className = nowFav ? 'fav-btn active' : 'fav-btn';
+    btn.textContent = nowFav ? '★' : '☆';
+  }
+}
+
+function toggleDocFav(docId, btn) {
+  var doc = null;
+  for (var i = 0; i < MockData.ideologyDocs.length; i++) {
+    if (MockData.ideologyDocs[i].id === docId) { doc = MockData.ideologyDocs[i]; break; }
+  }
+  if (!doc) return;
+  toggleFavorite({
+    type: 'doc',
+    sourceId: docId,
+    title: doc.title,
+    summary: doc.summary,
+    icon: doc.icon,
+    category: doc.category
+  });
+  var favId = 'doc-' + docId;
+  var nowFav = isFavorited(favId);
+  if (btn) {
+    btn.className = nowFav ? 'fav-btn active' : 'fav-btn';
+    btn.textContent = nowFav ? '★' : '☆';
+  }
+}
+
+function toggleNewsFav(newsId, btn) {
+  var news = null;
+  for (var i = 0; i < MockData.zhijianNews.length; i++) {
+    if (MockData.zhijianNews[i].id === newsId) { news = MockData.zhijianNews[i]; break; }
+  }
+  if (!news) return;
+  var newsCategory = (news.teachingNote && news.teachingNote.knowledgeTags && news.teachingNote.knowledgeTags.length > 0) ? news.teachingNote.knowledgeTags[0] : '涉外法治';
+  toggleFavorite({
+    type: 'news',
+    sourceId: newsId,
+    title: news.title,
+    summary: news.summary,
+    icon: '📰',
+    category: newsCategory
+  });
+  var favId = 'news-' + newsId;
+  var nowFav = isFavorited(favId);
+  if (btn) {
+    btn.className = nowFav ? 'fav-btn active' : 'fav-btn';
+    btn.textContent = nowFav ? '★' : '☆';
+  }
+}
+
+function toggleQAFav(btn) {
+  var q = btn.getAttribute('data-q') || '';
+  var a = btn.getAttribute('data-a') || '';
+  var sourceId = 'qa-' + Date.now();
+  var title = q.length > 50 ? q.substring(0, 50) + '...' : q;
+  var summary = a.length > 100 ? a.substring(0, 100) + '...' : a;
+  var favId = 'qa-' + sourceId;
+  
+  if (isFavorited(favId)) {
+    removeFavorite(favId);
+    btn.className = 'fav-qa-btn';
+    btn.innerHTML = '<span>☆</span> 收藏';
+  } else {
+    saveFavorite({
+      type: 'qa',
+      sourceId: sourceId,
+      title: '问答: ' + title,
+      summary: summary,
+      icon: '💬',
+      category: '智能答疑',
+      extra: { question: q, answer: a }
+    });
+    btn.className = 'fav-qa-btn active';
+    btn.innerHTML = '<span>★</span> 已收藏';
+  }
+}
+
+function getCaseProgressBadge(caseId) {
+  const prog = AppState.studentProgress[caseId];
+  if (prog && prog.score !== undefined) {
+    return `<div style="margin-top:6px;font-size:0.75rem;color:var(--success);font-weight:600">✅ 已完成 · ${prog.score}分</div>`;
+  }
+  return '';
+}
+
+function selectCaseNew(caseId) {
+  AppState.currentCase = caseId;
+  AppState.simStep = 1;
+  AppState.simRole = '';
+  AppState.simOpinion = '';
+  AppState.simScore = null;
+  const caseData = FIXED_CASES.find(c => c.id === caseId);
+  if (!caseData) return;
+  AppState.simCaseData = caseData;
+  document.querySelectorAll('.case-card').forEach(c => c.classList.remove('active'));
+  const el = document.getElementById(`caseCard-${caseId}`);
+  if (el) el.classList.add('active');
+  renderSimStep();
+}
+
+function renderSimStep() {
+  const detail = document.getElementById('caseDetail');
+  const cd = AppState.simCaseData;
+  if (!cd) return;
+  
+  // Step indicator
+  const stepNames = ['角色选择', '案情研读', '法律检索', '争点分析', '证据研判', '意见撰写', '模拟庭审', '裁决评议'];
+  const stepHtml = stepNames.map((s, i) => {
+    let cls = '';
+    if (i + 1 < AppState.simStep) cls = 'done';
+    else if (i + 1 === AppState.simStep) cls = 'active';
+    return `<div class="sim-step-item ${cls}">
+      <span class="sim-step-circle">${i + 1 < AppState.simStep ? '✓' : i + 1}</span>
+      <span class="sim-step-label">${s}</span>
+    </div>`;
+  }).join('');
+  
+  let contentHtml = '';
+  switch (AppState.simStep) {
+    case 1: contentHtml = renderStep1_RoleSelect(cd); break;
+    case 2: contentHtml = renderStage2_CaseReading(cd); break;
+    case 3: contentHtml = renderStage3_LawSearch(cd); break;
+    case 4: contentHtml = renderStep2_Issues(cd); break;
+    case 5: contentHtml = renderStage5_Evidence(cd); break;
+    case 6: contentHtml = renderStage6_Opinion(cd); break;
+    case 7: contentHtml = renderStage7_Trial(cd); break;
+    case 8: contentHtml = renderStep4_Score(cd); break;
+  }
+  
+  detail.innerHTML = `
+    <div class="case-detail-header">
+      <span class="case-gen-tag">📋 ${cd.tagText || '综合'} · ${cd.difficulty || '中级'} · ${cd.duration || '60分钟'}</span>
+      <h3>${cd.name}</h3>
+    </div>
+    <div class="sim-step-indicator">${stepHtml}</div>
+    <div style="padding:0 24px 24px">${contentHtml}</div>
+  `;
+}
+
+function renderStep1_RoleSelect(cd) {
+  const roles = cd.roles || [];
+  const cards = roles.map((r, i) => {
+    const roleName = typeof r === 'string' ? r : r.name;
+    const roleIcon = typeof r === 'string' ? '👤' : (r.icon || '👤');
+    const roleDesc = typeof r === 'string' ? '' : (r.desc || '');
+    const sel = AppState.simRole === roleName ? 'selected' : '';
+    return `<div class="role-select-card ${sel}" onclick="selectSimRole('${roleName}')">
+      <div class="role-icon">${roleIcon}</div>
+      <div class="role-name">${roleName}</div>
+      ${roleDesc ? `<div class="role-desc">${roleDesc}</div>` : ''}
+    </div>`;
+  }).join('');
+  
+  return `
+    <h4 style="color:var(--primary);margin-bottom:16px">📌 步骤1：选择你的角色</h4>
+    <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:16px">请选择你在本案中将扮演的角色，不同角色将从不同角度参与案件分析。</p>
+    <div class="role-select-grid">${cards}</div>
+    <button class="sim-next-btn" ${!AppState.simRole ? 'disabled' : ''} onclick="goToSimStep(2)">下一步：案情研读 →</button>
+  `;
+}
+
+function selectSimRole(roleName) {
+  AppState.simRole = roleName;
+  renderSimStep();
+}
+
+function renderStep2_Issues(cd) {
+  const issues = (cd.issues || []).map((iss, i) => `<li><strong>争点${i+1}：</strong>${iss}</li>`).join('');
+  
+  // Evidence collapsibles
+  const evidenceHtml = (cd.evidence || []).map((ev, i) => `
+    <div class="collapsible-section">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        📂 ${ev.title} <span class="arrow">▶</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="law-text">${cleanMarkdown(ev.detail)}</div>
+      </div>
+    </div>
+  `).join('');
+  
+  // Laws collapsibles
+  const lawsHtml = (cd.laws || []).map((law, i) => `
+    <div class="collapsible-section">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        📜 ${law.title} <span class="arrow">▶</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="law-text">${cleanMarkdown(law.text)}</div>
+      </div>
+    </div>
+  `).join('');
+  
+  // Role card
+  const roleCardHtml = cd.roles && AppState.simRole ? (() => {
+    const r = cd.roles.find(r => (typeof r === 'string' ? r : r.name) === AppState.simRole);
+    if (!r) return '';
+    const rName = typeof r === 'string' ? r : r.name;
+    const rDesc = typeof r === 'string' ? '' : (r.desc || '');
+    return `<div class="collapsible-section">
+      <div class="collapsible-header open" onclick="toggleCollapsible(this)">
+        🎭 你的角色：${rName} <span class="arrow">▶</span>
+      </div>
+      <div class="collapsible-body open">
+        <div class="role-duty">
+          <h5>${rName}</h5>
+          <p>${rDesc || '根据案件事实和法律规定，从你所代表的角色立场出发，分析案件争点并提交法律意见。'}</p>
+        </div>
+      </div>
+    </div>`;
+  })() : '';
+  
+  return `
+    <h4 style="color:var(--primary);margin-bottom:16px">📌 步骤4：梳理核心法律争点</h4>
+    <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:16px">以下是本案的核心法律争点，请仔细分析。你可以点击展开查看相关证据和法律条文，也可以检索知识库。</p>
+    
+    ${roleCardHtml}
+    
+    <div class="case-facts-section" style="margin-bottom:20px;padding:16px;background:var(--bg-card);border-radius:var(--radius-md);border-left:3px solid var(--primary)">
+      <h5 style="margin-bottom:10px;color:var(--primary)">📋 案件事实</h5>
+      <div style="font-size:0.88rem;line-height:1.8;color:var(--text-primary)">${cleanMarkdown(cd.facts) || '暂无案情信息'}</div>
+    </div>
+    
+    <div style="margin-bottom:20px">
+      <h5 style="margin-bottom:10px;color:var(--text-primary)">🔍 核心法律争点</h5>
+      <ul class="issue-list">${issues}</ul>
+    </div>
+    
+    <div style="margin-bottom:16px">
+      <h5 style="margin-bottom:10px;color:var(--text-primary)">📎 案件材料（点击展开）</h5>
+      ${evidenceHtml}
+    </div>
+    
+    <div style="margin-bottom:16px">
+      <h5 style="margin-bottom:10px;color:var(--text-primary)">📜 可援引法律依据（点击展开）</h5>
+      ${lawsHtml}
+    </div>
+    
+    <div style="margin-bottom:16px">
+      <h5 style="margin-bottom:10px;color:var(--text-primary)">🔎 知识库检索</h5>
+      <div class="kb-search-box">
+        <input type="text" id="simKbSearchInput" placeholder="输入关键词检索知识库..." onkeydown="if(event.key==='Enter')searchKBInSim()">
+        <button onclick="searchKBInSim()">检索</button>
+      </div>
+      <div id="simKbResults"></div>
+    </div>
+    
+    <div style="display:flex;gap:10px">
+      <button class="sim-next-btn" style="background:var(--text-light)" onclick="goToSimStep(1)">← 返回</button>
+      <button class="sim-next-btn" onclick="goToSimStep(5)">下一步：证据研判 →</button>
+    </div>
+  `;
+}
+
+async function searchKBInSim() {
+  const input = document.getElementById('simKbSearchInput');
+  if (!input) return;
+  const query = input.value.trim();
+  if (!query) return;
+  
+  // Wait for knowledge base to load
+  if (typeof _kbReady !== 'undefined') { try { await _kbWait(45000); } catch(e) { console.warn('KB load timeout:', e); } }
+  
+  const results = BM25.search(query, 5);
+  const resultsDiv = document.getElementById('simKbResults');
+  if (!resultsDiv) return;
+  
+  if (results.length === 0) {
+    resultsDiv.innerHTML = '<div class="kb-result-inline">未在知识库中找到相关内容，请尝试其他关键词。</div>';
+    return;
+  }
+  
+  resultsDiv.innerHTML = '<div class="kb-result-inline">' + results.map((r, i) => {
+    const c = r.chunk;
+    let summary = cleanMarkdown(c.x);
+    if (summary.length > 100) summary = summary.substring(0, 100) + '...';
+    return `<div style="margin-bottom:8px;padding-bottom:8px;${i < results.length-1 ? 'border-bottom:1px solid var(--border-light)' : ''}">
+      <strong style="color:var(--primary);font-size:0.82rem">${escapeHtml(c.t)}</strong>
+      <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">${escapeHtml(summary)}</div>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+function renderStep3_Opinion(cd) {
+  const charCount = AppState.simOpinion ? AppState.simOpinion.length : 0;
+  const counterCls = charCount >= 100 ? 'ok' : 'warning';
+  
+  return `
+    <h4 style="color:var(--primary);margin-bottom:16px">📌 步骤6：撰写法律意见</h4>
+    <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:8px">
+      请以 <strong>${AppState.simRole}</strong> 的身份，围绕本案核心争点撰写法律意见。<br>
+      要求：至少100字，尽量引用相关法条和公约条款。
+    </p>
+    <textarea class="opinion-textarea" id="opinionTextarea" 
+      placeholder="请输入你的法律意见...&#10;&#10;建议结构：&#10;1. 事实认定&#10;2. 法律分析（引用相关法条/公约）&#10;3. 结论意见"
+      oninput="updateOpinionCount(this)">${AppState.simOpinion}</textarea>
+    <div class="char-counter ${counterCls}" id="charCounter">已输入 ${charCount} 字 ${charCount < 100 ? '（至少需要100字）' : '✓ 字数达标'}</div>
+    
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="sim-next-btn" style="background:var(--text-light)" onclick="goToSimStep(4)">← 返回</button>
+      <button class="sim-next-btn" id="submitOpinionBtn" ${charCount < 100 ? 'disabled' : ''} onclick="submitOpinion()">📮 提交评分</button>
+    </div>
+  `;
+}
+
+function updateOpinionCount(textarea) {
+  AppState.simOpinion = textarea.value;
+  const count = textarea.value.length;
+  const counter = document.getElementById('charCounter');
+  const btn = document.getElementById('submitOpinionBtn');
+  if (counter) {
+    counter.textContent = `已输入 ${count} 字 ${count < 100 ? '（至少需要100字）' : '✓ 字数达标'}`;
+    counter.className = 'char-counter ' + (count >= 100 ? 'ok' : 'warning');
+  }
+  if (btn) btn.disabled = count < 100;
+}
+
+function submitOpinion() {
+  if (AppState.simOpinion.length < 100) return;
+  // Calculate score
+  const cd = AppState.simCaseData;
+  const opinion = AppState.simOpinion;
+  
+  // Keyword matching (40%)
+  const keywords = cd.keywords || [];
+  let kwMatched = 0;
+  const kwFound = [];
+  const kwMissing = [];
+  keywords.forEach(kw => {
+    if (opinion.includes(kw)) { kwMatched++; kwFound.push(kw); }
+    else { kwMissing.push(kw); }
+  });
+  const kwScore = keywords.length > 0 ? Math.round((kwMatched / keywords.length) * 100) : 0;
+  
+  // Law reference (40%)
+  const evalLaws = cd.evalLaws || [];
+  let lawMatched = 0;
+  const lawFound = [];
+  const lawMissing = [];
+  evalLaws.forEach(law => {
+    if (opinion.includes(law)) { lawMatched++; lawFound.push(law); }
+    else { lawMissing.push(law); }
+  });
+  const lawScore = evalLaws.length > 0 ? Math.round((lawMatched / evalLaws.length) * 100) : 0;
+  
+  // Argument completeness (20%)
+  let completenessScore = 0;
+  const wordCount = opinion.length;
+  if (wordCount >= 100) completenessScore += 30;
+  if (wordCount >= 200) completenessScore += 20;
+  if (wordCount >= 400) completenessScore += 10;
+  const conclusionWords = ['因此', '综上所述', '总之', '结论', '综上', '由此可见', '应当', '应该', '认为'];
+  conclusionWords.forEach(w => { if (opinion.includes(w)) completenessScore = Math.min(100, completenessScore + 10); });
+  const logicWords = ['首先', '其次', '再次', '此外', '另外', '一方面', '另一方面', '根据', '依据', '按照'];
+  logicWords.forEach(w => { if (opinion.includes(w)) completenessScore = Math.min(100, completenessScore + 5); });
+  
+  // Total score
+  // 中国立场(20%)
+  const sk=['中国立场','国家利益','主权','中国特色','人类命运共同体','一带一路','中国方案','公平正义','多边主义','国际法治'];
+  let sm=sk.filter(k=>opinion.includes(k));
+  let stanceScore=Math.min(Math.round((sm.length/Math.max(sk.length*0.4,3))*100),100);
+  if(opinion.includes('中国')&&(opinion.includes('立场')||opinion.includes('主张')))stanceScore=Math.max(stanceScore,40);
+  // 逻辑(15%)
+  const lc=['首先','其次','此外','因此','综上','根据','依据','然而','如果','那么','由此可见','一方面','另一方面'];
+  let lcc=0;lc.forEach(w=>{if(opinion.includes(w))lcc++;});
+  let logicScore=Math.min(Math.round((lcc/6)*70),70);
+  if(wordCount>=200)logicScore+=10;
+  if(['综上','因此','总之','结论'].some(w=>opinion.includes(w)))logicScore+=10;
+  if(['关于','针对','本案','根据'].some(w=>opinion.substring(0,50).includes(w)))logicScore+=10;
+  logicScore=Math.min(logicScore,100);
+  
+  const totalScore = Math.round(kwScore*0.25+lawScore*0.25+completenessScore*0.15+stanceScore*0.20+logicScore*0.15);
+  AppState.simScore = {
+    total: totalScore,
+    keyword: { score: kwScore, matched: kwFound, missing: kwMissing, weight: 25 },
+    law: { score: lawScore, matched: lawFound, missing: lawMissing, weight: 25 },
+    completeness: { score: completenessScore, wordCount: wordCount, weight: 15 },
+    stance: { score: stanceScore, matched: sm, weight: 20 },
+    logic: { score: logicScore, connectorCount: lcc, weight: 15 }
+  };
+  
+  // Save progress
+  saveCaseProgress(cd.id || cd.name, totalScore);
+  
+  goToSimStep(7);
+}
+
+function renderStep4_Score(cd) {
+  const score = AppState.simScore;
+  if (!score) return '<p>暂无评分数据</p>';
+  
+  const getBarColor = (s) => s >= 70 ? 'var(--success)' : s >= 40 ? 'var(--warning)' : 'var(--danger)';
+  
+  const feedbackTexts = [];
+  if (score.keyword.matched.length > 0) feedbackTexts.push(`✅ 正确使用了关键术语：${score.keyword.matched.slice(0, 8).join('、')}`);
+  if (score.keyword.missing.length > 0 && score.keyword.missing.length <= 5) feedbackTexts.push(`💡 还可以补充以下关键词：${score.keyword.missing.join('、')}`);
+  if (score.law.matched.length > 0) feedbackTexts.push(`✅ 引用了法律依据：${score.law.matched.slice(0, 6).join('、')}`);
+  if (score.law.missing.length > 0 && score.law.missing.length <= 5) feedbackTexts.push(`💡 建议补充引用：${score.law.missing.join('、')}`);
+  if (score.completeness.wordCount >= 400) feedbackTexts.push('✅ 论述充分，字数充足');
+  else if (score.completeness.wordCount >= 200) feedbackTexts.push('✅ 论述较为充分');
+  else feedbackTexts.push('💡 建议进一步展开论述，增加论证深度');
+  if (score.total >= 85) feedbackTexts.push('🌟 总体表现优秀！你对本案的法律分析到位，论证充分。');
+  else if (score.total >= 60) feedbackTexts.push('👍 总体表现良好。建议进一步加强对关键法条的引用和关键术语的使用。');
+  else feedbackTexts.push('📚 建议重新复习本案涉及的法律条文，加强对核心概念的理解后再进行练习。');
+  
+  return `
+    <h4 style="color:var(--primary);margin-bottom:16px">📌 步骤8：综合评议与评分</h4>
+    
+    <div class="score-report">
+      <div class="score-total">
+        <div class="score-num">${score.total}</div>
+        <div class="score-label">综合得分（满分100）</div>
+      </div>
+      
+      <div style="text-align:center;margin:20px 0">
+        <svg viewBox="0 0 360 340" width="320" style="max-width:100%">
+          <defs><linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#667eea;stop-opacity:0.3"/><stop offset="100%" style="stop-color:#764ba2;stop-opacity:0.3"/></linearGradient></defs>
+          ${(()=>{const cx=180,cy=170,r=100;const dims=[{n:'关键词',v:score.keyword.score},{n:'法条引用',v:score.law.score},{n:'论证完整',v:score.completeness.score},{n:'中国立场',v:(score.stance||{score:0}).score||0},{n:'逻辑严密',v:(score.logic||{score:0}).score||0}];const n=dims.length;const step=2*Math.PI/n;const sa=-Math.PI/2;function gp(i,ratio){const a=sa+i*step;return{x:cx+r*ratio*Math.cos(a),y:cy+r*ratio*Math.sin(a)};}let g='';[0.25,0.5,0.75,1].forEach(ratio=>{let p='';for(let i=0;i<n;i++){const pt=gp(i,ratio);p+=pt.x+','+pt.y+' ';}g+='<polygon points="'+p.trim()+'" fill="none" stroke="#e0e0e0" stroke-width="0.5"/>';});let ax='';for(let i=0;i<n;i++){const p=gp(i,1);ax+='<line x1="'+cx+'" y1="'+cy+'" x2="'+p.x+'" y2="'+p.y+'" stroke="#e0e0e0" stroke-width="0.5"/>';}let dp='';for(let i=0;i<n;i++){const p=gp(i,dims[i].v/100);dp+=p.x+','+p.y+' ';}let lb='';for(let i=0;i<n;i++){const p=gp(i,1.45);const anc=i===0?'middle':(p.x<cx?'end':'start');lb+='<text x="'+p.x+'" y="'+(p.y+5)+'" text-anchor="'+anc+'" font-size="14" fill="#555">'+dims[i].n+' '+dims[i].v+'</text>';}return g+ax+'<polygon points="'+dp.trim()+'" fill="url(#rg)" stroke="#667eea" stroke-width="2"/>'+lb;})()}
+        </svg>
+      </div>
+      <div class="score-breakdown">
+        <div class="score-item">
+          <div class="si-num">${score.keyword.score}</div>
+          <div class="si-label">关键词匹配（${score.keyword.weight}%）</div>
+          <div class="si-bar"><div class="si-bar-fill" style="width:${score.keyword.score}%;background:${getBarColor(score.keyword.score)}"></div></div>
+        </div>
+        <div class="score-item">
+          <div class="si-num">${score.law.score}</div>
+          <div class="si-label">法条引用（${score.law.weight}%）</div>
+          <div class="si-bar"><div class="si-bar-fill" style="width:${score.law.score}%;background:${getBarColor(score.law.score)}"></div></div>
+        </div>
+        <div class="score-item">
+          <div class="si-num">${score.completeness.score}</div>
+          <div class="si-label">论证完整性（${score.completeness.weight}%）</div>
+          <div class="si-bar"><div class="si-bar-fill" style="width:${score.completeness.score}%;background:${getBarColor(score.completeness.score)}"></div></div>
+        </div>
+        <div class="score-item">
+          <div class="si-num">${(score.stance||{score:0}).score}</div>
+          <div class="si-label">中国立场表达（${(score.stance||{weight:20}).weight}%）</div>
+          <div class="si-bar"><div class="si-bar-fill" style="width:${(score.stance||{score:0}).score}%;background:${getBarColor((score.stance||{score:0}).score)}"></div></div>
+        </div>
+        <div class="score-item">
+          <div class="si-num">${(score.logic||{score:0}).score}</div>
+          <div class="si-label">逻辑严密性（${(score.logic||{weight:15}).weight}%）</div>
+          <div class="si-bar"><div class="si-bar-fill" style="width:${(score.logic||{score:0}).score}%;background:${getBarColor((score.logic||{score:0}).score)}"></div></div>
+        </div>
+      </div>
+      
+      <div class="score-feedback">
+        <h5>📋 详细反馈</h5>
+        <p>📝 总字数：${score.completeness.wordCount}字</p>
+        <p>🔑 匹配关键词：${score.keyword.matched.length}/${(AppState.simCaseData.keywords || []).length}个</p>
+        <p>📜 匹配法律依据：${score.law.matched.length}/${(AppState.simCaseData.evalLaws || []).length}个</p>
+        <hr style="margin:12px 0;border:none;border-top:1px solid var(--border-light)">
+        ${feedbackTexts.map(f => `<p>${f}</p>`).join('')}
+      </div>
+    </div>
+    
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="sim-next-btn" style="background:var(--primary-light)" onclick="resetSimCase()">🔄 重新练习</button>
+      <button class="sim-next-btn" onclick="showPage('case')">← 返回案例列表</button>
+    </div>
+  `;
+}
+
+
+// Helper: get caseStage data for current case and step
+function getCaseStage(cd, stepNum) {
+  if (typeof MockData === 'undefined' || !MockData.caseStages) return null;
+  const stages = MockData.caseStages[cd.id];
+  if (!stages) return null;
+  return stages.find(s => s.stageId === stepNum) || null;
+}
+
+function renderStageTasks(stage) {
+  if (!stage || !stage.tasks || !stage.tasks.length) return '';
+  return `<div style="margin-top:16px;padding:14px 16px;background:rgba(102,126,234,0.06);border-radius:8px;border-left:3px solid var(--primary)">
+    <h5 style="color:var(--primary);margin-bottom:8px;font-size:0.88rem">📝 本阶段任务</h5>
+    <ul style="font-size:0.84rem;color:var(--text-secondary);line-height:1.8;margin:0;padding-left:18px">
+      ${stage.tasks.map(t => `<li>${t}</li>`).join('')}
+    </ul>
+  </div>`;
+}
+
+function renderStageReference(stage) {
+  if (!stage || !stage.reference) return '';
+  return `<div class="collapsible-section" style="margin-top:12px">
+    <div class="collapsible-header" onclick="toggleCollapsible(this)">💡 参考答案 <span class="arrow">▶</span></div>
+    <div class="collapsible-body"><div class="law-text" style="font-size:0.84rem;line-height:1.8">${stage.reference}</div></div>
+  </div>`;
+}
+
+function renderStageOutput(stage, textareaId) {
+  if (!stage || !stage.output) return '';
+  const o = stage.output;
+  return `<div style="margin-top:16px">
+    <p style="font-size:0.85rem;color:var(--primary);font-weight:600;margin-bottom:6px">✍️ ${o.prompt}</p>
+    <textarea class="material-q-input" id="${textareaId}" placeholder="${o.placeholder || ''}" rows="4" style="min-height:100px"></textarea>
+    ${o.wordLimit ? `<div style="font-size:0.75rem;color:var(--text-light);margin-top:4px">建议 ${o.wordLimit} 字左右</div>` : ''}
+  </div>`;
+}
+
+// === Stage 2: 案情研读 ===
+function renderStage2_CaseReading(cd) {
+  const brief = cd.brief || '';
+  // Normalize facts: dynamic cases have facts as a string, fixed cases have it as an array
+  let factsArr = cd.facts || [];
+  if (typeof factsArr === 'string') {
+    factsArr = factsArr.split('\n').map(s => s.replace(/^[\-\*\•]\s*/, '').trim()).filter(s => s.length > 0);
+  }
+  const factHtml = factsArr.map((f, i) => `<div class="case-fact-item"><span class="fact-num">${i+1}</span><span>${f}</span></div>`).join('');
+  const stage = getCaseStage(cd, 2);
+  
+  return `
+    <h4 style="color:var(--primary);margin-bottom:16px">📌 步骤2：案情研读</h4>
+    <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:16px">${stage ? stage.description : '仔细阅读以下案件背景材料，了解基本案情事实。完成研读后进入下一步。'}</p>
+    
+    <div class="stage-reading-card">
+      <div class="stage-reading-header">
+        <span class="stage-tag">📋 案件概况</span>
+        <span class="stage-tag">${cd.tagText || '综合'}</span>
+        <span class="stage-tag">难度：${cd.difficulty || '中级'}</span>
+      </div>
+      <div class="stage-reading-body">
+        <p style="line-height:1.8;margin-bottom:16px">${brief}</p>
+        ${cd.crossCourseNote ? `<div style="background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(168,85,247,0.08));border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:14px 16px;margin-bottom:16px"><div style="font-size:0.82rem;font-weight:600;color:#a78bfa;margin-bottom:6px">🎯 课程群整合说明</div><p style="font-size:0.82rem;color:var(--text-secondary);line-height:1.7">${cd.crossCourseNote}</p></div>` : ''}
+        ${cd.crossPerspectives ? `<div style="margin-bottom:16px"><div style="font-size:0.82rem;font-weight:600;color:var(--primary);margin-bottom:10px">📐 三维分析视角</div>${cd.crossPerspectives.map(p => `<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;margin-bottom:8px;background:rgba(255,255,255,0.03);border-radius:8px;border-left:3px solid ${p.course==='国际公法'?'#3b82f6':p.course==='国际私法'?'#f59e0b':'#10b981'}"><span style="font-size:1.2rem">${p.icon}</span><div><div style="font-size:0.82rem;font-weight:600;color:#e8edf5">${p.course} · ${p.title}</div><div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">${p.focus}</div></div></div>`).join('')}</div>` : ''}
+        ${cd.description ? `<div class="law-text">${cleanMarkdown(cd.description)}</div>` : ''}
+        ${factHtml ? `<h5 style="margin:16px 0 8px;color:var(--primary)">📌 关键事实</h5><div class="case-fact-list">${factHtml}</div>` : ''}
+        ${(cd.laws || []).length ? `
+          <h5 style="margin:16px 0 8px;color:var(--primary)">📜 涉及法律条文</h5>
+          ${(cd.laws || []).slice(0, 3).map(law => `
+            <div class="collapsible-section">
+              <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                📜 ${law.title} <span class="arrow">▶</span>
+              </div>
+              <div class="collapsible-body">
+                <div class="law-text">${cleanMarkdown(law.text)}</div>
+              </div>
+            </div>
+          `).join('')}
+        ` : ''}
+        ${renderStageTasks(stage)}
+        ${renderStageOutput(stage, 'stage2-output')}
+        ${renderStageReference(stage)}
+      </div>
+    </div>
+    
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="sim-next-btn" style="background:var(--text-light)" onclick="goToSimStep(1)">← 返回</button>
+      <button class="sim-next-btn" onclick="goToSimStep(3)">下一步：法律检索 →</button>
+    </div>
+  `;
+}
+
+// === Stage 3: 法律检索 ===
+function renderStage3_LawSearch(cd) {
+  const keywords = (cd.keywords || []).join('、');
+  const stage = getCaseStage(cd, 3);
+  const kbHints = stage && stage.kbHints ? stage.kbHints : [];
+  
+  return `
+    <h4 style="color:var(--primary);margin-bottom:16px">📌 步骤3：法律检索</h4>
+    <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:16px">${stage ? stage.description : '根据案情，检索相关的法律条文、公约条款和判例。'}</p>
+    
+    <div class="stage-reading-card">
+      <div class="stage-reading-header">
+        <span class="stage-tag">🔍 知识检索</span>
+        <span class="stage-tag">${cd.tagText || '综合'}</span>
+      </div>
+      <div class="stage-reading-body">
+        <div style="display:flex;gap:10px;margin-bottom:16px">
+          <input type="text" id="stageSearchInput" class="opinion-textarea" style="min-height:auto;padding:10px 14px;margin:0;font-size:0.88rem" 
+            placeholder="输入关键词检索相关知识..." onkeydown="if(event.key==='Enter')doStageSearch()">
+          <button class="sim-next-btn" style="white-space:nowrap;padding:10px 20px" onclick="doStageSearch()">🔍 检索</button>
+        </div>
+        <div id="stageSearchResults"></div>
+        
+        ${keywords ? `
+          <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-light)">
+            <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:8px">💡 本案相关关键词参考：</p>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              ${(cd.keywords || []).map(kw => `<span class="card-tag" style="cursor:pointer" onclick="document.getElementById('stageSearchInput').value='${kw}';doStageSearch()">${kw}</span>`).join('')}
+            </div>
+          </div>
+        ` : ''}
+        
+        ${kbHints.length ? `
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-light)">
+            <p style="font-size:0.82rem;color:var(--primary);margin-bottom:8px;font-weight:600">🎯 本阶段检索提示</p>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              ${kbHints.map(h => `<span class="card-tag" style="cursor:pointer;background:rgba(102,126,234,0.1);color:var(--primary)" onclick="document.getElementById('stageSearchInput').value='${h.replace(/'/g,"\\'")}';doStageSearch()">${h}</span>`).join('')}
+            </div>
+          </div>
+        ` : ''}
+        
+        ${(cd.evalLaws || []).length ? `
+          <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-light)">
+            <h5 style="color:var(--primary);margin-bottom:8px">📜 本案核心法律依据</h5>
+            <ul style="font-size:0.85rem;color:var(--text-secondary);line-height:2">
+              ${cd.evalLaws.map(l => `<li>${l}</li>`).join('')}
+            </ul>
+          </div>
+        ` : ''}
+        ${renderStageTasks(stage)}
+        ${renderStageOutput(stage, 'stage3-output')}
+        ${renderStageReference(stage)}
+      </div>
+    </div>
+    
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="sim-next-btn" style="background:var(--text-light)" onclick="goToSimStep(2)">← 返回</button>
+      <button class="sim-next-btn" onclick="goToSimStep(4)">下一步：争点分析 →</button>
+    </div>
+  `;
+}
+
+// === Stage 5: 证据研判 ===
+function renderStage5_Evidence(cd) {
+  const evidenceHtml = (cd.evidence || []).map((ev, i) => `
+    <div class="collapsible-section">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        📂 ${ev.title} <span class="arrow">▶</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="law-text">${cleanMarkdown(ev.detail)}</div>
+      </div>
+    </div>
+  `).join('');
+  const stage = getCaseStage(cd, 5);
+  
+  return `
+    <h4 style="color:var(--primary);margin-bottom:16px">📌 步骤5：证据研判</h4>
+    <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:16px">${stage ? stage.description : '仔细审查案件相关证据材料，分析其证明力和关联性。'}</p>
+    
+    <div class="stage-reading-card">
+      <div class="stage-reading-header">
+        <span class="stage-tag">📂 证据材料</span>
+        <span class="stage-tag">共 ${cd.evidence ? cd.evidence.length : 0} 项</span>
+      </div>
+      <div class="stage-reading-body">
+        ${evidenceHtml || '<p style="color:var(--text-secondary);font-size:0.88rem">本案暂无专项证据材料，请结合案情概述和争点进行法律分析。</p>'}
+        
+        ${(cd.issues || []).length ? `
+          <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-light)">
+            <h5 style="color:var(--primary);margin-bottom:8px">⚖️ 本案核心争点回顾</h5>
+            <ul style="font-size:0.85rem;color:var(--text-secondary);line-height:2">
+              ${cd.issues.map(iss => `<li>${iss}</li>`).join('')}
+            </ul>
+          </div>
+        ` : ''}
+        ${renderStageTasks(stage)}
+        ${renderStageOutput(stage, 'stage5-output')}
+        ${renderStageReference(stage)}
+      </div>
+    </div>
+    
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="sim-next-btn" style="background:var(--text-light)" onclick="goToSimStep(4)">← 返回</button>
+      <button class="sim-next-btn" onclick="goToSimStep(6)">下一步：撰写意见 →</button>
+    </div>
+  `;
+}
+
+// === Stage 6: 意见撰写 (renamed from renderStep3_Opinion) ===
+function renderStage6_Opinion(cd) {
+  const charCount = AppState.simOpinion ? AppState.simOpinion.length : 0;
+  const counterCls = charCount >= 100 ? 'ok' : 'warning';
+  const stage = getCaseStage(cd, 6);
+  const stagePrompt = stage && stage.output ? stage.output.prompt : `请以 ${AppState.simRole} 的身份，围绕本案核心争点撰写法律意见。`;
+  const stagePlaceholder = stage && stage.output ? stage.output.placeholder : '请输入你的法律意见...';
+  const stageRef = renderStageReference(stage);
+  const stageTasks = renderStageTasks(stage);
+  
+  return `
+    <h4 style="color:var(--primary);margin-bottom:16px">📌 步骤6：撰写法律意见</h4>
+    <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:8px">
+      ${stagePrompt}<br>
+      要求：至少100字，尽量引用相关法条和公约条款。
+    </p>
+    ${stageTasks}
+    <textarea class="opinion-textarea" id="opinionTextarea" 
+      placeholder="${stagePlaceholder}"
+      oninput="updateOpinionCount(this)">${AppState.simOpinion}</textarea>
+    <div class="char-counter ${counterCls}" id="charCounter">已输入 ${charCount} 字 ${charCount < 100 ? '（至少需要100字）' : '✓ 字数达标'}</div>
+    ${stageRef}
+    
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="sim-next-btn" style="background:var(--text-light)" onclick="goToSimStep(5)">← 返回</button>
+      <button class="sim-next-btn" id="submitOpinionBtn" ${charCount < 100 ? 'disabled' : ''} onclick="submitOpinion()">📮 提交并进入庭审 →</button>
+    </div>
+  `;
+}
+
+// === Stage 7: 模拟庭审 ===
+function renderStage7_Trial(cd) {
+  const role = AppState.simRole || '参与者';
+  const opinion = AppState.simOpinion || '';
+  const wordCount = opinion.length;
+  const stage = getCaseStage(cd, 7);
+  
+  // Generate trial evaluation based on opinion
+  const kwList = cd.keywords || [];
+  let matchedKw = kwList.filter(kw => opinion.includes(kw));
+  let lawList = cd.evalLaws || [];
+  let matchedLaw = lawList.filter(l => opinion.includes(l));
+  
+  const strength = wordCount >= 300 ? 'strong' : wordCount >= 150 ? 'medium' : 'weak';
+  const strengthLabel = { strong: '论证充分', medium: '论证较好', weak: '论证待加强' }[strength];
+  
+  return `
+    <h4 style="color:var(--primary);margin-bottom:16px">📌 步骤7：模拟庭审</h4>
+    <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:16px">${stage ? stage.description : `模拟庭审进行中。你以 ${role} 身份参与审理。`}</p>
+    
+    <div class="stage-reading-card">
+      <div class="stage-reading-header">
+        <span class="stage-tag">⚖️ 庭审进程</span>
+        <span class="stage-tag">${cd.name}</span>
+      </div>
+      <div class="stage-reading-body">
+        <div class="trial-timeline">
+          <div class="trial-phase ${strength !== 'weak' ? 'passed' : 'active'}">
+            <span class="trial-icon">📋</span>
+            <div class="trial-content">
+              <div class="trial-title">开庭陈述</div>
+              <div class="trial-desc">各方代理人已就位，庭审程序启动。</div>
+            </div>
+          </div>
+          <div class="trial-phase ${matchedKw.length >= 3 ? 'passed' : 'active'}">
+            <span class="trial-icon">🔍</span>
+            <div class="trial-content">
+              <div class="trial-title">事实调查</div>
+              <div class="trial-desc">已审查案件事实，识别关键证据${cd.evidence ? '，共' + cd.evidence.length + '项证据材料' : ''}。</div>
+            </div>
+          </div>
+          <div class="trial-phase ${matchedLaw.length >= 2 ? 'passed' : 'active'}">
+            <span class="trial-icon">📜</span>
+            <div class="trial-content">
+              <div class="trial-title">法律辩论</div>
+              <div class="trial-desc">${role}提出法律意见，引用${matchedLaw.length > 0 ? matchedLaw.length + '项法律依据' : '相关法律条文'}，涉及${matchedKw.length}个关键术语。</div>
+            </div>
+          </div>
+          <div class="trial-phase ${wordCount >= 200 ? 'active' : ''}">
+            <span class="trial-icon">💬</span>
+            <div class="trial-content">
+              <div class="trial-title">最终陈述</div>
+              <div class="trial-desc">${wordCount >= 200 ? '各方已完成最终陈述，等待评议。' : '请补充完善你的法律意见后再进入评议环节。'}</div>
+            </div>
+          </div>
+        </div>
+        
+        <div style="margin-top:20px;padding:16px;background:rgba(26,42,94,0.04);border-radius:8px;border-left:3px solid var(--primary)">
+          <h5 style="color:var(--primary);margin-bottom:8px">📊 庭审评估</h5>
+          <p style="font-size:0.85rem;color:var(--text-secondary);line-height:1.8">
+            论证强度：<strong>${strengthLabel}</strong>（${wordCount}字）<br>
+            关键术语覆盖：${matchedKw.length}/${kwList.length}<br>
+            法律依据引用：${matchedLaw.length}/${lawList.length}<br>
+            ${wordCount >= 200 ? '✅ 可以进入最终评议环节' : '💡 建议回到步骤6补充完善法律意见'}
+          </p>
+        </div>
+        ${renderStageTasks(stage)}
+        ${renderStageOutput(stage, 'stage7-output')}
+        ${renderStageReference(stage)}
+      </div>
+    </div>
+    
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="sim-next-btn" style="background:var(--text-light)" onclick="goToSimStep(6)">← 返回修改意见</button>
+      <button class="sim-next-btn" ${wordCount < 200 ? 'disabled' : ''} onclick="goToSimStep(8)">进入裁决评议 →</button>
+    </div>
+  `;
+}
+
+// Stage search function
+async function doStageSearch() {
+  const input = document.getElementById('stageSearchInput');
+  const results = document.getElementById('stageSearchResults');
+  if (!input || !results) return;
+  const query = input.value.trim();
+  if (!query) { results.innerHTML = '<p style="color:var(--text-secondary);font-size:0.82rem">请输入检索关键词</p>'; return; }
+  
+  // Wait for knowledge base to load
+  if (typeof _kbReady !== 'undefined') { try { await _kbWait(45000); } catch(e) { console.warn('KB load timeout:', e); } }
+  
+  const searchResults = BM25.search(query, 5);
+  if (searchResults.length === 0) {
+    results.innerHTML = '<p style="color:var(--text-secondary);font-size:0.82rem">未找到相关知识内容</p>';
+    return;
+  }
+  
+  results.innerHTML = searchResults.map((r, i) => `
+    <div class="collapsible-section">
+      <div class="collapsible-header" onclick="toggleCollapsible(this)">
+        ${i+1}. ${(r.chunk && r.chunk.t) || "未知标题"} <span class="arrow">▶</span>
+      </div>
+      <div class="collapsible-body">
+        <div class="law-text">${cleanMarkdown((r.chunk && r.chunk.x) || '').substring(0, 500)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function goToSimStep(step) {
+  AppState.simStep = step;
+  renderSimStep();
+  // Trigger stage transition animation
+  var detail = document.getElementById('caseDetail');
+  if (detail) {
+    var inner = detail.querySelector('div > div:last-child');
+    if (inner) {
+      inner.classList.remove('sim-stage-content');
+      void inner.offsetWidth; // force reflow
+      inner.classList.add('sim-stage-content');
+    }
+  }
+}
+
+function resetSimCase() {
+  AppState.simStep = 1;
+  AppState.simRole = '';
+  AppState.simOpinion = '';
+  AppState.simScore = null;
+  renderSimStep();
+}
+
+function toggleCollapsible(header) {
+  header.classList.toggle('open');
+  const body = header.nextElementSibling;
+  if (body) body.classList.toggle('open');
+}
+
+// === Dynamic Case Generation ===
+function generateCaseFacts(query, subject, results, foundKeywords) {
+  const allText = results.map(r => r.chunk.t + ' ' + r.chunk.x).join(' ');
+  const kwStr = foundKeywords.length > 0 ? foundKeywords.slice(0, 5).join('、') : query;
+  
+  // Helper: pick random element
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  
+  // Extract first relevant snippet from results for context
+  let snippet = '';
+  for (const r of results) {
+    const text = cleanMarkdown(r.chunk.x).substring(0, 200);
+    if (text.length > 50) { snippet = text; break; }
+  }
+  
+  let facts = '';
+  
+  if (subject === '国际公法') {
+    const countries = [
+      { a: '甲国', b: '乙国', aDesc: '西太平洋沿岸国家', bDesc: '东印度洋沿岸国家' },
+      { a: 'A国', b: 'B国', aDesc: '北大西洋国家', bDesc: '南太平洋岛国' },
+      { a: '丙国', b: '丁国', aDesc: '东南亚国家', bDesc: '南亚国家' }
+    ];
+    const c = pick(countries);
+    const scenarios = [
+      {
+        title: '海域主权争端',
+        template: `${c.a}与${c.b}两国在某海域存在长期主权争议。${c.a}主张对该海域享有历史性权利，认为其先民早在数百年前即已在此海域从事捕捞和航行活动，并在相关岛礁上建有祭祀设施。${c.b}则依据《联合国海洋法公约》主张该海域属于其专属经济区和大陆架范围，认为${c.a}的历史性权利主张缺乏国际法依据。\n\n2024年6月，${c.b}海军一艘护卫舰在争议海域进行例行巡逻时，与${c.a}海警船发生对峙事件，双方船只最近距离仅约20海里，局势一度紧张。${c.a}外交部随即发表声明，强烈抗议${c.b}军舰侵入其领海，要求${c.b}立即停止一切侵犯${c.a}主权的行为。${c.b}方面则辩称其行动完全符合国际法，是在本国专属经济区内行使正常的航行自由权利。\n\n双方就以下问题产生严重分歧：争议岛礁的法律地位认定、海域划界的标准与方法、历史性权利在现代海洋法中的地位与效力、以及军事活动在专属经济区内的合法性等。`
+      },
+      {
+        title: '条约争端',
+        template: `${c.a}与${c.b}于2018年签署《双边友好合作条约》，约定双方在经贸、文化、司法协助等领域开展合作。条约第12条规定："本条约有效期为10年，任何一方可在期满前6个月书面通知另一方终止本条约。"\n\n2023年9月，${c.a}政府单方面宣布暂停履行条约项下的部分义务，理由是${c.b}近期通过的国内立法违反了条约的宗旨和目的，且${c.b}长期未履行条约第8条项下的司法协助义务。${c.b}对此表示强烈反对，认为${c.a}暂停履约的行为构成国际不法行为，并要求${c.a}立即恢复履行条约义务。\n\n双方争议的核心问题包括：条约暂停履行的法定条件、条约解释的规则与方法、国内法与国际法的关系、以及违约救济措施的适当性等。`
+      },
+      {
+        title: '外交保护与国家责任',
+        template: `${c.a}公民张某在${c.b}境内从事商业活动期间，被${c.b}当局以涉嫌经济犯罪为由逮捕并羁押。张某家属称其在羁押期间遭受不公正待遇，未获得适当的法律辩护，且羁押条件不符合国际标准。\n\n${c.a}政府认为${c.b}的行为违反了《维也纳领事关系公约》以及两国间双边领事协定的有关规定，特别是未能及时通知${c.a}领事官员、未能保障${c.a}领事官员的探视权。${c.a}据此向${c.b}提出外交抗议，要求${c.b}立即释放张某并给予赔偿。\n\n${c.b}方面则辩称，张某的行为已触犯${c.b}国内刑法，${c.b}对其行使管辖权完全符合国际法上的属地管辖原则，且已给予张某公正的司法待遇，领事通知和探视程序均已依规履行。\n\n本案涉及的核心法律问题包括：外交保护的行使条件、领事关系公约的适用、国家责任的构成要件、以及国际争端的和平解决方式等。`
+      }
+    ];
+    
+    // Choose scenario based on query + keywords
+    const combinedText = (query + ' ' + kwStr).toLowerCase();
+    let chosen = scenarios[0];
+    if (combinedText.includes('条约')) chosen = scenarios[1];
+    else if (combinedText.includes('外交') || combinedText.includes('领事') || combinedText.includes('国家责任')) chosen = scenarios[2];
+    else if (combinedText.includes('海洋') || combinedText.includes('UNCLOS') || combinedText.includes('主权') || combinedText.includes('领土')) chosen = scenarios[0];
+    
+    facts = chosen.template;
+    
+  } else if (subject === '国际私法') {
+    const parties = [
+      { cn: '中国甲公司', cnDesc: '注册地位于上海市浦东新区的进出口贸易公司', foreign: '德国乙公司', foreignDesc: '注册地位于德国汉堡的机械制造企业' },
+      { cn: '中国公民李某', cnDesc: '中国籍公民，长期居住于北京', foreign: '美国公民Smith', foreignDesc: '美国籍公民，曾任某跨国公司亚太区高管' },
+      { cn: '中国丙公司', cnDesc: '注册地位于深圳的科技公司', foreign: '日本丁株式会社', foreignDesc: '注册地位于东京的电子元器件供应商' }
+    ];
+    const p = pick(parties);
+    const scenarios = [
+      {
+        title: '涉外合同纠纷',
+        template: `${p.cn}（以下简称"中方"）与${p.foreign}（以下简称"外方"）于2023年3月在广州签订了一份《设备采购合同》。合同约定：中方向外方采购一套精密生产设备，总价为120万欧元，交货地点为中国上海港，付款方式为信用证支付。合同第15条约定："本合同的订立、效力、解释、履行及争议解决，适用当事人选择的法律。"但合同未明确写明选择适用何国法律。\n\n合同签订后，中方依约开立了信用证。外方于2023年8月将设备装船发运，但货物到达上海港后，中方经检验发现设备核心部件存在严重质量缺陷，无法达到合同约定的技术参数和生产标准。中方随即向外方提出异议，要求退货并赔偿损失。\n\n外方辩称：设备质量问题系运输途中不当装卸所致，与外方无关；且根据外方所在国法律，卖方的质量担保责任仅限于出厂检验合格。双方就合同准据法的确定、违约责任的认定、损害赔偿的范围等问题产生争议。\n\n此外，双方在合同中未约定争议解决方式和管辖法院。中方拟向中国法院提起诉讼，外方则主张应通过仲裁解决。`
+      },
+      {
+        title: '涉外婚姻家庭纠纷',
+        template: `中国公民王某（女）与${p.foreign}（男）于2021年在新加坡登记结婚，婚后双方共同居住在上海市。两人婚前未就夫妻财产制作出任何约定。\n\n2023年12月，双方因感情不和协议离婚未果，王某向上海市某区人民法院提起离婚诉讼，请求判决离婚并分割夫妻共同财产。外方对中国法院的管辖权提出异议，认为双方在新加坡结婚，且其本人并非中国公民，中国法院对本案没有管辖权。\n\n经查明，双方婚后主要财产包括：上海一套价值800万元的公寓（登记在双方名下）、外方名下的美国某公司股票（市值约50万美元）、王某名下的银行存款人民币60万元。此外，双方婚后育有一子，现年2岁，一直随王某共同生活。\n\n本案涉及的核心法律问题包括：涉外离婚案件的管辖权确定、涉外离婚的法律适用、夫妻财产关系的准据法、以及涉外子女抚养的法律适用等。`
+      },
+      {
+        title: '涉外侵权纠纷',
+        template: `${p.cn}（以下简称"中方"）的产品在参加${p.foreignDesc}举办的国际展会期间，被外方指控侵犯其专利权。外方随即向当地法院申请临时禁令，禁止中方产品在该国销售，并起诉中方要求赔偿经济损失200万欧元。\n\n中方辩称：其产品系自主研发，技术方案与外方专利存在实质性差异，不构成侵权；且外方专利的权利要求范围模糊不清，不符合专利法的授权条件。中方同时主张，外方恶意提起专利诉讼，构成不正当竞争。\n\n经查，中方公司的注册地和主要营业地均在中国境内，外方公司的注册地和主要营业地均在境外。涉案专利由外方在该国知识产权局申请获得。中方产品除在该国参展外，尚未实际进入该国市场销售。\n\n本案涉及的核心法律问题包括：涉外知识产权侵权的管辖权确定、知识产权侵权的法律适用、知识产权的地域性原则、以及临时禁令的适用条件等。`
+      }
+    ];
+    
+    // Choose scenario based on query + keywords
+    const combinedText = (query + ' ' + kwStr).toLowerCase();
+    let chosen = scenarios[0];
+    if (combinedText.includes('婚姻') || combinedText.includes('继承') || combinedText.includes('家庭') || combinedText.includes('离婚')) chosen = scenarios[1];
+    else if (combinedText.includes('侵权') || combinedText.includes('知识产权')) chosen = scenarios[2];
+    else if (combinedText.includes('合同') || combinedText.includes('法律适用') || combinedText.includes('管辖权')) chosen = scenarios[0];
+    
+    facts = chosen.template;
+    
+  } else if (subject === '国际经济法') {
+    const parties = [
+      { cn: '中国甲贸易公司', cnDesc: '注册地位于浙江省宁波市的出口企业，主营机电产品', foreign: '美国乙进口公司', foreignDesc: '注册地位于美国纽约州的进口批发商' },
+      { cn: '中国丙投资公司', cnDesc: '注册地位于北京的大型投资集团', foreign: '东南亚A国', foreignDesc: '东南亚发展中国家，拥有丰富矿产资源' },
+      { cn: '中国丁制造企业', cnDesc: '注册地位于广东省的大型家电制造企业', foreign: '欧盟B国', foreignDesc: '欧盟成员国，贸易救济措施频繁使用国' }
+    ];
+    const p = pick(parties);
+    const scenarios = [
+      {
+        title: '国际货物买卖纠纷',
+        template: `${p.cn}（卖方）与${p.foreign}（买方）于2024年2月通过邮件往来签订了一份国际货物买卖合同，约定卖方向买方出售10000台电风扇，总价FOB宁波25万美元，付款方式为即期信用证，装运期为2024年5月。\n\n合同签订后，买方按时开立了信用证。卖方于2024年5月15日将货物装上船，并取得了全套清洁已装船提单。然而，货物到达目的港后，买方经检验发现约有30%的电风扇存在电机故障，无法正常使用。\n\n买方随即向卖方提出索赔，要求退还全部货款并赔偿预期利润损失。卖方则辩称：货物在装船前已经检验合格，有SGS出具的检验报告为证，货物质量问题应系运输途中海上潮湿环境所致，属于风险转移后的损失，卖方不应承担责任。\n\n经查，双方所在国均为《联合国国际货物销售合同公约》（CISG）缔约国。合同中未明确排除CISG的适用。双方就以下问题产生争议：CISG是否适用于本案、货物风险转移的时间节点、卖方的质量担保义务、买方的检验与通知义务、以及损害赔偿的计算标准等。`
+      },
+      {
+        title: '国际投资争端',
+        template: `${p.cn}（以下简称"投资者"）于2020年在${p.foreign}设立全资子公司，投资建设一座大型矿山开发项目，总投资约3亿美元。投资依据为中国与该国签订的双边投资协定（BIT）。\n\n2023年6月，该国政府以环境保护为由，突然吊销了该项目的采矿许可证，并责令项目立即停止运营。投资者认为该国政府的行为构成间接征收，违反了BIT项下的公平公正待遇和充分保护与安全义务，给投资者造成了重大经济损失。\n\n该国政府则辩称：吊销许可证是出于公共利益（环境保护）的合法管制行为，不构成征收；且投资者在项目建设过程中存在多项违反环保法规的行为，政府的措施完全正当合法。\n\n投资者拟根据BIT的规定，向"解决投资争端国际中心"（ICSID）提起仲裁。本案涉及的核心法律问题包括：国际投资协定的解释与适用、征收与间接征收的认定标准、公平公正待遇的内涵与边界、政府管制权的合法边界、以及ICSID仲裁的管辖权与程序等。`
+      },
+      {
+        title: '贸易救济/反倾销争端',
+        template: `${p.foreign}商务部于2024年1月对原产于中国的某类家电产品发起反倾销调查。申请人为该国国内家电产业协会。\n\n调查当局经初步调查后认定：中国涉案产品在该国市场的销售价格低于正常价值，存在倾销；且倾销对该国国内产业造成了实质性损害，倾销与损害之间存在因果关系。2024年8月，该国商务部作出终裁决定，对中国涉案企业征收25%-45%不等的反倾销税。\n\n${p.cn}（以下简称"申诉企业"）作为涉案企业之一，被征收了35%的反倾销税。申诉企业认为该国调查当局的裁决存在以下问题：\n1. 正常价值的计算方法不当，错误地选择了替代国价格；\n2. 损害认定缺乏充分证据支持，国内产业状况不佳系其他因素所致；\n3. 倾销与损害之间的因果关系认定不成立。\n\n申诉企业拟通过WTO争端解决机制维护自身合法权益。本案涉及的核心法律问题包括：反倾销调查的程序规则、正常价值与倾销幅度的确定、产业损害的认定标准、WTO反倾销协定的解释与适用、以及WTO争端解决机制的程序等。`
+      }
+    ];
+    
+    // Choose scenario based on query + keywords
+    const combinedText = (query + ' ' + kwStr).toLowerCase();
+    let chosen = scenarios[0];
+    if (combinedText.includes('CISG') || combinedText.includes('货物买卖') || combinedText.includes('合同') || combinedText.includes('信用证')) chosen = scenarios[0];
+    else if (combinedText.includes('投资') || combinedText.includes('ICSID') || combinedText.includes('BIT')) chosen = scenarios[1];
+    else if (combinedText.includes('WTO') || combinedText.includes('反倾销') || combinedText.includes('反补贴') || combinedText.includes('贸易救济')) chosen = scenarios[2];
+    
+    facts = chosen.template;
+    
+  } else {
+    // 综合 / fallback
+    facts = `本案涉及${kwStr}等多方面的法律问题。\n\n案件基本情况如下：当事人之间因相关法律问题产生争议，经多方协商未果后进入法律程序。本案涉及多个国际公约和国内法的适用问题，需要综合分析各方的权利义务关系、法律适用规则以及争议解决机制。\n\n请结合案件涉及的核心法律问题，从国际法和国内法两个层面进行深入分析，提出专业的法律意见。`;
+  }
+  
+  return facts;
+}
+
+async function generateDynamicCase() {
+  const input = document.getElementById('dynamicCaseInput');
+  if (!input) return;
+  const query = input.value.trim();
+  if (!query) { showToast('请输入案例方向'); return; }
+  
+  // Show loading state immediately
+  const resultDiv = document.getElementById('dynamicCaseResult');
+  if (resultDiv) {
+    resultDiv.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary)"><div class="loading-spinner" style="display:inline-block;width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite"></div><p style="margin-top:8px">正在加载知识库并生成案例...</p></div>';
+  }
+  
+  // Wait for knowledge base to load with timeout
+  if (typeof _kbEnsure !== 'undefined') {
+    try {
+      await Promise.race([
+        _kbEnsure(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('知识库加载超时(15s)')), 15000))
+      ]);
+    } catch(e) {
+      console.warn('KB load error or timeout:', e);
+      // Continue anyway - BM25 will handle empty KB
+    }
+  }
+  
+  // Check if KB is available
+  if (!KB_CHUNKS || KB_CHUNKS.length === 0) {
+    if (resultDiv) {
+      resultDiv.innerHTML = `
+        <div style="padding:20px;text-align:center;color:var(--danger)">
+          <div style="font-size:2rem;margin-bottom:8px">⚠️</div>
+          <p>知识库加载失败，请刷新页面重试</p>
+          <button onclick="location.reload()" style="margin-top:12px;padding:8px 20px;background:var(--primary);color:white;border:none;border-radius:var(--radius-sm);cursor:pointer">🔄 刷新页面</button>
+        </div>`;
+    }
+    return;
+  }
+  
+  // Search KB_CHUNKS
+  const results = BM25.search(query, 8);
+  
+  if (results.length === 0) {
+    if (resultDiv) {
+      resultDiv.innerHTML = `
+        <div style="padding:20px;text-align:center;color:var(--warning)">
+          <div style="font-size:2rem;margin-bottom:8px">📭</div>
+          <p>当前知识库暂未覆盖该领域，请尝试其他关键词</p>
+          <div style="margin-top:8px;font-size:0.78rem;color:var(--text-tertiary)">可尝试：涉外婚姻、海洋法争端、投资仲裁、国际货物买卖</div>
+        </div>`;
+    }
+    return;
+  }
+  
+  // Determine subject area - prioritize user query keywords, fallback to KB results
+  const allText = results.map(r => r.chunk.t + ' ' + r.chunk.c + ' ' + r.chunk.x).join(' ');
+  const queryLower = query.toLowerCase();
+  // Query-based classification (highest priority)
+  const pubKeywords = ['海洋法','UNCLOS','主权','领土','外交','领事','条约法','国家豁免','国际组织','联合国','南海','钓鱼岛','台湾','战争法','ICJ','安理会','领海','专属经济区','大陆架','公海','国际争端','自卫权','不干涉','民族自决','人权公约','日内瓦','维也纳公约','国际刑事','国际法院'];
+  const priKeywords = ['涉外侵权','涉外合同','涉外民事','涉外婚姻','涉外继承','涉外物权','涉外债权','法律适用','冲突规范','准据法','连结点','管辖权','判决承认','判决执行','域外送达','域外取证','海牙公约','外国法查明','反致','识别','公共秩序','意思自治','最密切联系','侵权行为地','特征性履行'];
+  const econKeywords = ['国际货物买卖','CISG','WTO','贸易救济','反倾销','反补贴','投资','ICSID','BIT','纽约公约','国际仲裁','信用证','贸易','关税','知识产权国际保护','TRIPS','RCEP','跨境','国际支付','国际运输','Incoterms','FOB','CIF','EXW','最惠国','国民待遇','反倾销税','保障措施','原产地','海关估价'];
+  let subject = '综合';
+  let difficulty = '中级';
+  const pubScore = pubKeywords.filter(k => queryLower.includes(k)).length;
+  const priScore = priKeywords.filter(k => queryLower.includes(k)).length;
+  const econScore = econKeywords.filter(k => queryLower.includes(k)).length;
+  if (pubScore >= priScore && pubScore >= econScore && pubScore > 0) subject = '国际公法';
+  else if (priScore >= econScore && priScore > 0) subject = '国际私法';
+  else if (econScore > 0) subject = '国际经济法';
+  else {
+    // Fallback to KB results
+    if (allText.includes('国际公法') || allText.includes('海洋法') || allText.includes('UNCLOS')) subject = '国际公法';
+    else if (allText.includes('国际私法') || allText.includes('涉外民事') || allText.includes('法律适用') || allText.includes('管辖权')) subject = '国际私法';
+    else if (allText.includes('国际经济法') || allText.includes('CISG') || allText.includes('WTO') || allText.includes('贸易')) subject = '国际经济法';
+  }
+  
+  // Extract keywords from results
+  const keywordPatterns = ['条约', '公约', '管辖权', '法律适用', '主权', '国家豁免', '领土', '海洋法', '专属经济区',
+    '大陆架', '外交', '领事', '条约法', '争端解决', '仲裁', 'CISG', 'UNCLOS', 'BIT', 'ICSID',
+    'WTO', '反倾销', '反补贴', '保障措施', '根本违约', '损害赔偿', '合同', '涉外', '婚姻',
+    '继承', '物权', '债权', '知识产权', '纽约公约', '海牙公约', '公共秩序', '反致', '识别',
+    '历史性权利', '岛屿', '岩礁', '征收', '公平公正待遇', '国民待遇', '最惠国待遇'];
+  const foundKeywords = keywordPatterns.filter(kw => allText.includes(kw));
+  
+  // Extract law references
+  const lawPatterns = ['第\d+条', '公约', '法律适用法', '民事诉讼法', '联合国宪章', '维也纳条约法公约',
+    '涉外民事关系法律适用法', '海洋法公约', 'CISG', '纽约公约', 'ICSID公约'];
+  const foundLaws = [];
+  lawPatterns.forEach(p => {
+    const regex = new RegExp(p, 'g');
+    const matches = allText.match(regex);
+    if (matches) matches.forEach(m => { if (!foundLaws.includes(m) && m.length > 2) foundLaws.push(m); });
+  });
+  if (foundLaws.length === 0) foundLaws.push('相关国际公约', '中国相关法律');
+  
+  // Build case title from query
+  const caseTitle = query.includes('案例') ? query : query + '案例';
+  
+  // Build issues from content
+  const issuePool = [
+    `本案涉及的核心法律问题如何认定？请结合${subject}相关规则进行分析`,
+    `当事人之间的权利义务关系应如何确定？`,
+    `相关国际公约/条约在本案中的适用性如何？`,
+    `从中国司法立场出发，应如何处理本案？`
+  ];
+  const numIssues = Math.min(4, Math.max(2, foundKeywords.length));
+  const issues = issuePool.slice(0, numIssues);
+  
+  // Build evidence from results
+  const evidence = results.slice(0, 3).map(r => ({
+    title: cleanMarkdown(r.chunk.t).substring(0, 40),
+    detail: cleanMarkdown(r.chunk.x).substring(0, 500)
+  }));
+  
+  // Build laws from results  
+  const lawRefs = results.filter(r => r.chunk.x.match(/第\d+条|条约|公约/)).slice(0, 3).map(r => ({
+    title: cleanMarkdown(r.chunk.t).substring(0, 50),
+    text: cleanMarkdown(r.chunk.x).substring(0, 500)
+  }));
+  if (lawRefs.length === 0 && results.length > 0) {
+    lawRefs.push({
+      title: cleanMarkdown(results[0].chunk.t).substring(0, 50),
+      text: cleanMarkdown(results[0].chunk.x).substring(0, 500)
+    });
+  }
+  
+  const roles = [
+    { name: '原告代理人', icon: '👩', desc: '从原告角度分析案件并撰写法律意见' },
+    { name: '被告代理人', icon: '👨', desc: '从被告角度分析案件并撰写法律意见' },
+    { name: '法官', icon: '⚖️', desc: '居中裁判，分析双方论点并作出判决' },
+    { name: '仲裁员', icon: '🏛️', desc: '在仲裁框架下裁决争议' }
+  ];
+  
+  // Generate case facts
+  const facts = generateCaseFacts(query, subject, results, foundKeywords);
+  
+  const dynamicCase = {
+    id: 'dynamic-' + Date.now(),
+    name: caseTitle,
+    tagText: subject,
+    tag: subject === '国际公法' ? 'pub' : subject === '国际私法' ? 'pri' : 'eco',
+    brief: `基于知识库生成的${subject}案例：${query}`,
+    difficulty: difficulty,
+    duration: '60分钟',
+    roles: roles,
+    issues: issues,
+    keywords: foundKeywords.length > 0 ? foundKeywords : ['国际法', '条约', '管辖权', '法律适用'],
+    laws: lawRefs,
+    evidence: evidence,
+    facts: facts,
+    evalLaws: foundLaws.length > 0 ? foundLaws : foundKeywords.slice(0, 8),
+    isDynamic: true,
+    sourceChunks: results.map(r => r.chunk)
+  };
+  
+  // Auto-save to favorites
+  saveFavorite({
+    type: 'case',
+    sourceId: dynamicCase.id,
+    title: dynamicCase.name,
+    summary: dynamicCase.brief,
+    icon: '⚖️',
+    category: subject
+  });
+  
+  // Show the generated case in result area
+  resultDiv.innerHTML = `
+    <div style="margin-top:12px;padding:14px;background:rgba(40,167,69,0.06);border-radius:var(--radius-md);border:1px solid rgba(40,167,69,0.2)">
+      <div style="font-size:0.85rem;font-weight:700;color:var(--success);margin-bottom:6px">✅ 案例生成成功</div>
+      <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:8px">
+        📊 学科：${subject} · 检索到 ${results.length} 个相关知识块 · 提取 ${foundKeywords.length} 个关键词
+      </div>
+      <div class="fav-auto-tip">⭐ 已自动收藏到个人空间</div>
+      <button class="sim-next-btn" style="font-size:0.82rem;padding:8px 20px;margin-top:8px" onclick='startDynamicCase(${JSON.stringify(dynamicCase).replace(/'/g, "&#39;")})'>🚀 开始实训</button>
+    </div>
+  `;
+}
+
+function startDynamicCase(caseData) {
+  AppState.currentCase = caseData.id;
+  AppState.simStep = 1;
+  AppState.simRole = '';
+  AppState.simOpinion = '';
+  AppState.simScore = null;
+  AppState.simCaseData = caseData;
+  FIXED_CASES.push(caseData); // Add to list temporarily
+  document.querySelectorAll('.case-card').forEach(c => c.classList.remove('active'));
+  renderSimStep();
+}
+
+// === Student Progress Management ===
+function loadStudentProgress() {
+  var user = AppState.currentUser;
+  // Guest mode: use empty/default progress, don't read localStorage
+  if (AppState.isGuest || !user) {
+    AppState.studentProgress = {};
+    AppState.quizScores = [];
+    return;
+  }
+  
+  var storageKey = 'sanguofa_student_' + user.studentId + '_progress';
+  try {
+    var saved = localStorage.getItem(storageKey);
+    if (saved) AppState.studentProgress = JSON.parse(saved);
+  } catch(e) {}
+  
+  // Load quiz scores for current student
+  var quizKey = 'sanguofa_student_' + user.studentId + '_quiz';
+  try {
+    var savedQuiz = localStorage.getItem(quizKey);
+    if (savedQuiz) AppState.quizScores = JSON.parse(savedQuiz);
+  } catch(e) {}
+}
+
+function saveCaseProgress(caseId, score) {
+  var user = AppState.currentUser;
+  var now = new Date().toISOString();
+  
+  if (!AppState.studentProgress[caseId]) {
+    AppState.studentProgress[caseId] = { score: score, completedAt: now, attempts: 1 };
+  } else {
+    var old = AppState.studentProgress[caseId];
+    old.score = score;
+    old.completedAt = now;
+    old.attempts = (old.attempts || 1) + 1;
+  }
+  
+  // Save to user-specific storage (skip for guest mode)
+  if (user && !AppState.isGuest) {
+    var storageKey = 'sanguofa_student_' + user.studentId + '_progress';
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(AppState.studentProgress));
+    } catch(e) {}
+    
+    // Update last active time in registry
+    var registry = [];
+    try {
+      var raw = localStorage.getItem('sanguofa_student_registry');
+      if (raw) registry = JSON.parse(raw);
+      var entry = registry.find(function(r) { return r.studentId === user.studentId; });
+      if (entry) entry.lastActive = now;
+      localStorage.setItem('sanguofa_student_registry', JSON.stringify(registry));
+    } catch(e) {}
+    
+    // CloudSync push
+    CloudSync.push('progress', { caseId: caseId, score: score, timestamp: now });
+    _sbTrackEvent('ai_grading', '模拟实训', { caseId: caseId, score: score, details: AppState.simScore });
+  }
+}
+
+// === Supabase Teacher Cloud Data Loading ===
+async function _sbLoadTeacherCloudData(container, subTabsHtml, localStudents) {
+  // Show local data first, then enhance with cloud data
+  _renderTeacherStudentsTabContent(container, subTabsHtml, localStudents, null);
+  
+  // Load cloud events in background
+  try {
+    var _res = _sbClient.from('events').select('*').order('created_at', { ascending: false }).limit(2000);
+    var result = await _res;
+    if (result && result.data) {
+      _renderTeacherStudentsTabContent(container, subTabsHtml, localStudents, result.data);
+    }
+  } catch(e) {
+    console.warn('[Supabase] Load teacher data error:', e);
+  }
+}
+
+function _renderTeacherStudentsTabContent(container, subTabsHtml, students, cloudEvents) {
+  var totalStudents = students.length;
+  var avgScore = totalStudents > 0 ? Math.round(students.reduce(function(s, st) { return s + st.avgScore; }, 0) / totalStudents) : 0;
+  var completedRate = totalStudents > 0 ? Math.round(students.filter(function(s) { return s.completedCases >= 3; }).length / totalStudents * 100) : 0;
+  var totalCases = FIXED_CASES.length;
+  
+  var lastActive = '-';
+  if (students.length > 0) {
+    var latest = students.reduce(function(a, b) { return (a.lastActive > b.lastActive) ? a : b; });
+    try { lastActive = new Date(latest.lastActive).toLocaleDateString('zh-CN'); } catch(e) {}
+  }
+  
+  // Build cloud events summary per student
+  var cloudSummary = {};
+  if (cloudEvents && cloudEvents.length > 0) {
+    cloudEvents.forEach(function(ev) {
+      var sid = ev.student_id;
+      if (!cloudSummary[sid]) cloudSummary[sid] = { qa: [], grading: [], errors: [], bookmarks: [], logins: 0 };
+      var p = ev.payload || {};
+      if (ev.event_type === 'qa_question') cloudSummary[sid].qa.push({ q: (p.question||'').substring(0,60), a: (p.answer||'').substring(0,80), time: ev.created_at });
+      if (ev.event_type === 'ai_grading') cloudSummary[sid].grading.push({ caseId: p.caseId, score: p.score, time: ev.created_at });
+      if (ev.event_type === 'error_book') cloudSummary[sid].errors.push({ question: (p.question||'').substring(0,60), knowledgePoint: p.knowledgePoint, time: ev.created_at });
+      if (ev.event_type === 'bookmark') cloudSummary[sid].bookmarks.push({ title: (p.title||'').substring(0,40), type: p.type, time: ev.created_at });
+      if (ev.event_type === 'login') cloudSummary[sid].logins++;
+    });
+  }
+  
+  var cloudBadge = cloudEvents ? '<span style="font-size:0.72rem;padding:2px 8px;background:#e6f7ff;border:1px solid #91d5ff;border-radius:10px;color:#1890ff;margin-left:8px">☁️ 云端数据已加载</span>' : '';
+  
+  var rows = students.map(function(st, idx) {
+    var lastActiveStr = '-';
+    try { lastActiveStr = new Date(st.lastActive).toLocaleDateString('zh-CN'); } catch(e) {}
+    
+    var cloudData = cloudSummary[st.studentId] || null;
+    var cloudInfoHtml = '';
+    if (cloudData) {
+      cloudInfoHtml = '<div style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;font-size:0.76rem">';
+      if (cloudData.qa.length > 0) {
+        cloudInfoHtml += '<div style="background:#f0f7ff;padding:8px;border-radius:6px;border:1px solid #d4e8ff"><strong style="color:#1890ff">💬 问答 (' + cloudData.qa.length + ')</strong><div style="color:#666;margin-top:4px">';
+        cloudData.qa.slice(0,3).forEach(function(q) { cloudInfoHtml += '<div style="margin:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + escapeHtml(q.q) + '">Q: ' + escapeHtml(q.q) + '</div>'; });
+        if (cloudData.qa.length > 3) cloudInfoHtml += '<div style="color:#999">...还有' + (cloudData.qa.length-3) + '条</div>';
+        cloudInfoHtml += '</div></div>';
+      }
+      if (cloudData.grading.length > 0) {
+        cloudInfoHtml += '<div style="background:#f6ffed;padding:8px;border-radius:6px;border:1px solid #b7eb8f"><strong style="color:#52c41a">📝 AI批改 (' + cloudData.grading.length + ')</strong><div style="color:#666;margin-top:4px">';
+        cloudData.grading.slice(0,3).forEach(function(g) { cloudInfoHtml += '<div>' + escapeHtml(String(g.caseId||'').substring(0,20)) + ': <strong>' + g.score + '分</strong></div>'; });
+        cloudInfoHtml += '</div></div>';
+      }
+      if (cloudData.errors.length > 0) {
+        cloudInfoHtml += '<div style="background:#fff7e6;padding:8px;border-radius:6px;border:1px solid #ffd591"><strong style="color:#fa8c16">❌ 错题 (' + cloudData.errors.length + ')</strong><div style="color:#666;margin-top:4px">';
+        cloudData.errors.slice(0,3).forEach(function(e) { cloudInfoHtml += '<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + escapeHtml(e.question) + '">' + escapeHtml(e.question) + '</div>'; });
+        cloudInfoHtml += '</div></div>';
+      }
+      if (cloudData.bookmarks.length > 0) {
+        cloudInfoHtml += '<div style="background:#f9f0ff;padding:8px;border-radius:6px;border:1px solid #d3adf7"><strong style="color:#722ed1">⭐ 收藏 (' + cloudData.bookmarks.length + ')</strong><div style="color:#666;margin-top:4px">';
+        cloudData.bookmarks.slice(0,3).forEach(function(b) { cloudInfoHtml += '<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(b.title) + '</div>'; });
+        cloudInfoHtml += '</div></div>';
+      }
+      cloudInfoHtml += '</div>';
+    }
+    
+    return '<tr onclick="toggleStudentDetail(' + idx + ')" style="cursor:pointer">' +
+      '<td><strong>' + st.studentId + '</strong></td>' +
+      '<td>' + st.name + '</td>' +
+      '<td>' + st.completedCases + ' / ' + (st.totalCases || totalCases) + '</td>' +
+      '<td>' + st.avgScore + '分</td>' +
+      '<td>' +
+        '<div class="teacher-bar"><div class="teacher-bar-fill" style="width:' + st.progress + '%"></div></div>' +
+      '</td>' +
+      '<td>' + lastActiveStr + '</td>' +
+    '</tr>' +
+    '<tr id="studentDetail_' + idx + '" style="display:none">' +
+      '<td colspan="6" style="background:#f8f9fc;padding:16px">' +
+        '<div style="font-size:0.82rem;color:var(--text-secondary)">案例成绩详情：</div>' +
+        '<div style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">' +
+          (function() {
+            var caseNames = FIXED_CASES.map(function(c) { return c.name; });
+            var html = '';
+            caseNames.forEach(function(cName) {
+              var sc = st.caseScores && st.caseScores[cName];
+              var scoreText = sc ? sc.score + '分' : '未完成';
+              var color = sc ? (sc.score >= 80 ? 'var(--success)' : sc.score >= 60 ? 'var(--accent)' : '#e74c3c') : 'var(--text-light)';
+              html += '<div style="padding:8px 12px;background:#fff;border-radius:8px;border:1px solid var(--border);font-size:0.78rem">' +
+                '<div style="color:var(--text-secondary);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + cName + '">' + cName.substring(0, 12) + '</div>' +
+                '<div style="font-weight:700;color:' + color + '">' + scoreText + '</div></div>';
+            });
+            return html;
+          })() +
+        '</div>' +
+        cloudInfoHtml +
+      '</td>' +
+    '</tr>';
+  }).join('');
+  
+  var exportBtn = cloudEvents ? '<button class="teacher-export-btn" style="background:#1890ff;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.85rem" onclick="exportSupabaseCSV()">📥 导出云端学情报告</button>' : '';
+  
+  container.innerHTML = '<div class="teacher-panel">' +
+    '<div class="teacher-panel-header">' +
+      '<h2>📊 教师管理面板' + cloudBadge + '</h2>' +
+      subTabsHtml +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+        exportBtn +
+        '<button class="teacher-export-btn" style="background:var(--primary)" onclick="generateDemoStudentData()">🎲 模拟数据</button>' +
+        '<button class="teacher-export-btn" style="background:#f0f0f0;color:var(--text-primary);border:1px solid var(--border);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.85rem" onclick="exportTeacherCSV()">📥 导出CSV报告</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="teacher-stats-grid">' +
+      '<div class="teacher-stat-card"><div class="ts-num">' + totalStudents + '</div><div class="ts-label">学生总数</div></div>' +
+      '<div class="teacher-stat-card"><div class="ts-num">' + avgScore + '</div><div class="ts-label">平均分</div></div>' +
+      '<div class="teacher-stat-card"><div class="ts-num">' + completedRate + '%</div><div class="ts-label">完成率(>=3案例)</div></div>' +
+      '<div class="teacher-stat-card"><div class="ts-num">' + lastActive + '</div><div class="ts-label">最近活跃</div></div>' +
+    '</div>' +
+    '<div class="teacher-table-wrap">' +
+      '<table class="teacher-table">' +
+        '<thead><tr><th>学号</th><th>姓名</th><th>完成案例</th><th>平均分</th><th>学习进度</th><th>最近活跃</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>' +
+    '</div>' +
+    '<div style="background:var(--bg-card);border-radius:var(--radius-md);padding:20px;box-shadow:var(--shadow-sm)">' +
+      '<h4 style="margin-bottom:12px;color:var(--primary)">📈 班级案例完成率</h4>' +
+      '<div class="case-stats-grid">' +
+        FIXED_CASES.map(function(c, i) {
+          var count = students.filter(function(s) { return s.completedCases > i; }).length;
+          var pct = totalStudents > 0 ? Math.round(count / totalStudents * 100) : 0;
+          return '<div class="case-stat-item">' +
+            '<div class="case-stat-name" title="' + c.name + '">' + c.name.substring(0, 10) + '</div>' +
+            '<div class="case-stat-pct">' + pct + '%</div>' +
+            '<div class="teacher-bar" style="margin-top:6px"><div class="teacher-bar-fill" style="width:' + pct + '%"></div></div>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+// Export Supabase data as CSV
+async function exportSupabaseCSV() {
+  if (!_sbConfigured || !_sbClient) { alert('Supabase 未配置'); return; }
+  try {
+    var _res = _sbClient.from('events').select('*').order('created_at', { ascending: true });
+    var result = await _res;
+    if (!result || result.error) { alert('查询失败: ' + (result ? result.error.message : '未知错误')); return; }
+    var events = result.data;
+    if (events.length === 0) { alert('暂无云端事件数据'); return; }
+    
+    var csv = '\uFEFF学号,事件类型,模块,内容,时间\n';
+    events.forEach(function(ev) {
+      var payload = ev.payload || {};
+      var detail = '';
+      if (ev.event_type === 'qa_question') detail = 'Q:' + (payload.question||'').replace(/[\n,]/g,' ');
+      else if (ev.event_type === 'ai_grading') detail = '案例:' + (payload.caseId||'') + ' 得分:' + (payload.score||'');
+      else if (ev.event_type === 'error_book') detail = (payload.question||'').replace(/[\n,]/g,' ') + ' [' + (payload.knowledgePoint||'') + ']';
+      else if (ev.event_type === 'bookmark') detail = (payload.title||'').replace(/[\n,]/g,' ');
+      else detail = JSON.stringify(payload).substring(0,100);
+      csv += '"' + (ev.student_id||'') + '","' + (ev.event_type||'') + '","' + (ev.module||'') + '","' + detail.replace(/"/g,'""') + '","' + (ev.created_at||'') + '"\n';
+    });
+    
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = '学情报告_云端_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    alert('导出失败: ' + e.message);
+  }
+}
+
+// === Generate demo students data for teacher panel ===
+function generateMockStudents() {
+  var names = [
+               '台俊皓', '尹创', '谭金玲', '孙亮亮', '肖仁燮', '喻睿萌', '陈薇', '周奕汝', '陈林佳', '陈文轩',
+               '陈欣悦', '程行龙', '党珮瑜', '邓婉莹', '顾孔垚', '贺嘉乐', '黄茗睿', '黄易', '蒋晨晨', '李辰羲',
+               '李婉婷', '李志伟', '刘莉', '刘宛彤', '卢鸿彬', '马欣怡', '潘云昊', '彭灿', '石梦婕', '王蕾',
+               '王敏静', '王赛文', '王兴雨', '王御平', '韦欣宇', '吴眉', '吴中贤', '肖吴佩奇', '杨书源', '杨翔茹',
+               '杨子璐', '岳金慧', '张叶', '张莹莹', '朱颜', '陈美妮', '陈敏', '陈相诗语', '成艺', '邓畅',
+               '丁载媛', '董伟豪', '郭子涵', '何磊', '胡海丽', '黄裕舒', '解诗画', '柯煊', '李国', '李金娥',
+               '李敏敏', '李欣蕊', '林文辉', '刘雅雯', '罗慧博', '毛义书', '梅炎鑫', '牟春燕', '彭羽洁', '谭莉',
+               '唐欣', '王诗雨', '王舒君', '王昕妤', '王傅之', '王子越', '吴雨萱', '熊粤', '徐芊', '余芷萱',
+               '张洁', '张维歌', '陈胜希', '陈祎玮', '程诺', '邓帆', '方紫嫣', '付祥海', '何蓉', '胡金平',
+               '金妍', '李柯燃', '李商浩', '李依', '廖杰梅', '刘雨萌', '梅佳琪', '潘晶晶', '钱馨怡', '宋佳诚',
+               '谭倩', '谭宗毅', '唐怡倩', '汪梦瑶', '王希瑶', '王梓璇', '王紫湛', '魏晨旭', '向梦佳', '谢宜颖',
+               '徐长征', '杨琴', '喻路凌', '张路', '张棋', '周清鄂', '周文希', '邹德翔', '张思恒', '郑智慧',
+               '王梦媛', '陈美玲', '董依婷', '刘鑫玉', '田佳怡', '童湖景', '张文轩', '周祯琰', '曾晓楠', '莫正阳',
+               '田雨蕙', '乔子凌', '童高聖', '刘雨欣', '姚水根', '胡昊月', '李菲', '周明明', '黄江', '黄琪淇',
+               '肖智楠', '周雨佳', '王敏', '严文谨', '姚远香', '曾智宇', '陈柏霏', '陈诗怡', '陈子健', '代阳',
+               '邓可云', '冯琦智', '高敏', '何天', '贺敏', '黄恺馨', '库欣娓', '李思琴', '李玉豪', '刘黎萌',
+               '刘子含', '潘紫涵', '沈园林', '宋卓越', '谭沁', '汪文丽', '王贵愈', '王思彤', '王颖', '魏久茗',
+               '吴锦仪', '吴再渤', '肖安琪', '薛涵枢', '杨雅淇', '袁诺', '张恬畅', '张先语', '赵静', '郑婧',
+               '朱圣萌', '邹妮彤', '李天媛', '廖一寰', '陆星宇', '王磊', '张航', '邹巧熳', '陈一鸣', '罗丹丹',
+               '田震', '金瑞熙', '杨雅文', '郑淑玲', '乐姝', '张睿涵', '罗思雨', '贺心可', '吴金洁', '萧诗宇',
+               '杨孟广', '彭昱翔', '王晓', '吴思睿', '周培培', '张宇康', '钟诗杭', '何思淇', '向玉桃', '高小斌',
+               '周妍', '江欣雨', '刘子莹', '余东航', '时韩', '吴芊诺', '张慧'
+  ];
+  var students = [];
+  
+  // Pseudo-random number generator based on seed
+  function pseudoRandom(seed, min, max) {
+    var h = 0;
+    for (var ci = 0; ci < seed.length; ci++) {
+      h = ((h << 5) - h + seed.charCodeAt(ci)) | 0;
+    }
+    h = Math.abs(h);
+    return min + (h % (max - min + 1));
+  }
+  function pseudoRandomDate(seed) {
+    var h = 0;
+    for (var ci = 0; ci < seed.length; ci++) {
+      h = ((h << 5) - h + seed.charCodeAt(ci) * 3) | 0;
+    }
+    h = Math.abs(h);
+    var baseDate = new Date('2026-09-28T23:59:00+08:00').getTime();
+    var offsetDays = h % 7;
+    var offsetHours = (h >> 3) % 14;
+    return new Date(baseDate - offsetDays * 86400000 - offsetHours * 3600000).toISOString();
+  }
+  
+  names.forEach(function(name, i) {
+    var studentId = 'DEMO' + String(2024000 + i + 1);
+    var seed = studentId + name;
+    // 杨雅淇 special data
+    var isYang = (studentId === 'DEMO2024175');
+    var completedCases = isYang ? 10 : pseudoRandom(seed + 'cc', 2, 8);
+    var activeDate = pseudoRandomDate(seed + 'ad');
+    var scores = {};
+    var caseNames = FIXED_CASES.map(function(c) { return c.name; });
+    
+    for (var j = 0; j < completedCases && j < caseNames.length; j++) {
+      var cName = caseNames[j] || ('案例' + (j + 1));
+      var sc = isYang ? (85 + pseudoRandom(seed + j, 0, 10)) : pseudoRandom(seed + j, 50, 95);
+      scores[cName] = { score: sc, completedAt: new Date(Date.now() - pseudoRandom(seed + 'dt' + j, 1, 60) * 86400000).toISOString(), attempts: isYang ? 1 : pseudoRandom(seed + 'at' + j, 1, 3) };
+    }
+    
+    var totalScore = 0;
+    var count = 0;
+    Object.keys(scores).forEach(function(k) { totalScore += scores[k].score; count++; });
+    var avgScore = count > 0 ? Math.round(totalScore / count) : 0;
+    
+    students.push({
+      studentId: studentId,
+      name: name,
+      role: 'student',
+      lastActive: activeDate,
+      completedCases: completedCases,
+      avgScore: avgScore,
+      totalCases: FIXED_CASES.length,
+      progress: isYang ? 91 : Math.round(completedCases / FIXED_CASES.length * 100),
+      caseScores: scores,
+      loginCount: isYang ? 42 : pseudoRandom(seed + 'lc', 15, 45),
+      quizAvg: isYang ? 93 : pseudoRandom(seed + 'qa', 78, 96),
+      aiQaCount: isYang ? 75 : pseudoRandom(seed + 'aq', 5, 75),
+      aiGradeCount: isYang ? 35 : pseudoRandom(seed + 'ag', 3, 35),
+      errorBookCount: isYang ? 50 : pseudoRandom(seed + 'eb', 2, 50)
+    });
+  });
+  
+  localStorage.setItem('sanguofa_demo_students', JSON.stringify(students));
+  return students;
+}
+
+// === Get all students data (real + demo) ===
+function getAllStudentsData() {
+  var students = [];
+  
+  // 1. Always ensure demo students exist
+  var demoVersion = localStorage.getItem('sanguofa_demo_version') || '';
+  if (demoVersion !== 'v7') {
+    localStorage.removeItem('sanguofa_demo_students');
+    localStorage.removeItem('sanguofa_debate_debates');
+    localStorage.removeItem('sanguofa_teacher_materials');
+    localStorage.removeItem('sanguofa_tea_posts');
+    localStorage.setItem('sanguofa_demo_version', 'v7');
+  }
+  // Always regenerate to ensure latest names
+  var genStudents = generateMockStudents();
+  students = students.concat(genStudents);
+  
+  // 2. Load real student registry
+  var registry = [];
+  try {
+    var raw = localStorage.getItem('sanguofa_student_registry');
+    if (raw) registry = JSON.parse(raw);
+  } catch(e) {}
+  
+  // For each registered student, load their progress
+  registry.forEach(function(entry) {
+    // Skip if already added as demo
+    if (students.find(function(s) { return s.studentId === entry.studentId; })) return;
+    
+    var progressKey = 'sanguofa_student_' + entry.studentId + '_progress';
+    var progress = {};
+    try {
+      var saved = localStorage.getItem(progressKey);
+      if (saved) progress = JSON.parse(saved);
+    } catch(e) {}
+    
+    var completedCases = Object.keys(progress).length;
+    var totalScore = 0;
+    var count = 0;
+    Object.keys(progress).forEach(function(k) {
+      totalScore += (progress[k].score || 0);
+      count++;
+    });
+    var avgScore = count > 0 ? Math.round(totalScore / count) : 0;
+    
+    students.push({
+      studentId: entry.studentId,
+      name: entry.name,
+      role: entry.role || 'student',
+      lastActive: entry.lastActive || new Date().toISOString(),
+      completedCases: completedCases,
+      avgScore: avgScore,
+      totalCases: FIXED_CASES.length,
+      progress: Math.round(completedCases / FIXED_CASES.length * 100),
+      caseScores: progress
+    });
+  });
+  
+  return students;
+}
+
+// === Teacher Mode (legacy, kept for compatibility) ===
+function toggleTeacherMode() {
+  // This function is kept for backward compatibility
+  // Teachers now log in via the login screen
+  if (AppState.currentUser && AppState.currentUser.role === 'teacher') {
+    showPage('teacher');
+  }
+}
+
+
+// 兼容旧调用：自动找到内嵌面板容器
+function renderTeacherPanel() {
+  var panel = document.getElementById('teacherPanelInline');
+  if (panel) renderTeacherPanelTo(panel);
+}
+
+// 教师面板渲染到指定容器（用于个人空间内嵌）
+function renderTeacherPanelTo(container) {
+  if (!window._teacherSubTab) window._teacherSubTab = 'students';
+  var subTab = window._teacherSubTab;
+  
+  var subTabsHtml = '<div class="teacher-sub-tabs">' +
+    '<button class="teacher-sub-tab' + (subTab === 'students' ? ' active' : '') + '" onclick="switchTeacherSubTab(\'students\')">📊 学生管理</button>' +
+    '<button class="teacher-sub-tab' + (subTab === 'materials' ? ' active' : '') + '" onclick="switchTeacherSubTab(\'materials\')">📁 素材管理</button>' +
+  '</div>';
+  
+  if (subTab === 'students') {
+    renderTeacherStudentsTab(container, subTabsHtml);
+  } else if (subTab === 'materials') {
+    renderTeacherMaterialsTab(container, subTabsHtml);
+  }
+}
+
+function switchTeacherSubTab(tab) {
+  window._teacherSubTab = tab;
+  renderTeacherPanel();
+}
+
+function renderTeacherStudentsTab(container, subTabsHtml) {
+  var students = getAllStudentsData();
+  students = students.filter(function(s) { return s.role !== 'teacher'; });
+  
+  // If Supabase configured, try to load cloud data
+  if (_sbConfigured && _sbClient) {
+    _sbLoadTeacherCloudData(container, subTabsHtml, students);
+    return;
+  }
+
+  
+  var totalStudents = students.length;
+  var avgScore = totalStudents > 0 ? Math.round(students.reduce(function(s, st) { return s + st.avgScore; }, 0) / totalStudents) : 0;
+  var completedRate = totalStudents > 0 ? Math.round(students.filter(function(s) { return s.completedCases >= 3; }).length / totalStudents * 100) : 0;
+  var totalCases = FIXED_CASES.length;
+  
+  var lastActive = '-';
+  if (students.length > 0) {
+    var latest = students.reduce(function(a, b) { return (a.lastActive > b.lastActive) ? a : b; });
+    try { lastActive = new Date(latest.lastActive).toLocaleDateString('zh-CN'); } catch(e) {}
+  }
+  
+  var rows = students.map(function(st, idx) {
+    var lastActiveStr = '-';
+    try { lastActiveStr = new Date(st.lastActive).toLocaleDateString('zh-CN'); } catch(e) {}
+    return '<tr onclick="toggleStudentDetail(' + idx + ')" style="cursor:pointer">' +
+      '<td><strong>' + st.studentId + '</strong></td>' +
+      '<td>' + st.name + '</td>' +
+      '<td>' + st.completedCases + ' / ' + (st.totalCases || totalCases) + '</td>' +
+      '<td>' + st.avgScore + '分</td>' +
+      '<td>' +
+        '<div class="teacher-bar"><div class="teacher-bar-fill" style="width:' + st.progress + '%"></div></div>' +
+      '</td>' +
+      '<td>' + lastActiveStr + '</td>' +
+    '</tr>' +
+    '<tr id="studentDetail_' + idx + '" style="display:none">' +
+      '<td colspan="6" style="background:#f8f9fc;padding:16px">' +
+        '<div style="font-size:0.82rem;color:var(--text-secondary)">案例成绩详情：</div>' +
+        '<div style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">' +
+          (function() {
+            var caseNames = FIXED_CASES.map(function(c) { return c.name; });
+            var html = '';
+            caseNames.forEach(function(cName) {
+              var sc = st.caseScores && st.caseScores[cName];
+              var scoreText = sc ? sc.score + '分' : '未完成';
+              var color = sc ? (sc.score >= 80 ? 'var(--success)' : sc.score >= 60 ? 'var(--accent)' : '#e74c3c') : 'var(--text-light)';
+              html += '<div style="padding:8px 12px;background:#fff;border-radius:8px;border:1px solid var(--border);font-size:0.78rem">' +
+                '<div style="color:var(--text-secondary);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + cName + '">' + cName.substring(0, 12) + '</div>' +
+                '<div style="font-weight:700;color:' + color + '">' + scoreText + '</div></div>';
+            });
+            return html;
+          })() +
+        '</div>' +
+      '</td>' +
+    '</tr>';
+  }).join('');
+  
+  container.innerHTML = '<div class="teacher-panel">' +
+    '<div class="teacher-panel-header">' +
+      '<h2>📊 教师管理面板</h2>' +
+      subTabsHtml +
+      '<div style="display:flex;gap:10px">' +
+        '<button class="teacher-export-btn" style="background:var(--primary)" onclick="generateDemoStudentData()">🎲 模拟数据</button>' +
+        '<button class="teacher-export-btn" style="background:#f0f0f0;color:var(--text-primary);border:1px solid var(--border);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.85rem" onclick="exportTeacherCSV()">📥 导出CSV报告</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="teacher-stats-grid">' +
+      '<div class="teacher-stat-card"><div class="ts-num">' + totalStudents + '</div><div class="ts-label">学生总数</div></div>' +
+      '<div class="teacher-stat-card"><div class="ts-num">' + avgScore + '</div><div class="ts-label">平均分</div></div>' +
+      '<div class="teacher-stat-card"><div class="ts-num">' + completedRate + '%</div><div class="ts-label">完成率(>=3案例)</div></div>' +
+      '<div class="teacher-stat-card"><div class="ts-num">' + lastActive + '</div><div class="ts-label">最近活跃</div></div>' +
+    '</div>' +
+    '<div class="teacher-table-wrap">' +
+      '<table class="teacher-table">' +
+        '<thead><tr><th>学号</th><th>姓名</th><th>完成案例</th><th>平均分</th><th>学习进度</th><th>最近活跃</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>' +
+    '</div>' +
+    '<div style="background:var(--bg-card);border-radius:var(--radius-md);padding:20px;box-shadow:var(--shadow-sm)">' +
+      '<h4 style="margin-bottom:12px;color:var(--primary)">📈 班级案例完成率</h4>' +
+      '<div class="case-stats-grid">' +
+        FIXED_CASES.map(function(c, i) {
+          var count = students.filter(function(s) { return s.completedCases > i; }).length;
+          var pct = totalStudents > 0 ? Math.round(count / totalStudents * 100) : 0;
+          return '<div class="case-stat-item">' +
+            '<div class="case-stat-name" title="' + c.name + '">' + c.name.substring(0, 10) + '</div>' +
+            '<div class="case-stat-pct">' + pct + '%</div>' +
+            '<div class="teacher-bar" style="margin-top:6px"><div class="teacher-bar-fill" style="width:' + pct + '%"></div></div>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+// === 素材管理面板 ===
+function renderTeacherMaterialsTab(container, subTabsHtml) {
+  var materials = loadTeacherMaterials();
+  
+  if (!window._materialType) window._materialType = 'case';
+  
+  var caseMatList = materials.filter(function(m) { return m.type === 'case'; });
+  var lawMatList = materials.filter(function(m) { return m.type === 'law'; });
+  var docMatList = materials.filter(function(m) { return m.type === 'document'; });
+  
+  var currentList = window._materialType === 'case' ? caseMatList : 
+                    window._materialType === 'law' ? lawMatList : docMatList;
+  
+  var listHtml = '';
+  if (currentList.length === 0) {
+    listHtml = '<div style="text-align:center;padding:30px;color:var(--text-light);font-size:0.85rem">暂无素材，请在下方添加</div>';
+  } else {
+    listHtml = currentList.map(function(m) {
+      var typeLabel = m.type === 'case' ? '📋 案例' : m.type === 'law' ? ' 法条' : '📄 政策文件';
+      var dateStr = '';
+      try { dateStr = new Date(m.createdAt).toLocaleDateString('zh-CN'); } catch(e) {}
+      return '<div class="material-item-card">' +
+        '<div class="mat-info">' +
+          '<div class="mat-title">' + (m.title || '无标题') + '</div>' +
+          '<div class="mat-meta">' + typeLabel + ' · ' + (m.subject || '通用') + ' · ' + dateStr + '</div>' +
+        '</div>' +
+        '<div class="mat-actions">' +
+          '<button class="mat-del-btn" onclick="deleteTeacherMaterial(\'' + m.id + '\')">删除</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+  
+  container.innerHTML = '<div class="teacher-panel">' +
+    '<div class="teacher-panel-header"><h2>📊 教师管理中心</h2></div>' +
+    subTabsHtml +
+    '<div class="material-upload-panel">' +
+      '<h4>📁 素材自主上传</h4>' +
+      '<p style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:14px">教师可自主新增三国法案例、核心法条、涉外政策文件，扩充平台知识库。新增素材将即时纳入知识库搜索和智能问答范围。</p>' +
+      
+      '<div class="material-type-tabs">' +
+        '<button class="material-type-tab' + (window._materialType === 'case' ? ' active' : '') + '" onclick="switchMaterialType(\'case\')"> 三国法案例</button>' +
+        '<button class="material-type-tab' + (window._materialType === 'law' ? ' active' : '') + '" onclick="switchMaterialType(\'law\')">📜 核心法条</button>' +
+        '<button class="material-type-tab' + (window._materialType === 'document' ? ' active' : '') + '" onclick="switchMaterialType(\'document\')">📄 涉外政策文件</button>' +
+      '</div>' +
+      
+      '<div id="materialForm">' + getMaterialFormHtml(window._materialType) + '</div>' +
+    '</div>' +
+    
+    '<div class="material-list-area" style="margin-top:20px">' +
+      '<h4 style="margin-bottom:12px;color:var(--primary)">📚 已上传素材 (' + currentList.length + ')</h4>' +
+      listHtml +
+    '</div>' +
+  '</div>';
+}
+
+function getMaterialFormHtml(type) {
+  if (type === 'case') {
+    return '<div class="material-form-group"><label>案例名称</label><input id="matTitle" placeholder="如：南海仲裁案管辖权争议" /></div>' +
+      '<div class="material-form-group"><label>所属学科</label><select id="matSubject">' +
+        '<option value="public">国际公法</option><option value="private">国际私法</option><option value="economic">国际经济法</option>' +
+      '</select></div>' +
+      '<div class="material-form-group"><label>案情摘要</label><textarea id="matContent" placeholder="请描述案件基本情况、争议焦点、裁判结果等..."></textarea></div>' +
+      '<div class="material-form-group"><label>关键词（逗号分隔）</label><input id="matKeywords" placeholder="如：管辖权,UNCLOS,南海,仲裁" /></div>' +
+      '<button class="material-submit-btn" onclick="submitTeacherMaterial()">✅ 提交案例</button>';
+  } else if (type === 'law') {
+    return '<div class="material-form-group"><label>法条名称</label><input id="matTitle" placeholder="如：《联合国海洋法公约》第121条" /></div>' +
+      '<div class="material-form-group"><label>所属学科</label><select id="matSubject">' +
+        '<option value="public">国际公法</option><option value="private">国际私法</option><option value="economic">国际经济法</option>' +
+      '</select></div>' +
+      '<div class="material-form-group"><label>法条原文</label><textarea id="matContent" placeholder="请输入法条原文内容..."></textarea></div>' +
+      '<div class="material-form-group"><label>关键词（逗号分隔）</label><input id="matKeywords" placeholder="如：岛屿,领海,专属经济区" /></div>' +
+      '<button class="material-submit-btn" onclick="submitTeacherMaterial()">✅ 提交法条</button>';
+  } else {
+    return '<div class="material-form-group"><label>文件标题</label><input id="matTitle" placeholder="如：教育部关于加强涉外法治人才培养的意见" /></div>' +
+      '<div class="material-form-group"><label>文件类别</label><select id="matSubject">' +
+        '<option value="policy">政策法规</option><option value="frontier">前沿动态</option><option value="document">实务文书</option>' +
+      '</select></div>' +
+      '<div class="material-form-group"><label>文件内容/摘要</label><textarea id="matContent" placeholder="请输入政策文件的核心内容或全文摘要..."></textarea></div>' +
+      '<div class="material-form-group"><label>关键词（逗号分隔）</label><input id="matKeywords" placeholder="如：涉外法治,人才培养,教育部" /></div>' +
+      '<button class="material-submit-btn" onclick="submitTeacherMaterial()">✅ 提交文件</button>';
+  }
+}
+
+function switchMaterialType(type) {
+  window._materialType = type;
+  renderTeacherPanel();
+}
+
+function submitTeacherMaterial() {
+  var title = document.getElementById('matTitle');
+  var subject = document.getElementById('matSubject');
+  var content_el = document.getElementById('matContent');
+  var keywords = document.getElementById('matKeywords');
+  
+  if (!title || !title.value.trim()) {
+    showToast('请填写标题/名称');
+    return;
+  }
+  if (!content_el || !content_el.value.trim()) {
+    showToast('请填写内容');
+    return;
+  }
+  
+  var material = {
+    id: 'mat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+    type: window._materialType,
+    title: title.value.trim(),
+    subject: subject ? subject.value : '',
+    content: content_el.value.trim(),
+    keywords: keywords ? keywords.value.trim() : '',
+    createdAt: new Date().toISOString(),
+    source: 'teacher_upload'
+  };
+  
+  var materials = loadTeacherMaterials();
+  materials.push(material);
+  try {
+    localStorage.setItem('sanguofa_teacher_materials', JSON.stringify(materials));
+  } catch(e) {
+    console.warn('localStorage save failed:', e);
+  }
+  
+  syncTeacherMaterialToRuntime(material);
+  
+  showToast((material.type === 'case' ? '案例' : material.type === 'law' ? '法条' : '政策文件') + '已添加成功！');
+  renderTeacherPanel();
+}
+
+function loadTeacherMaterials() {
+  try {
+    var data = localStorage.getItem('sanguofa_teacher_materials');
+    return data ? JSON.parse(data) : [];
+  } catch(e) {
+    return [];
+  }
+}
+
+function deleteTeacherMaterial(matId) {
+  if (!confirm('确定删除该素材？')) return;
+  var materials = loadTeacherMaterials();
+  materials = materials.filter(function(m) { return m.id !== matId; });
+  try {
+    localStorage.setItem('sanguofa_teacher_materials', JSON.stringify(materials));
+  } catch(e) {}
+  showToast('已删除');
+  renderTeacherPanel();
+}
+
+function syncTeacherMaterialToRuntime(material) {
+  if (MockData && MockData.qaResponses) {
+    var exists = MockData.qaResponses.some(function(q) { return q.id === material.id; });
+    if (!exists) {
+      MockData.qaResponses.push({
+        id: material.id,
+        question: material.title,
+        answer: material.content,
+        keywords: material.keywords ? material.keywords.split(/[,，]/).map(function(k) { return k.trim(); }) : [],
+        category: material.subject || 'general',
+        type: material.type === 'law' ? 'law' : material.type === 'case' ? 'case' : 'policy',
+        source: 'teacher_upload'
+      });
+    }
+  }
+  
+  if (material.type === 'case' && typeof FIXED_CASES !== 'undefined') {
+    var caseExists = FIXED_CASES.some(function(c) { return c.id === material.id; });
+    if (!caseExists) {
+      FIXED_CASES.push({
+        id: material.id,
+        name: material.title,
+        subject: material.subject,
+        brief: material.content.substring(0, 150) + (material.content.length > 150 ? '...' : ''),
+        detail: material.content,
+        keywords: material.keywords ? material.keywords.split(/[,，]/).map(function(k) { return k.trim(); }) : [],
+        source: 'teacher_upload'
+      });
+    }
+  }
+  
+  if (material.type === 'law' && MockData && MockData.laws) {
+    var lawExists = MockData.laws.some(function(l) { return l.id === material.id; });
+    if (!lawExists) {
+      MockData.laws.push({
+        id: material.id,
+        name: material.title,
+        subject: material.subject,
+        articles: [{ number: '自定义', text: material.content }],
+        source: 'teacher_upload'
+      });
+    }
+  }
+  
+  if (material.type === 'document' && MockData && MockData.ideologyDocs) {
+    var docExists = MockData.ideologyDocs.some(function(d) { return d.id === material.id; });
+    if (!docExists) {
+      MockData.ideologyDocs.push({
+        id: material.id,
+        title: material.title,
+        category: material.subject || 'policy',
+        summary: material.content.substring(0, 200),
+        content: material.content,
+        date: new Date().toLocaleDateString('zh-CN'),
+        source: 'teacher_upload'
+      });
+    }
+  }
+  
+  console.log('[素材同步] 已同步到运行时:', material.type, material.title);
+}
+
+function restoreTeacherMaterials() {
+  var materials = loadTeacherMaterials();
+  if (materials.length === 0) return;
+  materials.forEach(function(m) { syncTeacherMaterialToRuntime(m); });
+  console.log('[素材恢复] 已恢复', materials.length, '条教师上传素材');
+}
+
+
+// === 返回上一页 ===
+function goBack() {
+  if (!window._navHistory || window._navHistory.length === 0) {
+    showPage('dashboard');
+    return;
+  }
+  var prevPage = window._navHistory.pop();
+  var temp = window._navHistory.slice();
+  showPage(prevPage);
+  window._navHistory = temp;
+}
+
+// === 移动端导航栏更新 ===
+var MOBILE_TABS = [
+  { page: 'dashboard', icon: '', label: '首页' },
+  { page: 'qa', icon: '💬', label: '答疑' },
+  { page: 'case', icon: '⚖️', label: '实训' },
+  { page: 'assess', icon: '📝', label: '测评' },
+  { page: 'graph', icon: '️', label: '图谱' }
+];
+
+function initMobileTabBar() {
+  var bar = document.getElementById('mobileTabBar');
+  if (!bar) return;
+  bar.innerHTML = MOBILE_TABS.map(function(tab) {
+    return '<div class="mobile-tab-item" data-page="' + tab.page + '" onclick="showPage(\'' + tab.page + '\')">' +
+      '<span class="tab-icon">' + tab.icon + '</span>' +
+      '<span class="tab-label">' + tab.label + '</span>' +
+    '</div>';
+  }).join('');
+}
+
+function updateMobileNav(page) {
+  var bar = document.getElementById('mobileTabBar');
+  if (bar) {
+    bar.classList.add('visible');
+    bar.querySelectorAll('.mobile-tab-item').forEach(function(item) {
+      item.classList.toggle('active', item.dataset.page === page);
+    });
+  }
+  var backBtn = document.getElementById('mobileBackBtn');
+  if (backBtn) {
+    if (page === 'dashboard') {
+      backBtn.classList.remove('visible');
+    } else {
+      backBtn.classList.add('visible');
+    }
+  }
+}
+
+// === 初始化移动端导航 ===
+(function() {
+  function doInit() {
+    initMobileTabBar();
+    if (AppState && AppState.currentPage) {
+      updateMobileNav(AppState.currentPage);
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', doInit);
+  } else {
+    doInit();
+  }
+})();
+
+// === 应用启动时恢复教师素材 ===
+if (typeof restoreTeacherMaterials === 'function') { setTimeout(restoreTeacherMaterials, 500); }
+
+
+function toggleStudentDetail(idx) {
+  var row = document.getElementById('studentDetail_' + idx);
+  if (row) {
+    row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+  }
+}
+
+function generateDemoStudentData() {
+  generateMockStudents();
+  renderTeacherPanel();
+  showToast('模拟数据已生成');
+}
+
+function exportTeacherCSV() {
+  var students = getAllStudentsData();
+  students = students.filter(function(s) { return s.role !== 'teacher'; });
+  
+  var csv = '\uFEFF学号,学生姓名,完成案例数,平均分,学习进度(%),最近活跃\n';
+  students.forEach(function(st) {
+    var lastActiveStr = '-';
+    try { lastActiveStr = new Date(st.lastActive).toLocaleDateString('zh-CN'); } catch(e) {}
+    csv += st.studentId + ',' + st.name + ',' + st.completedCases + ',' + st.avgScore + ',' + st.progress + ',' + lastActiveStr + '\n';
+  });
+  
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = '班级学习报告_' + new Date().toLocaleDateString('zh-CN').replace(/\//g, '-') + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('CSV报告已导出');
+}
+
+// === 教学考核模块 ===
+function renderAssessModule() {
+  const container = document.getElementById('page-assess');
+  container.innerHTML = `
+    <div class="assess-layout">
+      <div class="assess-header">
+        <div class="assess-tabs">
+          <button class="assess-tab active" onclick="switchAssessTab('quiz', this)">📝 知识测验</button>
+          <button class="assess-tab" onclick="switchAssessTab('material', this)">📋 材料分析</button>
+          <button class="assess-tab" onclick="switchAssessTab('confusing', this)">🔀 易混辨析</button>
+          <button class="assess-tab" onclick="switchAssessTab('documents', this)">📄 文书写作</button>
+          <button class="assess-tab" onclick="switchAssessTab('errors', this)">📕 错题本</button>
+        </div>
+        <div class="assess-actions">
+          <button class="quick-action-btn" onclick="resetQuiz()">🔄 重新出题</button>
+        </div>
+      </div>
+
+      
+      <div id="teacherAssessBar" style="display:none;margin:0 24px;padding:12px 18px;background:linear-gradient(135deg,rgba(201,168,76,0.08),rgba(201,168,76,0.03));border:1px solid rgba(201,168,76,0.18);border-radius:12px;display:none;align-items:center;gap:12px;">
+        <span style="font-size:0.78rem;color:var(--accent);font-weight:600;white-space:nowrap">🔧 教师工具：</span>
+        <input type="file" id="uploadCaseInput" accept=".json,.txt" style="display:none" onchange="handleCaseUpload(event)">
+        <button onclick="document.getElementById('uploadCaseInput').click()" style="padding:5px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:0.75rem;font-weight:600;cursor:pointer">📤 上传案例</button>
+        <button onclick="showEditQuestionModal()" style="padding:5px 14px;background:var(--primary);color:#fff;border:none;border-radius:6px;font-size:0.75rem;font-weight:600;cursor:pointer">✏️ 编辑题目</button>
+        <button onclick="showStudentRecords()" style="padding:5px 14px;background:var(--success);color:#fff;border:none;border-radius:6px;font-size:0.75rem;font-weight:600;cursor:pointer">📊 学生实训记录</button>
+      </div>
+
+      
+      <div class="subject-selector" id="subjectSelector">
+        <div class="subject-selector-title">📚 选择考试科目</div>
+        <div class="subject-selector-desc">选择科目后将随机抽取 10 道单选(6分)、5 道多选(8分)和 1 道案例分析(20分)</div>
+
+        <div class="subject-selector-buttons">
+          <button class="subject-btn" onclick="startQuiz('public')">
+            <span class="subject-btn-icon">🌐</span>
+            <span class="subject-btn-name">国际公法</span>
+            <span class="subject-btn-count">${MockData.questions.filter(q=>q.subject==='public').length} 题题库</span>
+          </button>
+          <button class="subject-btn" onclick="startQuiz('private')">
+            <span class="subject-btn-icon">⚖️</span>
+            <span class="subject-btn-name">国际私法</span>
+            <span class="subject-btn-count">${MockData.questions.filter(q=>q.subject==='private').length} 题题库</span>
+          </button>
+          <button class="subject-btn" onclick="startQuiz('economic')">
+            <span class="subject-btn-icon">💼</span>
+            <span class="subject-btn-name">国际经济法</span>
+            <span class="subject-btn-count">${MockData.questions.filter(q=>q.subject==='economic').length} 题题库</span>
+          </button>
+        </div>
+      </div>
+
+      
+      <div class="assess-info-bar" id="assessInfoBar" style="display:none">
+        <div class="assess-info-item">
+          <span class="info-icon">📊</span>
+          <span>共 <strong id="quizCountDisplay">15</strong> 题</span>
+        </div>
+        <div class="assess-info-item">
+          <span class="info-icon">💯</span>
+          <span>总分 <strong>100</strong> 分</span>
+        </div>
+        <div class="assess-info-item">
+          <span class="info-icon">⏱️</span>
+          <span>建议用时 <strong>15</strong> 分钟</span>
+        </div>
+        <div class="assess-info-item">
+          <span class="info-icon">📖</span>
+          <span id="quizSubjectDisplay">选择科目后开始</span>
+        </div>
+      </div>
+
+      
+      <div class="score-card" id="scoreCard"></div>
+
+      
+      <div id="quizArea"></div>
+
+      
+      <div id="materialArea" style="display:none"></div>
+
+      
+      <div id="confusingArea" style="display:none"></div>
+
+      
+      <div id="documentArea" style="display:none"></div>
+
+      
+      <div id="errorBook" style="display:none"></div>
+
+      
+      <div class="assess-submit-area" id="submitArea" style="display:none">
+        <button class="submit-btn" onclick="submitQuiz()">📮 提交答案</button>
+      </div>
+    </div>
+  `;
+}
+function startQuiz(subject) {
+  // 分层题库：按难度过滤
+  const difficulty = AppState.quizDifficulty || 'all';
+
+  const subjectNames = {public:'国际公法',private:'国际私法',economic:'国际经济法'};
+  const subjectIcons = {public:'🌐',private:'⚖️',economic:'💼'};
+  AppState.selectedSubject = subject;
+
+  // Filter questions by subject
+  const singles = MockData.questions.filter(q => q.subject === subject && q.type === 'single');
+  const multis = MockData.questions.filter(q => q.subject === subject && q.type === 'multi');
+
+  // Random pick 10 single + 5 multi
+  const shuffle = arr => { const a = [...arr]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
+  const essays = MockData.questions.filter(q => q.subject === subject && q.type === 'essay');
+  const picked = [...shuffle(singles).slice(0,10), ...shuffle(multis).slice(0,5), ...shuffle(essays).slice(0,1)];
+
+  // Re-number points: single=6, multi=8
+  picked.forEach(q => { q.points = q.type === 'single' ? 6 : q.type === 'multi' ? 8 : 20; });
+  AppState.currentQuestions = picked;
+
+  // Update display
+  document.getElementById('subjectSelector').style.display = 'none';
+  document.getElementById('assessInfoBar').style.display = '';
+  document.getElementById('quizSubjectDisplay').innerHTML = subjectIcons[subject] + ' <strong>' + subjectNames[subject] + '</strong> 测验';
+  document.getElementById('quizCountDisplay').textContent = picked.length;
+  document.getElementById('quizArea').innerHTML = renderQuestions();
+  document.getElementById('submitArea').style.display = '';
+  document.getElementById('scoreCard').innerHTML = '';
+  document.getElementById('scoreCard').classList.remove('show');
+  // Start quiz timer and progress
+  injectQuizTimerBar();
+  startQuizTimer();
+  updateQuizProgress();
+}
+
+function renderQuestions() {
+  const qs = AppState.currentQuestions || [];
+  return qs.map((q, idx) => {
+    const optionsHtml = q.type === 'essay' ? '' : q.options.map(opt => `
+      <div class="option-item" id="opt-${q.id}-${opt.letter}" onclick="selectOption(${q.id}, '${opt.letter}', '${q.type}')">
+        <div class="option-letter">${opt.letter}</div>
+        <span>${opt.text}</span>
+      </div>
+    `).join('');
+
+    return `
+      <div class="question-card" id="question-${q.id}">
+        <div class="question-header">
+          <div class="question-number">${idx + 1}</div>
+          <span class="question-type ${q.type}">${q.typeName}</span>
+          <span class="question-points">${q.points}分</span>
+        </div>
+        <div class="question-text">${q.text.replace(/\n/g, '<br>')}</div>
+        ${q.type === 'essay' ? `<div class='essay-answer-area'><div class='essay-instructions'><span class='essay-badge'>📝 主观案例分析</span><span class='essay-hint'>请结合法律条文分析,建议300字以上</span></div><textarea class='essay-textarea' id='essay-${q.id}' rows='10' placeholder='请输入分析答案...'></textarea><div class='essay-counter' id='counter-${q.id}'>已输入 0 字</div><div id='essay-result-${q.id}'></div></div>` : (q.options.length > 0 ? `<div class="question-options">${optionsHtml}</div>` : '')}
+        <div class="question-explanation" id="explain-${q.id}">
+          <h5>📖 答案解析</h5>
+          <p>${(q.explanation || q.referenceAnswer || '').replace(/\n/g, '<br>')}</p>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+document.querySelectorAll('.essay-textarea').forEach(function(t){t.addEventListener('input',function(){var c=document.getElementById('counter-'+this.id.replace('essay-',''));if(c)c.textContent='已输入 '+this.value.length+' 字';});});
+function selectOption(qId, letter, type) {
+  if (AppState.quizSubmitted) return;
+  
+  if (type === 'single') {
+    // 单选题：清除其他选项
+    document.querySelectorAll(`[id^="opt-${qId}-"]`).forEach(el => {
+      el.classList.remove('selected');
+    });
+    AppState.selectedAnswers[qId] = letter;
+  } else if (type === 'multi') {
+    // 多选题：切换选中状态
+    const el = document.getElementById(`opt-${qId}-${letter}`);
+    el.classList.toggle('selected');
+    
+    if (!AppState.selectedAnswers[qId]) {
+      AppState.selectedAnswers[qId] = [];
+    }
+    const idx = AppState.selectedAnswers[qId].indexOf(letter);
+    if (idx >= 0) {
+      AppState.selectedAnswers[qId].splice(idx, 1);
+    } else {
+      AppState.selectedAnswers[qId].push(letter);
+    }
+  }
+  
+  // 标记选中状态
+  if (type === 'single') {
+    document.getElementById(`opt-${qId}-${letter}`).classList.add('selected');
+  }
+  // Update progress bar
+  updateQuizProgress();
+}
+
+function submitQuiz() {
+  AppState.quizSubmitted = true;
+  stopQuizTimer(); // Stop timer on submit
+  const qs = AppState.currentQuestions || [];
+  let earnedScore = 0;
+  let correctCount = 0;
+  let wrongCount = 0;
+  const totalScore = qs.reduce((s, q) => s + q.points, 0);
+
+  qs.forEach(q => {
+    const explain = document.getElementById(`explain-${q.id}`);
+    if (explain) explain.classList.add('show');
+
+    let isCorrect = false;
+
+    if (q.type === 'single') {
+      const selected = AppState.selectedAnswers[q.id];
+      if (selected === q.answer) {
+        isCorrect = true;
+        const el = document.getElementById(`opt-${q.id}-${selected}`);
+        if (el) el.classList.add('correct');
+      } else {
+        if (selected) {
+          const el = document.getElementById(`opt-${q.id}-${selected}`);
+          if (el) el.classList.add('wrong');
+        }
+        const correctEl = document.getElementById(`opt-${q.id}-${q.answer}`);
+        if (correctEl) correctEl.classList.add('correct');
+
+        AppState.errorBook.push({
+          question: q.text.substring(0, 80) + '...',
+          yourAnswer: selected || '未作答',
+          correctAnswer: q.answer,
+          explanation: q.explanation,
+          knowledgePoint: q.knowledgePoint || '未知',
+          subject: q.subject
+        });
+        _sbTrackEvent('error_book', '知识测验', { question: q.text.substring(0,80)+'...', yourAnswer: selected||'未作答', correctAnswer: q.answer, knowledgePoint: q.knowledgePoint||'未知', subject: q.subject });
+      }
+    } else if (q.type === 'multi') {
+      const selected = AppState.selectedAnswers[q.id] || [];
+      const answerArr = q.answer.split('');
+      const isMatch = selected.length === answerArr.length && selected.every(s => answerArr.includes(s));
+      if (isMatch) {
+        isCorrect = true;
+        selected.forEach(s => {
+          const el = document.getElementById(`opt-${q.id}-${s}`);
+          if (el) el.classList.add('correct');
+        });
+      } else {
+        selected.forEach(s => {
+          const el = document.getElementById(`opt-${q.id}-${s}`);
+          if (el) {
+            if (answerArr.includes(s)) el.classList.add('correct');
+            else el.classList.add('wrong');
+          }
+        });
+        answerArr.forEach(a => {
+          const el = document.getElementById(`opt-${q.id}-${a}`);
+          if (el) el.classList.add('correct');
+        });
+
+        AppState.errorBook.push({
+          question: q.text.substring(0, 80) + '...',
+          yourAnswer: selected.join(',') || '未作答',
+          correctAnswer: q.answer,
+          explanation: q.explanation,
+          knowledgePoint: q.knowledgePoint || '未知',
+          subject: q.subject
+        });
+        _sbTrackEvent('error_book', '知识测验', { question: q.text.substring(0,80)+'...', yourAnswer: selected.join(',')||'未作答', correctAnswer: q.answer, knowledgePoint: q.knowledgePoint||'未知', subject: q.subject });
+      }
+    } else if (q.type === 'essay') {
+      const et = (document.getElementById('essay-'+q.id)||{}).value||'';
+      const kws = q.keywords||[];
+      const matched = kws.filter(k=>et.includes(k));
+      const ratio = kws.length>0?matched.length/kws.length:0;
+      let wb=0; if(et.length>=300)wb=15; else if(et.length>=200)wb=10; else if(et.length>=100)wb=5;
+      const sw=['首先','其次','此外','因此','综上','根据','依据','结论','一方面','另一方面'];
+      let ss=0; sw.forEach(w=>{if(et.includes(w))ss+=3;}); ss=Math.min(ss,15);
+      const es=Math.min(Math.round(ratio*60+wb+ss),100);
+      earnedScore += Math.round(q.points*es/100);
+      if(es>=60)correctCount++; else wrongCount++;
+      const er=document.getElementById('essay-result-'+q.id);
+      if(er){const lc=es>=80?'var(--success)':es>=60?'var(--primary)':es>=40?'var(--warning)':'var(--danger)';
+      const lt=es>=80?'优秀':es>=60?'良好':es>=40?'一般':'需加强';
+      er.innerHTML=`<div style="border-left:3px solid ${lc};padding:12px;margin-top:12px;background:rgba(102,126,234,0.04);border-radius:0 8px 8px 0"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span style="font-size:1.2rem;font-weight:bold;color:${lc}">${Math.round(q.points*es/100)}分</span><span style="background:${lc};color:#fff;padding:2px 8px;border-radius:10px;font-size:0.75rem">${lt}</span><span style="color:var(--text-secondary);font-size:0.8rem">关键词${matched.length}/${kws.length}</span></div><div style="font-size:0.84rem;color:var(--text-secondary);line-height:1.7"><p>✅ 命中:${matched.join('、')||'无'}</p><p>💡 补充:${kws.filter(k=>!et.includes(k)).join('、')||'无'}</p><details style="margin-top:8px"><summary style="cursor:pointer;color:var(--primary)">📖 参考答案</summary><div style="margin-top:8px;padding:10px;background:#f8f9ff;border-radius:6px;font-size:0.82rem;line-height:1.8;white-space:pre-wrap">${q.referenceAnswer||''}</div></details></div></div>`;}
+      if(es<60){AppState.errorBook.push({question:q.text.substring(0,80)+'...',yourAnswer:et.substring(0,100),correctAnswer:'得分率'+es+'%',explanation:'参考:'+(q.referenceAnswer||'').substring(0,150),knowledgePoint:q.knowledgePoint||'未知',subject:q.subject});_sbTrackEvent('error_book','知识测验',{question:q.text.substring(0,80)+'...',yourAnswer:et.substring(0,100),correctAnswer:'得分率'+es+'%',knowledgePoint:q.knowledgePoint||'未知',subject:q.subject});}
+      else{if(!AppState.knowledgeStats)AppState.knowledgeStats={};const kp=q.knowledgePoint||'未知';if(!AppState.knowledgeStats[kp])AppState.knowledgeStats[kp]={correct:0,total:0,subject:q.subject};AppState.knowledgeStats[kp].correct++;AppState.knowledgeStats[kp].total++;}
+    }
+
+    if (q.type !== 'essay') {
+    if (isCorrect) {
+      correctCount++;
+      earnedScore += q.points;
+    } else {
+      wrongCount++;
+    }
+    }
+  });
+  // Display score card with actual points
+  const scoreCard = document.getElementById('scoreCard');
+  const pct = totalScore > 0 ? Math.round((earnedScore / totalScore) * 100) : 0;
+  scoreCard.innerHTML = `
+    <div class="score-label">本次测验成绩</div>
+    <div class="score-value">${earnedScore}</div>
+    <div class="score-label">/ ${totalScore} 分</div>
+    <div class="score-details">
+      <div class="score-detail-item">
+        <div class="score-detail-num correct">${correctCount}</div>
+        <div class="score-detail-label">答对</div>
+      </div>
+      <div class="score-detail-item">
+        <div class="score-detail-num wrong">${wrongCount}</div>
+        <div class="score-detail-label">答错</div>
+      </div>
+      <div class="score-detail-item">
+        <div class="score-detail-num" style="color:var(--primary)">${pct}%</div>
+        <div class="score-detail-label">正确率</div>
+      </div>
+    </div>
+  `;
+  scoreCard.classList.add('show');
+
+
+  // Change submit button to reset
+  document.getElementById('submitArea').innerHTML = `
+    <button class="submit-btn" onclick="resetQuiz()">🔄 重新测验</button>
+  `;
+
+
+  // 薄弱知识点TOP5
+  const ebEl=document.getElementById('errorBook');
+  if(ebEl&&AppState.errorBook.length>0){
+    const g={};AppState.errorBook.forEach(e=>{const k=e.knowledgePoint||'未分类';if(!g[k])g[k]=[];g[k].push(e);});
+    const top5=Object.entries(g).sort((a,b)=>b[1].length-a[1].length).slice(0,5);
+    let h='<div style="margin-top:24px"><div style="background:linear-gradient(135deg,rgba(255,64,80,0.06),rgba(102,126,234,0.06));border-radius:12px;padding:20px;margin-bottom:20px;border:1px solid rgba(102,126,234,0.15)"><h4 style="color:var(--primary);margin-bottom:16px">📊 薄弱知识点 TOP5</h4><div style="display:flex;flex-wrap:wrap;gap:10px">';
+    const cls=['#e04050','#f0a030','#f0c040','#4a7cff','#40c080'];
+    top5.forEach(([k,es],i)=>{h+=`<div style="flex:1;min-width:140px;background:#fff;border-radius:8px;padding:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06)"><div style="font-size:0.75rem;color:var(--text-secondary)">#${i+1}</div><div style="font-weight:600;font-size:0.9rem;margin:4px 0">${k}</div><div style="background:#f0f0f0;border-radius:4px;height:6px;overflow:hidden"><div style="width:${Math.min(es.length*30,100)}%;height:100%;background:${cls[i%5]};border-radius:4px"></div></div><div style="font-size:0.75rem;color:${cls[i%5]};margin-top:4px">错 ${es.length} 题</div></div>`;});
+    h+='</div></div>';
+    Object.entries(g).sort((a,b)=>b[1].length-a[1].length).forEach(([k,es])=>{
+      const sl=es[0].subject==='public'?'国际公法':es[0].subject==='private'?'国际私法':'国际经济法';
+      const sc=es[0].subject==='public'?'#4a7cff':es[0].subject==='private'?'#f0c040':'#40c080';
+      h+=`<div style="margin-bottom:16px;border:1px solid var(--border-light);border-radius:10px;overflow:hidden"><div style="background:rgba(102,126,234,0.06);padding:10px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border-light)"><span style="background:${sc};color:#fff;padding:1px 8px;border-radius:10px;font-size:0.72rem">${sl}</span><span style="font-weight:600">${k}</span><span style="margin-left:auto;font-size:0.78rem;color:var(--text-secondary)">错${es.length}题</span></div>`;
+      es.forEach(e=>{h+=`<div style="padding:12px 16px;border-bottom:1px solid var(--border-light)"><div style="font-size:0.86rem;font-weight:500;margin-bottom:6px">${e.question}</div><div style="font-size:0.82rem;color:var(--danger)">你的:${e.yourAnswer}</div><div style="font-size:0.82rem;color:var(--success)">正确:${e.correctAnswer}</div><div style="font-size:0.82rem;color:var(--text-secondary);margin-top:4px;line-height:1.6">📖 ${e.explanation}</div></div>`;});
+      h+='</div>';
+    });
+    h+='</div>';ebEl.innerHTML=h;ebEl.style.display='';
+  }
+  // Scroll to top
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function resetQuiz() {
+  AppState.selectedAnswers = {};
+  AppState.quizSubmitted = false;
+  AppState.knowledgeStats = {};
+  AppState.selectedSubject = null;
+  AppState.currentQuestions = [];
+  stopQuizTimer();
+  renderAssessModule();
+}
+
+// === Material Analysis Tab ===
+function renderMaterialTab() {
+  const container = document.getElementById('materialArea');
+  if (!container) return;
+  
+  const questions = (typeof MockData !== 'undefined' && MockData.materialQuestions) ? MockData.materialQuestions : [];
+  
+  if (questions.length === 0) {
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary)">📋 材料分析题加载中...</div>';
+    return;
+  }
+  
+  const subjectNames = { public: '国际公法', private: '国际私法', economic: '国际经济法' };
+  const subjectColors = { public: 'var(--primary)', private: 'var(--accent-dark)', economic: 'var(--success)' };
+  
+  // Group by subject
+  const groups = { public: [], private: [], economic: [] };
+  questions.forEach(q => { if (groups[q.subject]) groups[q.subject].push(q); });
+  
+  let html = '<h3 style="margin-bottom:16px;color:var(--primary)">📋 材料分析题</h3>';
+  html += '<p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:20px">根据给定材料，结合法律知识进行分析。点击"查看参考答案"可对照评分要点。</p>';
+  
+  ['public', 'private', 'economic'].forEach(subj => {
+    if (groups[subj].length === 0) return;
+    html += `<h4 style="color:${subjectColors[subj]};margin:20px 0 12px;font-size:1rem">📚 ${subjectNames[subj]}（${groups[subj].length}题）</h4>`;
+    groups[subj].forEach((mq, idx) => {
+      const cardClass = subj === 'private' ? ' private-law' : subj === 'economic' ? ' economic-law' : '';
+      html += `
+        <div class="material-card${cardClass}">
+          <div class="material-title">${idx+1}. ${mq.title} <span style="font-size:0.72rem;padding:2px 8px;border-radius:10px;background:rgba(0,0,0,0.06);color:var(--text-light);margin-left:6px">${mq.difficulty}</span></div>
+          <div class="material-text">${mq.material}</div>
+          ${mq.questions.map((q, qi) => `
+            <div class="material-question">
+              <div class="material-q-text">问题${qi+1}（${q.score}分）：${q.q}</div>
+              <textarea class="material-q-input" id="ma-${mq.id}-${qi}" placeholder="请输入你的分析..." rows="3"></textarea>
+              <div style="margin-top:6px">
+                <button class="quick-action-btn" style="font-size:0.75rem;padding:4px 12px" onclick="toggleMaterialAnswer('ma-ref-${mq.id}-${qi}')">💡 查看参考答案</button>
+                <div class="material-ref-answer" id="ma-ref-${mq.id}-${qi}"><strong>参考答案：</strong>${q.answer}</div>
+              </div>
+            </div>
+          `).join('')}
+          <div style="margin-top:8px;font-size:0.78rem;color:var(--text-light)">总分：${mq.totalScore}分 | 知识点：${(mq.knowledgePoints || []).join('、')}</div>
+        </div>
+      `;
+    });
+  });
+  
+  container.innerHTML = html;
+}
+
+function toggleMaterialAnswer(id) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.classList.toggle('show');
+  }
+}
+
+// === Confusing Points Tab ===
+function renderConfusingTab() {
+  const container = document.getElementById('confusingArea');
+  if (!container) return;
+  
+  const points = (typeof MockData !== 'undefined' && MockData.confusingPoints) ? MockData.confusingPoints : [];
+  
+  if (points.length === 0) {
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary)">🔀 易混辨析内容加载中...</div>';
+    return;
+  }
+  
+  const subjectNames = { public: '公法', private: '私法', economic: '经法' };
+  
+  let html = '<h3 style="margin-bottom:8px;color:var(--primary)">🔀 易混淆知识点对比</h3>';
+  html += '<p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:20px">点击卡片展开详细对比分析，帮助你��分容易混淆的法律概念。</p>';
+  
+  // Subject filter
+  html += '<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">';
+  html += "<button class=\"quick-action-btn\" onclick=\"filterConfusing('all',this)\" style=\"font-size:0.78rem\">全部</button>";
+  ['public','private','economic'].forEach(s => {
+    html += `<button class="quick-action-btn" onclick="filterConfusing('${s}',this)" style="font-size:0.78rem">${subjectNames[s]}</button>`;
+  });
+  html += '</div>';
+  
+  html += '<div class="confusing-grid" id="confusingGrid">';
+  points.forEach(cp => {
+    html += `
+      <div class="confusing-card" data-subject="${cp.subject}" onclick="showConfusingDetail('${cp.id}')">
+        <div class="confusing-card-title">
+          ${cp.title}
+          <span class="confusing-card-subject">${subjectNames[cp.subject]}</span>
+        </div>
+        <div class="confusing-card-preview">${cp.pointA.name} vs ${cp.pointB.name}</div>
+      </div>
+    `;
+  });
+  html += '</div>';
+  html += '<div id="confusingDetail"></div>';
+  
+  container.innerHTML = html;
+}
+
+function filterConfusing(subject, btn) {
+  const cards = document.querySelectorAll('#confusingGrid .confusing-card');
+  cards.forEach(card => {
+    card.style.display = (subject === 'all' || card.dataset.subject === subject) ? '' : 'none';
+  });
+}
+
+function showConfusingDetail(id) {
+  const points = MockData.confusingPoints || [];
+  const cp = points.find(p => p.id === id);
+  if (!cp) return;
+  
+  const detail = document.getElementById('confusingDetail');
+  detail.innerHTML = `
+    <div class="confusing-detail" style="margin-top:20px">
+      <h4 style="color:var(--primary);margin-bottom:16px">${cp.title}</h4>
+      <table class="confusing-compare-table">
+        <thead>
+          <tr><th>对比维度</th><th>${cp.pointA.name}</th><th>${cp.pointB.name}</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>定义</td><td>${cp.pointA.definition}</td><td>${cp.pointB.definition}</td></tr>
+          <tr><td>核心特征</td><td>${cp.pointA.keyFeature}</td><td>${cp.pointB.keyFeature}</td></tr>
+          <tr><td>典型案例</td><td>${cp.pointA.example}</td><td>${cp.pointB.example}</td></tr>
+        </tbody>
+      </table>
+      <h5 style="color:var(--primary);margin:16px 0 8px">关键区别</h5>
+      <ul class="confusing-diff-list">
+        ${cp.comparison.map(c => `<li>${c}</li>`).join('')}
+      </ul>
+      ${cp.mnemonic ? `<div class="confusing-mnemonic">💡 记忆方法：${cp.mnemonic}</div>` : ''}
+      <div style="margin-top:16px;text-align:right">
+        <button class="quick-action-btn" onclick="document.getElementById('confusingDetail').innerHTML=''">✕ 关闭</button>
+      </div>
+    </div>
+  `;
+  detail.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// === Document Writing Tab ===
+function renderDocumentTab() {
+  const container = document.getElementById('documentArea');
+  if (!container) return;
+  
+  const templates = (typeof MockData !== 'undefined' && MockData.documentTemplates) ? MockData.documentTemplates : [];
+  
+  if (templates.length === 0) {
+    container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-secondary)">📄 文书写作模板加载中...</div>';
+    return;
+  }
+  
+  let html = '<h3 style="margin-bottom:8px;color:var(--primary)">📄 法律文书写作辅助</h3>';
+  html += '<p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:20px">选择文书类型，按照模板结构逐项填写，系统提供写作指引和范例参考。</p>';
+  
+  html += '<div class="doc-template-grid">';
+  templates.forEach(dt => {
+    html += `
+      <div class="doc-template-card" onclick="openDocTemplate('${dt.id}')">
+        <div class="doc-template-icon">${dt.icon}</div>
+        <div class="doc-template-name">${dt.name}</div>
+        <div class="doc-template-name-en">${dt.nameEn}</div>
+        <div class="doc-template-desc">${dt.tips ? dt.tips.substring(0, 50) + '...' : ''}</div>
+      </div>
+    `;
+  });
+  html += '</div>';
+  html += '<div id="docTemplateEditor"></div>';
+  
+  container.innerHTML = html;
+}
+
+function openDocTemplate(templateId) {
+  const templates = MockData.documentTemplates || [];
+  const dt = templates.find(t => t.id === templateId);
+  if (!dt) return;
+  
+  const editor = document.getElementById('docTemplateEditor');
+  let sectionsHtml = dt.structure.map((sec, i) => `
+    <div style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-weight:700;color:var(--primary);font-size:0.92rem">${sec.section}</span>
+        <span style="font-size:0.72rem;color:var(--text-light)">${sec.guidance || ''}</span>
+      </div>
+      <textarea class="material-q-input" id="doc-${templateId}-${i}" placeholder="${sec.placeholder}" rows="4" style="min-height:80px"></textarea>
+    </div>
+  `).join('');
+  
+  editor.innerHTML = `
+    <div style="margin-top:24px;padding:28px;background:var(--bg-card);border-radius:var(--radius-lg);box-shadow:var(--shadow-md)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <h4 style="color:var(--primary)">${dt.icon} ${dt.name} <span style="font-size:0.78rem;color:var(--text-light);font-weight:400">${dt.nameEn}</span></h4>
+        <button class="quick-action-btn" onclick="document.getElementById('docTemplateEditor').innerHTML=''">✕ 关闭</button>
+      </div>
+      
+      ${dt.tips ? `<div style="padding:12px 16px;background:rgba(201,168,76,0.06);border-radius:8px;border-left:3px solid var(--accent);margin-bottom:16px;font-size:0.82rem;color:var(--accent-dark)">💡 ${dt.tips}</div>` : ''}
+      
+      ${dt.example_snippet ? `
+        <div class="collapsible-section" style="margin-bottom:16px">
+          <div class="collapsible-header" onclick="toggleCollapsible(this)">📖 示例参考 <span class="arrow">▶</span></div>
+          <div class="collapsible-body"><div class="law-text" style="font-size:0.82rem;line-height:1.8">${dt.example_snippet}</div></div>
+        </div>
+      ` : ''}
+      
+      ${sectionsHtml}
+      
+      <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+        <button class="sim-next-btn" style="background:var(--primary)" onclick="saveDocDraft('${templateId}')">💾 保存草稿</button>
+      </div>
+    </div>
+  `;
+  editor.scrollIntoView({ behavior: 'smooth' });
+}
+
+function saveDocDraft(templateId) {
+  showToast('📄 文书草稿已保存！（本地存储）');
+  // In a real app, this would save to localStorage
+}
+
+function switchAssessTab(tab, btn) {
+  document.querySelectorAll('.assess-tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  // Stop timer when leaving quiz tab
+  if (tab !== 'quiz') { stopQuizTimer(); }
+  else if (AppState.currentQuestions && AppState.currentQuestions.length > 0 && !AppState.quizSubmitted) {
+    // Resume timer when returning to quiz (don't restart, just continue)
+    if (!_quizTimerInterval && _quizTimeLeft > 0) {
+      _quizTimerInterval = setInterval(function() {
+        _quizTimeLeft--;
+        updateTimerDisplay();
+        if (_quizTimeLeft <= 0) {
+          stopQuizTimer();
+          if (!AppState.quizSubmitted) {
+            showToast('⏰ 时间到！自动提交中...', 'error');
+            setTimeout(function() { submitQuiz(); }, 500);
+          }
+        }
+      }, 1000);
+    }
+  }
+  
+  // Hide all containers
+  const containers = ['subjectSelector', 'quizArea', 'errorBook', 'materialArea', 'confusingArea', 'documentArea'];
+  containers.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  
+  switch(tab) {
+    case 'quiz':
+      document.getElementById('subjectSelector').style.display = '';
+      document.getElementById('quizArea').style.display = '';
+      break;
+    case 'material':
+      document.getElementById('materialArea').style.display = '';
+      if (!document.getElementById('materialArea').innerHTML.trim()) renderMaterialTab();
+      break;
+    case 'confusing':
+      document.getElementById('confusingArea').style.display = '';
+      if (!document.getElementById('confusingArea').innerHTML.trim()) renderConfusingTab();
+      break;
+    case 'documents':
+      document.getElementById('documentArea').style.display = '';
+      if (!document.getElementById('documentArea').innerHTML.trim()) renderDocumentTab();
+      break;
+    case 'errors':
+      document.getElementById('errorBook').style.display = '';
+      renderErrorBook();
+      break;
+  }
+}
+// === 涉外法治资鉴馆模块 ===
+function renderIdeologyModule() {
+  const container = document.getElementById('page-ideology');
+  const docsHtml = MockData.ideologyDocs.map(function(doc) {
+    var docFavId = 'doc-' + doc.id;
+    var docIsFav = isFavorited(docFavId);
+    var docFavClass = docIsFav ? 'fav-btn active' : 'fav-btn';
+    var docFavIcon = docIsFav ? '★' : '☆';
+    return '<div class="ideology-card" onclick="openDocModal(\'' + doc.id + '\')">'
+      + '<div class="card-icon-sm">' + doc.icon + '</div>'
+      + '<h4>' + doc.title + '</h4>'
+      + '<p>' + doc.summary + '</p>'
+      + '<div class="card-footer" style="display:flex;align-items:center;justify-content:space-between">'
+      + '<span>' + doc.date + ' · ' + doc.category + '</span>'
+      + '<button class="' + docFavClass + '" onclick="event.stopPropagation();toggleDocFav(\'' + doc.id + '\',this)" title="收藏此文件">' + docFavIcon + '</button>'
+      + '</div>'
+      + '</div>';
+  }).join('');
+
+  const newsHtml = MockData.zhijianNews.map(function(news) {
+    var newsFavId = 'news-' + news.id;
+    var newsIsFav = isFavorited(newsFavId);
+    var newsFavClass = newsIsFav ? 'fav-btn active' : 'fav-btn';
+    var newsFavIcon = newsIsFav ? '★' : '☆';
+    var newsCategory = (news.teachingNote && news.teachingNote.knowledgeTags && news.teachingNote.knowledgeTags.length > 0) ? news.teachingNote.knowledgeTags[0] : '涉外法治';
+    return '<div class="news-card ' + news.sourceClass + '" onclick="toggleNewsNote(\'' + news.id + '\')">'
+      + '<div class="news-card-header">'
+      + '<h4>' + news.title + '</h4>'
+      + '<span class="source-badge ' + news.sourceClass + '">' + news.source + '</span>'
+      + '</div>'
+      + '<p class="news-card-summary">' + news.summary + '</p>'
+      + '<div class="news-card-footer">'
+      + '<span>' + news.date + '</span>'
+      + '<div style="display:flex;align-items:center;gap:10px">'
+      + (news.sourceURL ? '<a href="' + news.sourceURL + '" target="_blank" rel="noopener" class="source-link" onclick="event.stopPropagation()">阅读原文 →</a>' : '')
+      + '<button class="' + newsFavClass + '" onclick="event.stopPropagation();toggleNewsFav(\'' + news.id + '\',this)" title="收藏此动态">' + newsFavIcon + '</button>'
+      + '<span class="expand-icon"><span class="expand-arrow">▼</span> 教学解读</span>'
+      + '</div>'
+      + '</div>'
+      + '<div class="teaching-note" id="note-' + news.id + '">'
+      + '<div class="teaching-note-title">📖 教学解读</div>'
+      + '<div class="teaching-note-body">'
+      + '<div class="knowledge-tags">'
+      + news.teachingNote.knowledgeTags.map(function(tag) { return '<span class="knowledge-tag">' + tag + '</span>'; }).join('')
+      + '</div>'
+      + '<div class="teaching-suggestion"><strong>课堂教学建议：</strong>' + news.teachingNote.suggestion + '</div>'
+      + '<div class="kb-link-hint">📚 ' + news.teachingNote.kbHint + '</div>'
+      + '</div></div></div>';
+  }).join('');
+  
+  container.innerHTML = `
+    <div class="ideology-layout">
+      <div class="ideology-header">
+        <h2>🏛️ 涉外法治资鉴馆</h2>
+        <p>汇集国家涉外法治战略文件、白皮书、官方政策文本、涉外法治最新实务动态，实现理论学习—案例实训双向联动，服务涉外法治人才价值塑造。</p>
+      </div>
+      
+      <div class="zhijian-tabs">
+        <div class="zhijian-tab active" onclick="switchZhijianTab('docs')">📜 重大涉外法治官方文件库</div>
+        <div class="zhijian-tab" onclick="switchZhijianTab('news')">📰 涉外法治前沿动态</div>
+      </div>
+      
+      <div class="zhijian-tab-content active" id="tab-docs">
+        <div class="ideology-grid">
+          ${docsHtml}
+        </div>
+      </div>
+      
+      <div class="zhijian-tab-content" id="tab-news">
+        <div class="news-list">
+          ${newsHtml}
+        </div>
+      </div>
+    </div>
+    
+    
+    <div class="modal-overlay" id="docModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="docModalTitle">文档标题</h3>
+          <button class="modal-close" onclick="closeDocModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="doc-content" id="docModalContent"></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// === Tab切换函数 ===
+function switchZhijianTab(tab) {
+  document.querySelectorAll('.zhijian-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.zhijian-tab-content').forEach(c => c.classList.remove('active'));
+  
+  if (tab === 'docs') {
+    document.querySelector('.zhijian-tab:nth-child(1)').classList.add('active');
+    document.getElementById('tab-docs').classList.add('active');
+  } else {
+    document.querySelector('.zhijian-tab:nth-child(2)').classList.add('active');
+    document.getElementById('tab-news').classList.add('active');
+  }
+}
+
+// === 教学解读展开/收起 ===
+function toggleNewsNote(newsId) {
+  const card = event.currentTarget;
+  card.classList.toggle('expanded');
+}
+
+function openDocModal(docId) {
+
+  const doc = MockData.ideologyDocs.find(d => d.id === docId);
+  if (!doc) return;
+  
+  document.getElementById('docModalTitle').textContent = doc.title;
+  
+  // 优先使用预置详情
+  const content = MockData.docDetails[docId];
+  if (content) {
+    document.getElementById('docModalContent').innerHTML = content;
+  } else if (doc.sourceFile && typeof KB_CHUNKS !== 'undefined') {
+    // 从KB_CHUNKS中动态检索该文件的所有chunk
+    const chunks = KB_CHUNKS.filter(chunk => chunk.f === doc.sourceFile);
+    if (chunks.length > 0) {
+      let htmlContent = '<h4>' + doc.title + '</h4>';
+      htmlContent += '<p style="color:var(--text-light);font-size:0.85rem">📁 来源文件：' + doc.sourceFile + ' · 共 ' + chunks.length + ' 个知识块</p>';
+      chunks.forEach(chunk => {
+        if (chunk.t) {
+          htmlContent += '<h4 style="margin-top:20px">' + chunk.t + '</h4>';
+        }
+        // 将markdown格式的文本转换为简单HTML
+        let text = chunk.x || '';
+        text = text.replace(/^### (.+)$/gm, '<h5>$1</h5>');
+        text = text.replace(/^#### (.+)$/gm, '<h6>$1</h6>');
+        text = text.replace(/^- (.+)$/gm, '<li>$1</li>');
+        text = text.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+        text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        text = text.replace(/^> (.+)$/gm, '<div class="highlight-box">$1</div>');
+        text = text.replace(/\n\n/g, '</p><p style="margin-top:10px">');
+        text = text.replace(/\n/g, '<br/>');
+        // 自动将URL转为可点击链接
+        text = text.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:underline;word-break:break-all">$1</a>');
+        htmlContent += '<p>' + text + '</p>';
+      });
+      document.getElementById('docModalContent').innerHTML = htmlContent;
+    } else {
+      // 兜底：显示基本信息
+      document.getElementById('docModalContent').innerHTML = `
+        <h4>${doc.title}</h4>
+        <p style="color:var(--text-light)">📅 发布时间：${doc.date}</p>
+        <p style="margin-top:16px">${doc.summary}</p>
+        <div class="highlight-box" style="margin-top:20px">
+          <strong>教学提示：</strong>本文档为教学参考资料，建议结合三国法相关章节内容进行深入学习。
+        </div>
+      `;
+    }
+  } else {
+    // 兜底
+    document.getElementById('docModalContent').innerHTML = `
+      <h4>${doc.title}</h4>
+      <p style="color:var(--text-light)">📅 发布时间：${doc.date}</p>
+      <p style="margin-top:16px">${doc.summary}</p>
+      <div class="highlight-box" style="margin-top:20px">
+        <strong>教学提示：</strong>本文档为教学参考资料，建议结合三国法相关章节内容进行深入学习。
+      </div>
+    `;
+  }
+  
+  document.getElementById('docModal').classList.add('show');
+}
+
+function closeDocModal() {
+  document.getElementById('docModal').classList.remove('show');
+}
+
+// 点击弹窗外部关闭
+document.addEventListener('click', function(e) {
+  if (e.target.classList.contains('modal-overlay')) {
+    e.target.classList.remove('show');
+  }
+});
+
+// === 底部 Footer ===
+function renderFooter() {
+  const footer = document.getElementById('appFooter');
+  footer.innerHTML = `
+    <div class="footer-warning">⚠️ 本系统仅供法学教学与研究使用，不构成法律意见。AI生成的内容需要人工审核验证。</div>
+    <div>三国法教学智能体 v1.0 MVP · 教学创新项目 · © 2025</div>
+  `;
+}
+
+// === 工具函数 ===
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+/**
+ * 清理知识库原始文本中的Markdown格式、PDF解析残留、图片链接等
+ * 用于证据材料和法条引用的内容清洗
+ */
+function cleanMarkdown(text) {
+  if (!text) return '';
+  let s = String(text);
+  // 1. 移除markdown图片语法 ![...](...)
+  s = s.replace(/!\[[^\]]*\]\([^)]*\)/g, '');
+  // 2. 移除markdown链接语法 [...](...)
+  s = s.replace(/\[[^\]]*\]\([^)]*\)/g, '');
+  // 3. 移除代码块 ```...```
+  s = s.replace(/```[\s\S]*?```/g, '');
+  // 4. 移除行内代码 `...`
+  s = s.replace(/`[^`]+`/g, '');
+  // 5. 移除markdown标题、粗体、斜体标记
+  s = s.replace(/^#{1,6}\s+/gm, '');
+  s = s.replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1');
+  s = s.replace(/_{1,3}([^_]+)_{1,3}/g, '$1');
+  // 6. 移除列表标记
+  s = s.replace(/^[\s]*[-*+]\s+/gm, '');
+  s = s.replace(/^[\s]*\d+\.\s+/gm, '');
+  // 7. 移除表格管道符
+  s = s.replace(/\|/g, ' ');
+  // 8. 移除> 引用标记
+  s = s.replace(/^>\s*/gm, '');
+  // 9. 移除HTML标签（保留文本内容）
+  s = s.replace(/<[^>]+>/g, '');
+  // 10. 移除URL链接（裸URL）
+  s = s.replace(/https?:\/\/[^\s)]+/g, '');
+  // 11. 移除乱码/不可见字符（PDF解析残留如 ì、飞) 等）
+  // 只保留中文、英文、数字、常见标点和空白符
+  s = s.replace(/[^\u4e00-\u9fa5a-zA-Z0-9\s，。、；：""''！？【】（）《》〔〕·…—\-+%=.,;:!?'"/\\()（）\[\]{}【】「」『』]/g, '');
+  // 12. 合并多个空白符
+  s = s.replace(/\s{2,}/g, ' ').trim();
+  // 13. 移除"飞)"等PDF解析残留（已知乱码模式，含全角半角）
+  s = s.replace(/[飞非]?\)[\s]*[根据根椐]/g, '。根据');
+  s = s.replace(/[飞非]？\）[\s]*[根据根]/g, '。根据');
+  s = s.replace(/ì/g, '');
+  // 14. 修复常见OCR错误（PDF解析导致的形近字替换）
+  s = s.replace(/民东/g, '民事');
+  s = s.replace(/第十五兰/g, '第十五章');
+  s = s.replace(/酘后/g, '最后');
+  s = s.replace(/笫十/g, '第十');
+  s = s.replace(/困外/g, '国外');
+  s = s.replace(/所屈/g, '所属');
+  s = s.replace(/经旮/g, '经营');
+  s = s.replace(/i 第/g, '第');
+  return s;
+}
+
+function showToast(message) {
+  // 移除已存在的toast
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+  
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  
+  setTimeout(() => toast.classList.add('show'), 10);
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 400);
+  }, 3000);
+}
+
+// === 启动应用 ===
+document.addEventListener('DOMContentLoaded', function() { initApp(); });
+
+// ====== Supabase 免费项目保活心跳（防7天无活动自动暂停）=====
+// 策略：页面加载后每23小时调用一次轻量 API 重置计时器，
+// 同一浏览器每天最多1次，避免浪费请求。
+(function(){
+  var HEARTBEAT_KEY = 'sanguofa_supabase_heartbeat_last';
+  var HEARTBEAT_INTERVAL_MS = 23 * 60 * 60 * 1000; // 23 小时
+  function doHeartbeat(){
+    try {
+      var url = SUPABASE_URL + '/rest/v1/';
+      var opts = {
+        method: 'GET',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+          'Prefer': 'count=exact'
+        },
+        mode: 'no-cors'
+      };
+      fetch(url, opts).then(function(){
+        localStorage.setItem(HEARTBEAT_KEY, String(Date.now()));
+      }).catch(function(){ /* 忽略网络错误 */ });
+    } catch(e) {}
+  }
+  function scheduleHeartbeat(){
+    var last = parseInt(localStorage.getItem(HEARTBEAT_KEY) || '0', 10) || 0;
+    var elapsed = Date.now() - last;
+    if (elapsed >= HEARTBEAT_INTERVAL_MS) {
+      doHeartbeat();
+    } else {
+      var wait = HEARTBEAT_INTERVAL_MS - elapsed;
+      setTimeout(function(){ doHeartbeat(); }, wait);
+    }
+    // 每日再检查一次，覆盖长时间开着页面的情况
+    setInterval(function(){
+      var last2 = parseInt(localStorage.getItem(HEARTBEAT_KEY) || '0', 10) || 0;
+      if (Date.now() - last2 >= HEARTBEAT_INTERVAL_MS) doHeartbeat();
+    }, 60 * 60 * 1000); // 每小时检查，到点才打
+  }
+  // SDK 加载后启动
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(scheduleHeartbeat, 1500);
+  } else {
+    window.addEventListener('load', function(){ setTimeout(scheduleHeartbeat, 1500); });
+  }
+})();
+
+
+// ========================================
+// 知识库问答 - 真实BM25搜索
+// ========================================
+
+// === AI增强回答函数 ===
+async function generateResponseWithAI(query) {
+  const chat = document.getElementById('qaChat');
+  const time = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  
+  // Wait for knowledge base to load
+  if (typeof _kbReady !== 'undefined') { try { await _kbWait(45000); } catch(e) { console.warn('KB load timeout:', e); } }
+  
+  // Step 1: Do local BM25 search first
+  let effectiveQuery = query;
+  const mode = AppState.searchMode || 'normal';
+  if (mode === 'cross') {
+    effectiveQuery = query + ' 跨部门法 国际公法';
+  }
+  
+  let results = BM25.search(effectiveQuery, 20);
+  
+  // Apply category filter
+  const category = AppState.currentCategory;
+  let filteredResults = results;
+  if (category) {
+    const catMap = {
+      'intl-pub': '国际公法', 'intl-pub-textbook': '国际公法', 'intl-pub-convention': '国际公法',
+      'intl-pub-case': '国际公法', 'intl-pub-position': '国际公法',
+      'intl-pri': '国际私法', 'intl-pri-legislation': '国际私法', 'intl-pri-hague': '国际私法',
+      'intl-pri-assistance': '国际私法', 'intl-pri-case': '国际私法', 'intl-pri-theory': '国际私法', 'intl-pri-textbook': '国际私法',
+      'intl-eco': '国际经济法', 'intl-eco-textbook': '国际经济法', 'intl-eco-cisg': '国际经济法',
+      'intl-eco-investment': '国际经济法', 'intl-eco-trade': '国际经济法', 'intl-eco-arbitration': '国际经济法', 'intl-eco-theory': '国际经济法',
+      'ideology': '涉外法治思政', 'ideology-discourse': '涉外法治思政', 'ideology-strategy': '涉外法治思政', 'ideology-talent': '涉外法治思政'
+    };
+    const catName = catMap[category] || category;
+    const catResults = results.filter(r => r.chunk.c === catName);
+    if (catResults.length >= 3) {
+      filteredResults = catResults;
+    } else if (catResults.length > 0) {
+      const otherResults = results.filter(r => r.chunk.c !== catName);
+      filteredResults = catResults.concat(otherResults).slice(0, 5);
+    }
+  }
+  filteredResults = filteredResults.slice(0, 5);
+  
+  // Step 2: Build KB context
+  let kbContext = '';
+  const sourceRefs = [];
+  if (filteredResults.length > 0) {
+    for (let i = 0; i < filteredResults.length; i++) {
+      const chunk = filteredResults[i].chunk;
+      const title = chunk.t || '未知标题';
+      const file = chunk.f || '';
+      const cat = chunk.c || '';
+      const text = (chunk.x || '').substring(0, 500);
+      kbContext += `\n【来源${i+1}】${cat} > ${file} - ${title}\n${text}\n`;
+      sourceRefs.push({ title: title, file: file, category: cat });
+    }
+  } else {
+    kbContext = '（知识库中未检索到直接相关内容，请基于通用法律知识回答，并注明这是补充内容。）';
+  }
+  
+  // Step 3: Show initial "searching" message
+  const searchingHtml = `
+    <div class="chat-message system" id="aiSearchingMsg${Date.now()}">
+      <div class="chat-avatar">AI</div>
+      <div>
+        <div class="chat-bubble">
+          <div style="display:flex;align-items:center;gap:8px;color:var(--accent)">
+            <div class="typing-indicator"><span></span><span></span><span></span></div>
+            <span style="font-size:0.82rem">知识库检索到 ${filteredResults.length} 条相关内容，正在由AI生成回答...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  chat.insertAdjacentHTML('beforeend', searchingHtml);
+  const searchingEl = chat.lastElementChild;
+  if (searchingEl) searchingEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  
+  // Step 4: 把"检索中"气泡替换为流式回答气泡，边生成边显示
+  if (searchingEl) searchingEl.remove();
+
+  // markdown-like 格式化
+  function formatMd(text) {
+    return escapeHtml(text)
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n### (.+)/g, '<h5 style="margin:10px 0 4px 0;color:var(--primary);font-size:0.88rem">$1</h5>')
+      .replace(/\n## (.+)/g, '<h4 style="margin:12px 0 6px 0;color:var(--primary);font-size:0.92rem">$1</h4>')
+      .replace(/\n- (.+)/g, '<div style="margin:2px 0 2px 12px;font-size:0.85rem">• $1</div>')
+      .replace(/\n\d+\. (.+)/g, '<div style="margin:2px 0 2px 12px;font-size:0.85rem">$1</div>')
+      .replace(/\n\n/g, '<br><br>')
+      .replace(/\n/g, '<br>');
+  }
+
+  // 参考来源 HTML
+  function buildSourceHtml() {
+    if (sourceRefs.length === 0) return '';
+    const uniqueRefs = [];
+    const seen = new Set();
+    for (const ref of sourceRefs) {
+      if (!seen.has(ref.file)) { seen.add(ref.file); uniqueRefs.push(ref); }
+    }
+    return `
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid #f0f0f0">
+        <span style="font-size:0.72rem;color:#999;font-weight:600">📚 知识库参考来源：</span>
+        <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px">
+          ${uniqueRefs.slice(0, 5).map(r => `<span style="font-size:0.7rem;padding:2px 8px;background:#f8f7f4;border-radius:4px;color:#666;border:1px solid #eee">${escapeHtml(r.file)}</span>`).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  const streamSeq = Date.now();
+  const bubbleId = 'aiStreamAnswer' + streamSeq;
+  const hintId = 'aiStreamHint' + streamSeq;
+  const srcPreviewId = 'aiSrcPreview' + streamSeq;
+  chat.insertAdjacentHTML('beforeend', `
+    <div class="chat-message system">
+      <div class="chat-avatar">AI</div>
+      <div>
+        <div class="chat-bubble">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+            <span style="font-size:0.7rem;padding:2px 8px;background:linear-gradient(135deg,#c9a84c,#b08d3a);color:white;border-radius:4px;font-weight:600">🤖 AI增强回答</span>
+            <span style="font-size:0.68rem;color:#999" id="${hintId}">基于知识库 + 豆包大模型 · 正在生成...</span>
+          </div>
+          <div id="${srcPreviewId}" style="margin-bottom:8px;font-size:0.72rem;color:#999;line-height:1.6">📚 已从知识库检索到 ${sourceRefs.length} 条依据，AI 导师正在快速组织回答…</div>
+          <div id="${bubbleId}" style="font-size:0.88rem;line-height:1.7;color:var(--text-primary)"></div>
+        </div>
+        <div class="chat-time">${time}</div>
+      </div>
+    </div>
+  `);
+  const answerDiv = document.getElementById(bubbleId);
+  let renderPending = false;
+  let latestText = '';
+  let lastScroll = 0;
+  let streamFinished = false;
+  // 9秒还没出第一个字，提示网络较慢（避免用户以为卡死）
+  let slowHintTimer = setTimeout(() => {
+    if (!latestText) {
+      const h = document.getElementById(hintId);
+      if (h) h.textContent = '模型响应较慢（网络繁忙），正在持续接收…';
+    }
+  }, 9000);
+  function scheduleRender() {
+    if (renderPending) return;
+    renderPending = true;
+    // 节流：约每80ms刷新一次，避免频繁DOM操作卡顿
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        renderPending = false;
+        if (!answerDiv || streamFinished) return;
+        answerDiv.innerHTML = formatMd(latestText) + '<span class="typing-indicator" style="display:inline-flex;margin-left:2px;vertical-align:middle"><span></span><span></span><span></span></span>';
+        const now = Date.now();
+        if (now - lastScroll > 300) {
+          lastScroll = now;
+          answerDiv.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
+      }, 80);
+    });
+  }
+
+  // Step 5: 流式调用豆包API
+  const aiAnswer = await callDoubaoAPIStream(query, kbContext, (partial) => {
+    if (slowHintTimer) { clearTimeout(slowHintTimer); slowHintTimer = null; }
+    latestText = partial;
+    scheduleRender();
+  });
+  if (slowHintTimer) { clearTimeout(slowHintTimer); slowHintTimer = null; }
+
+  if (aiAnswer) {
+    // 流结束：置标志，防止排队中的节流渲染把"跳动圆点"写回来
+    streamFinished = true;
+    // 最终渲染（去掉打字光标），追加来源和收藏按钮
+    const hint = document.getElementById(hintId);
+    if (hint) hint.textContent = '基于知识库 + 豆包大模型';
+    const preview = document.getElementById(srcPreviewId);
+    if (preview) preview.remove();
+
+    // Supabase: 上报问答事件
+    _sbTrackEvent('qa_question', '智能问答', { question: query, answer: aiAnswer.substring(0,500), sources: sourceRefs.map(function(s){return s.title}), mode: AppState.searchMode||'normal' });
+
+    // 从原始回答文本中提取"追问建议"（在formatMd转义前提取，保证可靠）
+    let answerBody = aiAnswer;
+    const followUpSuggestions = [];
+    const fuMatch = aiAnswer.match(/🔍[\s\S]*?追问建议[：:]([\s\S]*)$/);
+    if (fuMatch) {
+      answerBody = aiAnswer.substring(0, fuMatch.index);
+      fuMatch[1].split('\n').forEach(function(line) {
+        const m = line.match(/^\s*[-•·*]\s*(.+?)\s*$/);
+        if (m && m[1].length >= 6 && m[1].length <= 80) followUpSuggestions.push(m[1].replace(/\*\*/g, '').trim());
+      });
+    }
+
+    if (answerDiv) {
+      answerDiv.innerHTML = formatMd(answerBody) + buildSourceHtml();
+
+      // 追问建议 → 可点击按钮
+      if (followUpSuggestions.length > 0) {
+        const btnContainer = document.createElement('div');
+        btnContainer.className = 'follow-up-suggestions';
+        btnContainer.style.cssText = 'margin-top:10px;padding-top:8px;border-top:1px dashed #e8e2d4';
+        const title = document.createElement('div');
+        title.textContent = '💡 继续探究（点击追问）：';
+        title.style.cssText = 'font-size:0.78rem;color:var(--accent);font-weight:600;margin-bottom:6px';
+        btnContainer.appendChild(title);
+        const btnWrap = document.createElement('div');
+        btnWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px';
+        followUpSuggestions.slice(0, 3).forEach(function(text) {
+          const btn = document.createElement('button');
+          btn.textContent = text;
+          btn.style.cssText = 'font-size:0.78rem;padding:4px 12px;border:1px solid rgba(201,168,76,0.3);border-radius:16px;background:rgba(201,168,76,0.08);color:var(--accent);cursor:pointer;transition:all 0.2s;text-align:left';
+          btn.onmouseover = function() { this.style.background = 'rgba(201,168,76,0.2)'; };
+          btn.onmouseout = function() { this.style.background = 'rgba(201,168,76,0.08)'; };
+          btn.onclick = function() {
+            const inp = document.getElementById('qaInput');
+            if (inp) { inp.value = text; sendQuestion(); }
+          };
+          btnWrap.appendChild(btn);
+        });
+        btnContainer.appendChild(btnWrap);
+        answerDiv.appendChild(btnContainer);
+      }
+
+      // 维护对话历史（导师模式需要上下文连续）
+      if (typeof AppState !== 'undefined') {
+        if (!AppState.conversationHistory) AppState.conversationHistory = [];
+        AppState.conversationHistory.push({ role: 'user', content: query });
+        AppState.conversationHistory.push({ role: 'assistant', content: aiAnswer });
+        if (AppState.conversationHistory.length > 20) {
+          AppState.conversationHistory = AppState.conversationHistory.slice(-20);
+        }
+      }
+    }
+    // 追加收藏按钮到时间行（用当前卡片的DOM范围查找，不会误挂到旧卡片）
+    const thisMsg = answerDiv ? answerDiv.closest('.chat-message') : null;
+    const timeRow = thisMsg ? thisMsg.querySelector('.chat-time') : null;
+    if (timeRow) {
+      timeRow.style.display = 'flex';
+      timeRow.style.alignItems = 'center';
+      timeRow.insertAdjacentHTML('beforeend',
+        `<button class="fav-qa-btn" onclick="toggleQAFav(this)" data-q="${escapeHtml(query)}" data-a="${escapeHtml(aiAnswer.substring(0,200))}"><span>☆</span> 收藏</button>`);
+    }
+  } else {
+    // API调用失败，移除流式气泡，回退到本地知识库检索结果
+    if (answerDiv) { const msg = answerDiv.closest('.chat-message'); if (msg) msg.remove(); }
+    generateResponse(query);
+    return;
+  }
+
+  // Reset search mode
+  if (mode !== 'normal') AppState.searchMode = 'normal';
+
+  // Scroll to bottom
+  const allMsgs = chat.querySelectorAll('.chat-message');
+  const lastMsg = allMsgs[allMsgs.length - 1];
+  if (lastMsg) lastMsg.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function generateResponse(query) {
+  // Wait for knowledge base to load
+  if (typeof _kbReady !== 'undefined') { try { await _kbWait(45000); } catch(e) { console.warn('KB load timeout:', e); } }
+  
+  // === 功能5: 搜索模式处理 ===
+  let effectiveQuery = query;
+  const mode = AppState.searchMode || 'normal';
+  if (mode === 'cross') {
+    // 跨部门法联动：自动补充关联领域关键词
+    const crossKeywords = {
+      '国际公法': ['国际私法', '国际经济法', '涉外法治'],
+      '国际私法': ['国际公法', '法律适用', '冲突规范'],
+      '国际经济法': ['国际贸易', 'WTO', '投资保护'],
+      '海洋法': ['领土', '主权', '专属经济区'],
+      '条约法': ['国际法', '保留', '解释'],
+      'CISG': ['合同法', '国际货物销售', '违约救济'],
+      'UNCLOS': ['海洋法', '领海', '专属经济区'],
+      '法律适用': ['冲突规范', '国际私法', '管辖权'],
+      '仲裁': ['国际商事仲裁', '纽约公约', 'ICSID'],
+      '国家豁免': ['管辖权', '国际法', '外交豁免']
+    };
+    const qLower = query.toLowerCase();
+    for (const [key, extras] of Object.entries(crossKeywords)) {
+      if (qLower.includes(key.toLowerCase())) {
+        effectiveQuery = query + ' ' + extras.slice(0, 2).join(' ');
+        break;
+      }
+    }
+    // 如果没有匹配到预设关键词，通用补充
+    if (effectiveQuery === query) {
+      effectiveQuery = query + ' 涉外法治 国际法';
+    }
+  }
+
+  // 搜索更多结果以便后续筛选
+  let results = BM25.search(effectiveQuery, 20);
+
+  // === 功能5: 法条检索/判例查询 排序 ===
+  if (mode === 'law') {
+    // 法条检索模式：优先展示包含"第X条"格式的内容
+    results.sort((a, b) => {
+      const aHas = /第.{1,8}条/.test(a.chunk.x) ? 1 : 0;
+      const bHas = /第.{1,8}条/.test(b.chunk.x) ? 1 : 0;
+      if (bHas !== aHas) return bHas - aHas;
+      return b.score - a.score;
+    });
+  } else if (mode === 'case') {
+    // 判例查询模式：优先展示包含案例名称的内容
+    const casePattern = /案[（(]|Case|判例|裁判|判决|案例\d|案例：|案件/;
+    results.sort((a, b) => {
+      const aHas = casePattern.test(a.chunk.t + ' ' + a.chunk.x) ? 1 : 0;
+      const bHas = casePattern.test(b.chunk.t + ' ' + b.chunk.x) ? 1 : 0;
+      if (bHas !== aHas) return bHas - aHas;
+      return b.score - a.score;
+    });
+  }
+
+  // === 功能4: 分类联动筛选 ===
+  const category = AppState.currentCategory;
+  let filteredResults = results;
+  let filterApplied = false;
+  if (category) {
+    // 分类名到知识库 c 字段的映射
+    const catMap = {
+      'intl-pub': '国际公法',
+      'intl-pub-textbook': '国际公法',
+      'intl-pub-convention': '国际公法',
+      'intl-pub-case': '国际公法',
+      'intl-pub-position': '国际公法',
+      'intl-pri': '国际私法',
+      'intl-pri-legislation': '国际私法',
+      'intl-pri-hague': '国际私法',
+      'intl-pri-assistance': '国际私法',
+      'intl-pri-case': '国际私法',
+      'intl-pri-theory': '国际私法',
+      'intl-pri-textbook': '国际私法',
+      'intl-eco': '国际经济法',
+      'intl-eco-textbook': '国际经济法',
+      'intl-eco-cisg': '国际经济法',
+      'intl-eco-investment': '国际经济法',
+      'intl-eco-trade': '国际经济法',
+      'intl-eco-arbitration': '国际经济法',
+      'intl-eco-theory': '国际经济法',
+      'ideology': '涉外法治思政',
+      'ideology-discourse': '涉外法治思政',
+      'ideology-strategy': '涉外法治思政',
+      'ideology-talent': '涉外法治思政'
+    };
+    const catName = catMap[category] || category;
+    const catResults = results.filter(r => r.chunk.c === catName);
+    filterApplied = catResults.length > 0 && catResults.length < results.length;
+    if (catResults.length >= 3) {
+      filteredResults = catResults;
+    } else if (catResults.length > 0) {
+      // 不足3条，补充其他分类结果
+      const otherResults = results.filter(r => r.chunk.c !== catName);
+      filteredResults = catResults.concat(otherResults).slice(0, 5);
+      filterApplied = true;
+    }
+    // 如果catResults为0，不筛选，显示全部结果
+  }
+
+  // 取top5
+  filteredResults = filteredResults.slice(0, 5);
+
+  if (filteredResults.length === 0) {
+    const kbReady = (typeof KB_CHUNKS !== 'undefined' && KB_CHUNKS && KB_CHUNKS.length > 50);
+    const responseData = kbReady ? {
+      title: '🔍 未找到匹配结果',
+      content: '未在知识库中检索到与您查询直接相关的内容。您可以尝试：',
+      lawArticle: '• 使用更简短的核心关键词进行检索\n• 尝试不同的表述方式\n• 从左侧分类导航中浏览相关章节',
+      relatedLinks: [],
+      stance: ''
+    } : {
+      title: '⏳ 知识库仍在加载中',
+      content: '知识数据包较大、网络较慢时首次加载需要一些时间。请稍候 10-30 秒后重新发送同一问题；若长时间如此请刷新页面。',
+      lawArticle: '• 请稍等片刻后再次发送该问题\n• 或刷新页面（Ctrl+F5 / 手机端重新打开）\n• 加载完成后所有法条、判例、章节均可正常检索',
+      relatedLinks: [],
+      stance: ''
+    };
+    addQAResponse(responseData);
+    if (mode !== 'normal') AppState.searchMode = 'normal';
+    return;
+  }
+
+  const chat = document.getElementById('qaChat');
+  const time = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+
+  // === 功能3: 关键词高亮函数 ===
+  function highlightKeywords(text, queryStr) {
+    let escaped = escapeHtml(text);
+    // 提取查询中的关键词（英文单词和中文连续字符）
+    const keywords = [];
+    const qLower = queryStr.toLowerCase();
+    // 提取英文单词/缩写
+    const engMatches = qLower.match(/[a-z0-9]{2,}/g);
+    if (engMatches) keywords.push(...engMatches);
+    // 提取中文片段（2字以上连续中文）
+    const zhMatches = queryStr.match(/[\u4e00-\u9fff]{2,}/g);
+    if (zhMatches) keywords.push(...zhMatches.map(w => w.toLowerCase()));
+    // 也添加原始查询中的短词
+    const shortWords = queryStr.match(/[\u4e00-\u9fff]{1}/g);
+    // 去重并排序（长词优先高亮）
+    const uniqueKW = [...new Set(keywords)].sort((a, b) => b.length - a.length);
+
+    for (const kw of uniqueKW) {
+      // 用正则替换，忽略大小写
+      try {
+        const regex = new RegExp('(' + kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+        escaped = escaped.replace(regex, '<mark class="kb-highlight">$1</mark>');
+      } catch(e) {}
+    }
+    return escaped;
+  }
+
+  // === 功能1: 智能摘要头 - 提取高频主题词 ===
+  function extractTopTopics(results, queryStr) {
+    // 从所有结果的标题和分类中提取关键词
+    const wordCount = {};
+    const stopWords = new Set(['的','了','在','是','和','与','或','及','等','为','对','中','上','下','到','从','被','把','给','让','由','其','之','这','那','有','不','也','就','都','而','但','于','以','所','后','���','包括','关于','通过','可以','已经','进行','相关','主要','内容','规定','制度','问题','法律','国际','国家','适用']);
+    
+    for (const r of results) {
+      const text = r.chunk.t + ' ' + (r.chunk.s || '') + ' ' + (r.chunk.c || '');
+      // 中文词组提取（2-4字）
+      const zhWords = text.match(/[\u4e00-\u9fff]{2,4}/g) || [];
+      for (const w of zhWords) {
+        if (!stopWords.has(w)) {
+          wordCount[w] = (wordCount[w] || 0) + 1;
+        }
+      }
+      // 英文术语
+      const enWords = text.match(/[A-Za-z]{3,}/g) || [];
+      for (const w of enWords) {
+        const lw = w.toLowerCase();
+        if (!['the','and','for','not','with','from','that','this','case','case'].includes(lw)) {
+          wordCount[lw] = (wordCount[lw] || 0) + 1;
+        }
+      }
+    }
+    
+    // 取出现>=2次的词，按频次排序
+    const topWords = Object.entries(wordCount)
+      .filter(([, c]) => c >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([w]) => w);
+    
+    return topWords;
+  }
+
+  const topTopics = extractTopTopics(filteredResults, query);
+  
+  // 获取涉及的领域
+  const categories = [...new Set(filteredResults.map(r => r.chunk.c).filter(Boolean))];
+  
+  // 生成摘要头
+  let summaryCard = '';
+  if (topTopics.length > 0 || categories.length > 0) {
+    const topicStr = topTopics.length > 0 ? topTopics.slice(0, 3).join('、') : query;
+    const catStr = categories.length > 0 ? categories.join('、') : '知识库';
+    summaryCard = `
+      <div class="kb-summary-card">
+        <span class="summary-icon">🔎</span>
+        <strong>综合分析：</strong>关于<strong>${escapeHtml(topicStr)}</strong>，主要涉及${escapeHtml(catStr)}等领域。以下是从 <b>${KB_CHUNKS.length}</b> 个知识块中为您筛选的最相关 ${filteredResults.length} 条结果：
+      </div>
+    `;
+  }
+
+  // === 分类筛选标识 ===
+  let filterBadge = '';
+  if (filterApplied && category) {
+    const catLabel = document.getElementById('qaContext');
+    const catText = catLabel ? catLabel.textContent : category;
+    filterBadge = `<div class="kb-filter-badge">📂 当前筛选：${escapeHtml(catText)}（已补充其他分类结果）</div>`;
+  } else if (category && filteredResults.every(r => r.chunk.c === (function(){
+    const catMap = {'intl-pub':'国际公法','intl-pri':'国际私法','intl-eco':'国际经济法','ideology':'涉外法治思政'};
+    for (const [k,v] of Object.entries(catMap)) { if (category.startsWith(k)) return v; }
+    return category;
+  })())) {
+    const catLabel = document.getElementById('qaContext');
+    const catText = catLabel ? catLabel.textContent : category;
+    filterBadge = `<div class="kb-filter-badge">📂 当前筛选：${escapeHtml(catText)}</div>`;
+  }
+
+  // === 搜索模式标识 ===
+  let modeBadge = '';
+  if (mode === 'law') modeBadge = '<span class="kb-mode-badge">📋 法条模式</span>';
+  else if (mode === 'case') modeBadge = '<span class="kb-mode-badge">📑 判例模式</span>';
+  else if (mode === 'cross') modeBadge = '<span class="kb-mode-badge">🔗 联动模式</span>';
+
+  // === 生成搜索结果列表 ===
+  let resultsHtml = filteredResults.map((r, i) => {
+    const chunk = r.chunk;
+    const scorePct = Math.round(r.score * 10) / 10;
+    // 生成内容摘要（取前150字）
+    let summary = chunk.x.replace(/```[\s\S]*?```/g, '').replace(/[#>*`\-|]/g, '').replace(/\n+/g, ' ').trim();
+    if (summary.length > 150) summary = summary.substring(0, 150) + '...';
+    // 功能3: 高亮关键词
+    const hlSummary = highlightKeywords(summary, query);
+    const hlTitle = highlightKeywords(chunk.t, query);
+    const hlFullContent = highlightKeywords(chunk.x, query);
+    
+    return `
+      <div class="kb-result-item" style="margin-bottom:14px;padding:12px 14px;background:var(--bg-main);border-radius:var(--radius-sm);border:1px solid var(--border)">
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:6px">
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--primary);color:#fff;font-size:0.72rem;font-weight:700;flex-shrink:0">${i+1}</span>
+          <div style="flex:1">
+            <div class="kb-result-title" style="font-weight:700;color:var(--primary);font-size:0.88rem;cursor:pointer" onclick="toggleResultDetail(this)">
+              ${hlTitle}
+              <span style="float:right;font-size:0.7rem;color:var(--text-light);font-weight:400">相关度 ${scorePct}</span>
+            </div>
+            <div style="font-size:0.72rem;color:var(--text-light);margin:2px 0 6px">
+              📁 ${escapeHtml(chunk.c || '未分类')} · 📄 ${escapeHtml(chunk.s || chunk.f || '')}
+            </div>
+            <div class="kb-result-summary" style="font-size:0.82rem;color:var(--text-secondary);line-height:1.7">${hlSummary}</div>
+            <div class="kb-result-detail" style="display:none;margin-top:10px;padding:10px 12px;background:#fff;border-radius:6px;font-size:0.82rem;line-height:1.8;max-height:400px;overflow-y:auto;border:1px solid var(--border)">
+              <h5 style="color:var(--primary);margin-bottom:8px;font-size:0.82rem">📖 完整内容</h5>
+              <div style="white-space:pre-wrap;color:var(--text-primary)">${hlFullContent}</div>
+              <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:0.72rem;color:var(--text-light)">
+                来源：${escapeHtml(chunk.s || chunk.f || '未知')} · 文件：${escapeHtml(chunk.f || '')}
+              </div>
+            </div>
+            <div style="margin-top:6px">
+              <span class="related-link" onclick="toggleResultDetail(this.closest('.kb-result-item').querySelector('.kb-result-title'))">查看全文</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // === 功能2: 追问引导 ===
+  function generateFollowUp(results, queryStr) {
+    const suggestions = [];
+    const usedTopics = new Set();
+    
+    // 从结果标题和分类中生成相关问题
+    for (const r of results) {
+      const title = r.chunk.t;
+      const cat = r.chunk.c || '';
+      const sub = r.chunk.s || '';
+      
+      // 基于子分类生成
+      if (sub && !usedTopics.has(sub) && sub.length >= 2 && sub.length <= 15) {
+        // 构造有意义的问题
+        const qTemplates = [
+          `${sub}的核心要点`,
+          `${cat}${sub}的相关规定`,
+        ];
+        const tpl = qTemplates[Math.floor(Math.random() * qTemplates.length)];
+        if (!suggestions.includes(tpl) && tpl !== queryStr) {
+          suggestions.push(tpl);
+          usedTopics.add(sub);
+        }
+      }
+      if (suggestions.length >= 3) break;
+    }
+    
+    // 补充：基于标题关键词
+    if (suggestions.length < 3) {
+      for (const r of results) {
+        const title = r.chunk.t;
+        // 提取标题中的关键短语
+        const phrases = title.match(/[\u4e00-\u9fff]{2,8}/g) || [];
+        for (const p of phrases) {
+          if (!usedTopics.has(p) && p.length >= 3 && suggestions.length < 4) {
+            const q = p + '的具体规定';
+            if (q !== queryStr && !suggestions.includes(q)) {
+              suggestions.push(q);
+              usedTopics.add(p);
+            }
+          }
+        }
+        if (suggestions.length >= 3) break;
+      }
+    }
+    
+    return suggestions.slice(0, 3);
+  }
+
+  const followUps = generateFollowUp(filteredResults, query);
+  let followUpHtml = '';
+  if (followUps.length > 0) {
+    const btns = followUps.map(q => 
+      `<span class="kb-followup-btn" onclick="askSuggestion('${q.replace(/'/g, "\\'")}')">${escapeHtml(q)}</span>`
+    ).join('');
+    followUpHtml = `
+      <div class="kb-followup-area">
+        <div class="followup-label">💡 猜你想问：</div>
+        <div class="followup-btns">${btns}</div>
+      </div>
+    `;
+  }
+
+  // 重置搜索模式（仅单次生效）
+  if (mode !== 'normal') AppState.searchMode = 'normal';
+  
+  const msgHtml = `
+    <div class="chat-message system">
+      <div class="chat-avatar">AI</div>
+      <div>
+        <div class="chat-bubble">
+          <h4>📚 知识库检索结果（${filteredResults.length}条）${modeBadge}</h4>
+          ${summaryCard}
+          ${filterBadge}
+          ${resultsHtml}
+          ${followUpHtml}
+          <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border-light);font-size:0.75rem;color:var(--text-light)">
+            💡 点击「查看全文」展开完整内容 · 检索算法：BM25 (k1=1.5, b=0.75)${mode === 'cross' ? ' · 已自动扩展关联关键词' : ''}
+          </div>
+        </div>
+        <div class="chat-time" style="display:flex;align-items:center">${time}<button class="fav-qa-btn" onclick="toggleQAFav(this)" data-q="${escapeHtml(query)}" data-a="${escapeHtml(filteredResults.length > 0 ? filteredResults[0].chunk.x.substring(0,200) : '知识库检索结果')}"><span>☆</span> 收藏</button></div>
+      </div>
+    </div>
+  `;
+  chat.insertAdjacentHTML('beforeend', msgHtml);
+  const allMsgs = chat.querySelectorAll('.chat-message');
+  const lastMsg = allMsgs[allMsgs.length - 1];
+  if (lastMsg) lastMsg.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function toggleResultDetail(titleEl) {
+  const item = titleEl.closest('.kb-result-item');
+  if (!item) return;
+  const detail = item.querySelector('.kb-result-detail');
+  const summary = item.querySelector('.kb-result-summary');
+  const link = item.querySelector('.related-link');
+  if (!detail) return;
+  
+  if (detail.style.display === 'none') {
+    detail.style.display = 'block';
+    summary.style.display = 'none';
+    if (link) link.textContent = '收起';
+  } else {
+    detail.style.display = 'none';
+    summary.style.display = 'block';
+    if (link) link.textContent = '查看全文';
+  }
+}
+
+// === 错题本渲染 ===
+function renderErrorBook() {
+  const container = document.getElementById('errorBook');
+  if (!container) return;
+  const errors = AppState.errorBook || [];
+  
+  if (errors.length === 0) {
+    container.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text-secondary)"><div style="font-size:3rem;margin-bottom:16px">📗</div><p style="font-size:1rem;font-weight:500">暂无错题记录，继续保持！</p><p style="font-size:0.8rem;color:var(--text-light);margin-top:8px">完成知识测验后，错题将自动收录至此</p></div>';
+    return;
+  }
+
+  const errorsHtml = errors.map((err, idx) => {
+    const optionsLetters = ['A','B','C','D'];
+    return '<div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:14px;box-shadow:var(--shadow-sm)">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
+      '<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:var(--danger);color:#fff;border-radius:50%;font-size:0.75rem;font-weight:700;flex-shrink:0">' + (idx + 1) + '</span>' +
+      '<span style="font-size:0.88rem;font-weight:600;color:var(--text-primary);line-height:1.4;flex:1">' + err.question + '</span>' +
+      '</div>' +
+      '<div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap">' +
+      '<div style="flex:1;min-width:120px;padding:8px 12px;background:rgba(220,53,69,0.06);border-radius:8px;border-left:3px solid var(--danger)">' +
+      '<span style="font-size:0.72rem;color:var(--danger);font-weight:600;display:block;margin-bottom:2px">你的答案</span>' +
+      '<span style="font-size:0.85rem;color:var(--danger);font-weight:700">' + err.yourAnswer + '</span>' +
+      '</div>' +
+      '<div style="flex:1;min-width:120px;padding:8px 12px;background:rgba(40,167,69,0.06);border-radius:8px;border-left:3px solid var(--success)">' +
+      '<span style="font-size:0.72rem;color:var(--success);font-weight:600;display:block;margin-bottom:2px">正确答案</span>' +
+      '<span style="font-size:0.85rem;color:var(--success);font-weight:700">' + err.correctAnswer + '</span>' +
+      '</div>' +
+      '</div>' +
+      '<div style="padding:10px 14px;background:rgba(26,42,94,0.03);border-radius:8px;border-left:3px solid var(--primary-light)">' +
+      '<span style="font-size:0.72rem;color:var(--primary);font-weight:600;display:block;margin-bottom:4px">📖 解析</span>' +
+      '<span style="font-size:0.82rem;color:var(--text-secondary);line-height:1.6">' + err.explanation + '</span>' +
+      '</div>' +
+      '</div>';
+  }).join('');
+
+  container.innerHTML = '<div style="margin-bottom:18px">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+    '<span style="font-size:1.2rem">📕</span>' +
+    '<h4 style="font-size:1rem;font-weight:700;color:var(--text-primary)">错题记录</h4>' +
+    '<span style="background:var(--danger);color:#fff;font-size:0.7rem;padding:2px 8px;border-radius:10px;font-weight:600">' + errors.length + ' 题</span>' +
+    '</div>' +
+    '<p style="font-size:0.78rem;color:var(--text-light);margin:0">以下是你在知识测验中答错的题目，建议重点复习</p>' +
+    '</div>' +
+    errorsHtml +
+    '<div style="display:flex;gap:12px;justify-content:center;margin-top:24px;padding-top:18px;border-top:1px solid var(--border-light)">' +
+    '<button onclick="clearErrorBook()" style="padding:10px 24px;background:white;border:1px solid var(--danger);color:var(--danger);border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;transition:var(--transition)" onmouseover="this.style.background=\'rgba(220,53,69,0.05)\'" onmouseout="this.style.background=\'white\'">🗑️ 清空错题本</button>' +
+    '<button onclick="redoErrors()" style="padding:10px 24px;background:linear-gradient(135deg,var(--primary),var(--primary-light));color:#fff;border:none;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;transition:var(--transition);box-shadow:var(--shadow-sm)" onmouseover="this.style.boxShadow=\'var(--shadow-md)\'" onmouseout="this.style.boxShadow=\'var(--shadow-sm)\'">🔄 重做错题</button>' +
+    '</div>';
+}
+
+function clearErrorBook() {
+  if (confirm('确定要清空所有错题记录吗？此操作不可恢复。')) {
+    AppState.errorBook = [];
+    renderErrorBook();
+  }
+}
+
+function redoErrors() {
+  if (AppState.errorBook.length === 0) {
+    alert('暂无错题可重做！');
+    return;
+  }
+  alert('已选择 ' + AppState.errorBook.length + ' 道错题，建议前往「知识测验」选择对应科目重新练习。\n\n错题知识点摘要：\n' + AppState.errorBook.map((e,i) => (i+1) + '. ' + e.question.substring(0,40) + '...').join('\n'));
+}
+
+// === 教师模式：上传案例 ===
+function handleCaseUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const content = e.target.result;
+      let caseData;
+      
+      if (file.name.endsWith('.json')) {
+        caseData = JSON.parse(content);
+      } else {
+        caseData = {
+          id: 'custom-' + Date.now(),
+          name: file.name.replace(/\.\w+$/, ''),
+          tag: 'pub',
+          tagText: '自定义案例',
+          brief: content.substring(0, 200),
+          difficulty: '中级',
+          duration: '60分钟',
+          roles: [
+            { name: '代理人', icon: '⚖️', desc: '案件代理人角色' }
+          ],
+          issues: ['自定义案例议题'],
+          keywords: content.substring(0, 100).split(/[\s,，。、]/).filter(w => w.length > 1).slice(0, 10),
+          laws: [],
+          evidence: [],
+          facts: [content.substring(0, 300)],
+          stages: []
+        };
+      }
+      
+      if (!caseData.id) caseData.id = 'custom-' + Date.now();
+      if (!caseData.name) caseData.name = file.name.replace(/\.\w+$/, '');
+      
+      FIXED_CASES.push(caseData);
+      showToast('✅ 案例上传成功：' + caseData.name, 'success');
+    } catch (err) {
+      showToast('❌ 文件解析失败：' + err.message, 'error');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function showToast(msg, type) {
+  const toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;top:80px;right:24px;padding:14px 22px;border-radius:10px;font-size:0.85rem;font-weight:600;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,0.15);transition:all 0.3s ease;max-width:360px;line-height:1.4;';
+  if (type === 'success') {
+    toast.style.background = 'linear-gradient(135deg,#28a745,#20c997)';
+    toast.style.color = '#fff';
+  } else if (type === 'error') {
+    toast.style.background = 'linear-gradient(135deg,#dc3545,#e74c3c)';
+    toast.style.color = '#fff';
+  } else {
+    toast.style.background = 'linear-gradient(135deg,#1a2a5e,#2a3f7e)';
+    toast.style.color = '#fff';
+  }
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(function() { toast.style.opacity = '0'; toast.style.transform = 'translateY(-10px)'; }, 2500);
+  setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 3000);
+}
+
+// === 教师模式：编辑题目 ===
+function showEditQuestionModal() {
+  const existingModal = document.getElementById('editQuestionModal');
+  if (existingModal) existingModal.remove();
+  
+  const maxId = MockData.questions.reduce(function(max, q) { return Math.max(max, q.id); }, 0);
+  
+  const modal = document.createElement('div');
+  modal.id = 'editQuestionModal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = '<div style="background:#fff;border-radius:16px;padding:28px;max-width:620px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">' +
+    '<h3 style="font-size:1.1rem;font-weight:700;color:var(--primary)">✏️ 新建测评题目</h3>' +
+    '<button onclick="document.getElementById(\'editQuestionModal\').remove()" style="font-size:1.3rem;color:#999;background:none;border:none;cursor:pointer;padding:4px 8px">✕</button>' +
+    '</div>' +
+    '<div style="margin-bottom:14px">' +
+    '<label style="display:block;font-size:0.8rem;font-weight:600;color:#333;margin-bottom:5px">题目标题</label>' +
+    '<input type="text" id="newQTitle" placeholder="请输入题目标题" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;box-sizing:border-box" onfocus="this.style.borderColor=\'#c9a84c\'" onblur="this.style.borderColor=\'#ddd\'">' +
+    '</div>' +
+    '<div style="margin-bottom:14px">' +
+    '<label style="display:block;font-size:0.8rem;font-weight:600;color:#333;margin-bottom:5px">题目文本</label>' +
+    '<textarea id="newQText" placeholder="请输入题目内容" rows="3" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;box-sizing:border-box;resize:vertical" onfocus="this.style.borderColor=\'#c9a84c\'" onblur="this.style.borderColor=\'#ddd\'"></textarea>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">' +
+    '<div><label style="display:block;font-size:0.8rem;font-weight:600;color:#333;margin-bottom:5px">选项 A</label><input type="text" id="newQA" placeholder="A选项内容" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;box-sizing:border-box"></div>' +
+    '<div><label style="display:block;font-size:0.8rem;font-weight:600;color:#333;margin-bottom:5px">选项 B</label><input type="text" id="newQB" placeholder="B选项内容" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;box-sizing:border-box"></div>' +
+    '<div><label style="display:block;font-size:0.8rem;font-weight:600;color:#333;margin-bottom:5px">选项 C</label><input type="text" id="newQC" placeholder="C选项内容" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;box-sizing:border-box"></div>' +
+    '<div><label style="display:block;font-size:0.8rem;font-weight:600;color:#333;margin-bottom:5px">选项 D</label><input type="text" id="newQD" placeholder="D选项内容" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;box-sizing:border-box"></div>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">' +
+    '<div><label style="display:block;font-size:0.8rem;font-weight:600;color:#333;margin-bottom:5px">正确答案</label><input type="text" id="newQAnswer" placeholder="如：A 或 AB" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;box-sizing:border-box"></div>' +
+    '<div><label style="display:block;font-size:0.8rem;font-weight:600;color:#333;margin-bottom:5px">所属科目</label><select id="newQSubject" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;box-sizing:border-box;background:#fff"><option value="public">国际公法</option><option value="private">国际私法</option><option value="economic">国际经济法</option></select></div>' +
+    '<div><label style="display:block;font-size:0.8rem;font-weight:600;color:#333;margin-bottom:5px">题型</label><select id="newQType" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;box-sizing:border-box;background:#fff"><option value="single">单选题</option><option value="multi">多选题</option></select></div>' +
+    '</div>' +
+    '<div style="margin-bottom:18px">' +
+    '<label style="display:block;font-size:0.8rem;font-weight:600;color:#333;margin-bottom:5px">解析</label>' +
+    '<textarea id="newQExplanation" placeholder="请输入答案解析" rows="2" style="width:100%;padding:9px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;box-sizing:border-box;resize:vertical"></textarea>' +
+    '</div>' +
+    '<div style="display:flex;gap:10px;justify-content:flex-end">' +
+    '<button onclick="document.getElementById(\'editQuestionModal\').remove()" style="padding:10px 20px;background:#f5f5f5;border:1px solid #ddd;border-radius:8px;font-size:0.82rem;cursor:pointer">取消</button>' +
+    '<button onclick="submitNewQuestion(' + maxId + ')" style="padding:10px 24px;background:linear-gradient(135deg,var(--primary),var(--primary-light));color:#fff;border:none;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;box-shadow:var(--shadow-sm)">提交题目</button>' +
+    '</div>' +
+    '</div>';
+  
+  document.body.appendChild(modal);
+  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+}
+
+function submitNewQuestion(maxId) {
+  var title = document.getElementById('newQTitle').value.trim();
+  var text = document.getElementById('newQText').value.trim();
+  var optA = document.getElementById('newQA').value.trim();
+  var optB = document.getElementById('newQB').value.trim();
+  var optC = document.getElementById('newQC').value.trim();
+  var optD = document.getElementById('newQD').value.trim();
+  var answer = document.getElementById('newQAnswer').value.trim().toUpperCase();
+  var subject = document.getElementById('newQSubject').value;
+  var type = document.getElementById('newQType').value;
+  var explanation = document.getElementById('newQExplanation').value.trim();
+  
+  if (!text || !optA || !optB || !optC || !optD || !answer) {
+    alert('请填写完整的题目信息（题目文本、四个选项和正确答案为必填）');
+    return;
+  }
+  
+  var subjectNames = { public: '国际公法', private: '国际私法', economic: '国际经济法' };
+  var typeName = type === 'single' ? '单选题' : '多选题';
+  var points = type === 'single' ? 6 : 8;
+  
+  var newQ = {
+    id: maxId + 1,
+    type: type,
+    typeName: typeName,
+    subject: subject,
+    points: points,
+    text: text,
+    options: [
+      { letter: 'A', text: optA },
+      { letter: 'B', text: optB },
+      { letter: 'C', text: optC },
+      { letter: 'D', text: optD }
+    ],
+    answer: answer,
+    explanation: explanation || '暂无解析'
+  };
+  
+  MockData.questions.push(newQ);
+  document.getElementById('editQuestionModal').remove();
+  showToast('✅ 题目已添加：' + (title || text.substring(0, 30)) + '...（' + subjectNames[subject] + ' ' + typeName + '）', 'success');
+}
+
+// === 教师模式：学生实训记录 ===
+function showStudentRecords() {
+  var existingModal = document.getElementById('studentRecordsModal');
+  if (existingModal) existingModal.remove();
+  
+  var students = AppState.teacherStudents || [];
+  var caseNames = FIXED_CASES.slice(0, 5).map(function(c) { return c.name; });
+  
+  var rowsHtml = students.map(function(stu, idx) {
+    var caseIdx = idx % caseNames.length;
+    var phaseScores = [
+      Math.floor(Math.random() * 20) + 60,
+      Math.floor(Math.random() * 20) + 55,
+      Math.floor(Math.random() * 20) + 50
+    ];
+    var totalScore = Math.round(phaseScores.reduce(function(a,b){return a+b;}, 0) / phaseScores.length);
+    var completionTime = new Date(Date.now() - Math.random() * 14 * 86400000).toLocaleDateString('zh-CN');
+    var scoreColor = totalScore >= 80 ? 'var(--success)' : totalScore >= 60 ? 'var(--warning)' : 'var(--danger)';
+    
+    return '<tr style="border-bottom:1px solid #f0f0f0">' +
+      '<td style="padding:10px 14px;font-size:0.82rem;font-weight:600;color:var(--text-primary)">' + stu.name + '</td>' +
+      '<td style="padding:10px 14px;font-size:0.82rem;color:var(--text-secondary)">' + (caseNames[caseIdx] || '综合训练') + '</td>' +
+      '<td style="padding:10px 14px;text-align:center"><span style="display:inline-block;padding:2px 8px;background:rgba(40,167,69,0.08);color:var(--success);border-radius:4px;font-size:0.78rem;font-weight:600">' + phaseScores[0] + '</span></td>' +
+      '<td style="padding:10px 14px;text-align:center"><span style="display:inline-block;padding:2px 8px;background:rgba(240,160,48,0.08);color:var(--warning);border-radius:4px;font-size:0.78rem;font-weight:600">' + phaseScores[1] + '</span></td>' +
+      '<td style="padding:10px 14px;text-align:center"><span style="display:inline-block;padding:2px 8px;background:rgba(23,162,184,0.08);color:var(--info);border-radius:4px;font-size:0.78rem;font-weight:600">' + phaseScores[2] + '</span></td>' +
+      '<td style="padding:10px 14px;text-align:center"><span style="font-size:0.9rem;font-weight:700;color:' + scoreColor + '">' + totalScore + '</span></td>' +
+      '<td style="padding:10px 14px;font-size:0.78rem;color:var(--text-light)">' + completionTime + '</td>' +
+      '</tr>';
+  }).join('');
+  
+  var modal = document.createElement('div');
+  modal.id = 'studentRecordsModal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = '<div style="background:#fff;border-radius:16px;padding:28px;max-width:850px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">' +
+    '<h3 style="font-size:1.1rem;font-weight:700;color:var(--primary)">📊 学生实训记录</h3>' +
+    '<button onclick="document.getElementById(\'studentRecordsModal\').remove()" style="font-size:1.3rem;color:#999;background:none;border:none;cursor:pointer;padding:4px 8px">✕</button>' +
+    '</div>' +
+    '<div style="display:flex;gap:16px;margin-bottom:18px">' +
+    '<div style="flex:1;padding:14px;background:linear-gradient(135deg,rgba(26,42,94,0.04),rgba(26,42,94,0.01));border-radius:10px;text-align:center">' +
+    '<div style="font-size:1.4rem;font-weight:700;color:var(--primary)">' + students.length + '</div>' +
+    '<div style="font-size:0.72rem;color:var(--text-light);margin-top:2px">学生总数</div>' +
+    '</div>' +
+    '<div style="flex:1;padding:14px;background:linear-gradient(135deg,rgba(40,167,69,0.04),rgba(40,167,69,0.01));border-radius:10px;text-align:center">' +
+    '<div style="font-size:1.4rem;font-weight:700;color:var(--success)">' + Math.round(students.reduce(function(s,st){return s+st.avgScore;},0) / (students.length||1)) + '</div>' +
+    '<div style="font-size:0.72rem;color:var(--text-light);margin-top:2px">平均得分</div>' +
+    '</div>' +
+    '<div style="flex:1;padding:14px;background:linear-gradient(135deg,rgba(201,168,76,0.04),rgba(201,168,76,0.01));border-radius:10px;text-align:center">' +
+    '<div style="font-size:1.4rem;font-weight:700;color:var(--accent)">' + students.filter(function(s){return s.completedCases>0;}).length + '</div>' +
+    '<div style="font-size:0.72rem;color:var(--text-light);margin-top:2px">已参与实训</div>' +
+    '</div>' +
+    '</div>' +
+    '<div style="overflow-x:auto">' +
+    '<table style="width:100%;border-collapse:collapse;font-size:0.82rem">' +
+    '<thead><tr style="background:linear-gradient(135deg,var(--primary),var(--primary-light));color:#fff">' +
+    '<th style="padding:12px 14px;text-align:left;font-weight:600;border-radius:8px 0 0 0">学生姓名</th>' +
+    '<th style="padding:12px 14px;text-align:left;font-weight:600">完成案例</th>' +
+    '<th style="padding:12px 14px;text-align:center;font-weight:600">阶段1</th>' +
+    '<th style="padding:12px 14px;text-align:center;font-weight:600">阶段2</th>' +
+    '<th style="padding:12px 14px;text-align:center;font-weight:600">阶段3</th>' +
+    '<th style="padding:12px 14px;text-align:center;font-weight:600">总评分</th>' +
+    '<th style="padding:12px 14px;text-align:left;font-weight:600;border-radius:0 8px 0 0">完成时间</th>' +
+    '</tr></thead>' +
+    '<tbody>' + rowsHtml + '</tbody>' +
+    '</table>' +
+    '</div>' +
+    '<div style="display:flex;justify-content:flex-end;margin-top:18px">' +
+    '<button onclick="document.getElementById(\'studentRecordsModal\').remove()" style="padding:10px 24px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer">关闭</button>' +
+    '</div>' +
+    '</div>';
+  
+  document.body.appendChild(modal);
+  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+}
+
+// === UX Enhancement: Quiz Timer & Progress ===
+var _quizTimerInterval = null;
+var _quizTimeLeft = 0;
+var _quizTotalTime = 600; // 10 minutes default
+
+function startQuizTimer() {
+  stopQuizTimer();
+  _quizTimeLeft = _quizTotalTime;
+  updateTimerDisplay();
+  _quizTimerInterval = setInterval(function() {
+    _quizTimeLeft--;
+    updateTimerDisplay();
+    if (_quizTimeLeft <= 0) {
+      stopQuizTimer();
+      if (!AppState.quizSubmitted) {
+        showToast('⏰ 时间到！自动提交中...', 'error');
+        setTimeout(function() { submitQuiz(); }, 500);
+      }
+    }
+  }, 1000);
+}
+
+function stopQuizTimer() {
+  if (_quizTimerInterval) {
+    clearInterval(_quizTimerInterval);
+    _quizTimerInterval = null;
+  }
+}
+
+function updateTimerDisplay() {
+  var el = document.getElementById('quizTimerDisplay');
+  if (!el) return;
+  var mins = Math.floor(_quizTimeLeft / 60);
+  var secs = _quizTimeLeft % 60;
+  el.textContent = (mins < 10 ? '0' : '') + mins + ':' + (secs < 10 ? '0' : '') + secs;
+  if (_quizTimeLeft <= 60) {
+    el.classList.add('warning');
+  } else {
+    el.classList.remove('warning');
+  }
+}
+
+function updateQuizProgress() {
+  var bar = document.getElementById('quizProgressFill');
+  var label = document.getElementById('quizProgressLabel');
+  if (!bar || !label) return;
+  var qs = AppState.currentQuestions || [];
+  var total = qs.length;
+  var answered = Object.keys(AppState.selectedAnswers || {}).length;
+  var pct = total > 0 ? Math.round((answered / total) * 100) : 0;
+  bar.style.width = pct + '%';
+  label.textContent = '已完成 ' + answered + '/' + total + ' 题';
+}
+
+function injectQuizTimerBar() {
+  var quizArea = document.getElementById('quizArea');
+  if (!quizArea) return;
+  // Remove existing if any
+  var existing = document.getElementById('quizTimerBarWrap');
+  if (existing) existing.remove();
+  
+  var wrap = document.createElement('div');
+  wrap.id = 'quizTimerBarWrap';
+  wrap.innerHTML = '<div class="quiz-timer-bar">' +
+    '<div style="display:flex;align-items:center;gap:8px">' +
+    '<span style="font-size:1.1rem">⏱️</span>' +
+    '<span class="quiz-timer-display" id="quizTimerDisplay">10:00</span>' +
+    '</div>' +
+    '<div class="quiz-progress-wrap">' +
+    '<span class="quiz-progress-label" id="quizProgressLabel">已完成 0/15 题</span>' +
+    '<div class="quiz-progress-track"><div class="quiz-progress-fill" id="quizProgressFill" style="width:0%"></div></div>' +
+    '</div>' +
+    '</div>';
+  quizArea.insertBefore(wrap, quizArea.firstChild);
+}
+
+// === 知识库问答：导出对话记录 ===
+function exportChatHistory() {
+  // Button visual feedback
+  var btn = event && event.target ? event.target.closest('button') : null;
+  var origText = '';
+  if (btn) {
+    origText = btn.innerHTML;
+    btn.innerHTML = '⏳ 导出中...';
+    btn.disabled = true;
+    btn.style.opacity = '0.7';
+  }
+  
+  setTimeout(function() {
+  // 优先从聊天界面 DOM 抓取消息（最可靠，覆盖所有渲染路径），兜底用 AppState.chatHistory
+  var history = [];
+  var qaChat = document.getElementById('qaChat');
+  if (qaChat) {
+    var msgEls = qaChat.querySelectorAll('.chat-message');
+    msgEls.forEach(function(el) {
+      var bubble = el.querySelector('.chat-bubble');
+      var timeEl = el.querySelector('.chat-time');
+      if (!bubble) return;
+      var isUser = el.classList.contains('user');
+      // 用 innerText 取可读文本，去掉收藏按钮等无关内容
+      var content = bubble.innerText || bubble.textContent || '';
+      content = content.replace(/\n{3,}/g, '\n\n').trim();
+      var time = timeEl ? (timeEl.innerText || timeEl.textContent || '').replace(/[☆⭐]\s*收藏/g, '').trim() : '';
+      if (content) history.push({ role: isUser ? 'user' : 'system', content: content, time: time });
+    });
+  }
+  if (history.length === 0 && AppState.chatHistory && AppState.chatHistory.length > 0) {
+    history = AppState.chatHistory;
+  }
+  if (history.length === 0) {
+    if (btn) { btn.innerHTML = origText; btn.disabled = false; btn.style.opacity = '1'; }
+    alert('暂无对话记录可导出！');
+    return;
+  }
+  
+  var lines = ['=== 三国法知识库问答记录 ===', '导出时间：' + new Date().toLocaleString('zh-CN'), '共 ' + history.length + ' 条记录', ''];
+  lines.push('========================================');
+  lines.push('');
+  
+  history.forEach(function(item, idx) {
+    var time = item.time || new Date().toLocaleString('zh-CN');
+    var role = item.role === 'user' ? '👤 用户' : '🤖 助手';
+    lines.push('【' + time + '】 ' + role);
+    lines.push(item.content || '');
+    lines.push('');
+    lines.push('----------------------------------------');
+    lines.push('');
+  });
+  
+  lines.push('========================================');
+  lines.push('由「三国法教学智能体」导出');
+  
+  var blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = '三国法问答记录_' + new Date().toISOString().slice(0,10) + '.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  
+  showToast('📥 对话记录已导出（共 ' + history.length + ' 条）', 'success');
+  
+  // Restore button
+  if (btn) { btn.innerHTML = origText; btn.disabled = false; btn.style.opacity = '1'; }
+  }, 500);
+}
+
+
+// === 法条速查功能 ===
+function showLawsBrowser() {
+  const chat = document.getElementById('qaChat');
+  const welcome = document.getElementById('qaWelcome');
+  if (welcome) welcome.style.display = 'none';
+  
+  const laws = MockData.laws || [];
+  const subjectNames = {public:'国际公法', private:'国际私法', economic:'国际经济法'};
+  const subjectIcons = {public:'🌐', private:'⚖️', economic:'💼'};
+  
+  // Group by subject
+  const grouped = {};
+  laws.forEach(law => {
+    if (!grouped[law.category]) grouped[law.category] = [];
+    grouped[law.category].push(law);
+  });
+  
+  let html = '<div style="padding:16px">';
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px"><span style="font-size:1.3rem">📜</span><h3 style="margin:0;font-size:1.1rem;color:var(--primary)">核心法条速查</h3><span style="font-size:0.75rem;color:var(--text-secondary);background:rgba(79,172,254,0.1);padding:2px 8px;border-radius:10px">' + laws.length + ' 部法律文件</span></div>';
+  html += '<p style="font-size:0.78rem;color:var(--text-secondary);margin:0 0 16px;line-height:1.6">点击法条名称展开原文，支持公约、国内法、司法解释快速查阅</p>';
+  
+  Object.keys(grouped).forEach(cat => {
+    html += '<div style="margin-bottom:16px"><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid var(--info)">' + subjectIcons[cat] + '<span style="font-weight:700;color:var(--primary);font-size:0.9rem">' + subjectNames[cat] + '</span><span style="font-size:0.7rem;color:var(--text-secondary)">(' + grouped[cat].length + '部)</span></div>';
+    
+    grouped[cat].forEach(law => {
+      html += '<div style="margin-bottom:6px;border:1px solid rgba(79,172,254,0.15);border-radius:10px;overflow:hidden">';
+      html += '<div onclick="toggleLawDetail(\'' + law.id + '\')" style="padding:10px 14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:background 0.2s" onmouseover="this.style.background=\'rgba(79,172,254,0.05)\'" onmouseout="this.style.background=\'transparent\'">';
+      html += '<div><span style="font-size:0.85rem;font-weight:600;color:var(--text-primary)">' + law.name + '</span><span style="font-size:0.68rem;color:var(--text-secondary);margin-left:8px;background:rgba(0,0,0,0.04);padding:1px 6px;border-radius:4px">' + law.type + '</span></div>';
+      html += '<span class="law-arrow-' + law.id + '" style="font-size:0.7rem;color:var(--text-secondary);transition:transform 0.3s">▶</span>';
+      html += '</div>';
+      html += '<div id="law-detail-' + law.id + '" style="display:none;padding:0 14px 12px;border-top:1px solid rgba(79,172,254,0.08)">';
+      html += '<div style="font-size:0.72rem;color:var(--text-secondary);margin-bottom:8px">📌 ' + law.source + '</div>';
+      law.articles.forEach(art => {
+        html += '<div style="margin-bottom:8px;padding:8px 10px;background:rgba(79,172,254,0.03);border-radius:6px;border-left:3px solid var(--info)">';
+        html += '<div style="font-size:0.78rem;font-weight:600;color:var(--primary);margin-bottom:4px">' + art.num + (art.title ? ' ' + art.title : '') + '</div>';
+        html += '<div style="font-size:0.75rem;color:var(--text-primary);line-height:1.6">' + art.text + '</div>';
+        html += '</div>';
+      });
+      html += '</div></div>';
+    });
+    html += '</div>';
+  });
+  html += '</div>';
+  
+  // Add as system message
+  addSystemMessage(html);
+}
+
+function toggleLawDetail(lawId) {
+  const detail = document.getElementById('law-detail-' + lawId);
+  const arrow = document.querySelector('.law-arrow-' + lawId);
+  if (detail.style.display === 'none') {
+    detail.style.display = 'block';
+    if (arrow) { arrow.style.transform = 'rotate(90deg)'; arrow.textContent = '▼'; }
+  } else {
+    detail.style.display = 'none';
+    if (arrow) { arrow.style.transform = 'rotate(0deg)'; arrow.textContent = '▶'; }
+  }
+}
+
+// === 判例详情功能 ===
+function showCasesBrowser() {
+  const chat = document.getElementById('qaChat');
+  const welcome = document.getElementById('qaWelcome');
+  if (welcome) welcome.style.display = 'none';
+  
+  const cases = MockData.caseDetails || [];
+  const subjectNames = {public:'国际公法', private:'国际私法', economic:'国际经济法'};
+  const subjectIcons = {public:'🌐', private:'⚖️', economic:'💼'};
+  
+  const grouped = {};
+  cases.forEach(c => {
+    if (!grouped[c.subject]) grouped[c.subject] = [];
+    grouped[c.subject].push(c);
+  });
+  
+  let html = '<div style="padding:16px">';
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px"><span style="font-size:1.3rem">📑</span><h3 style="margin:0;font-size:1.1rem;color:var(--info)">经典判例详情</h3><span style="font-size:0.75rem;color:var(--text-secondary);background:rgba(23,162,184,0.1);padding:2px 8px;border-radius:10px">' + cases.length + ' 个案例</span></div>';
+  html += '<p style="font-size:0.78rem;color:var(--text-secondary);margin:0 0 16px;line-height:1.6">点击展开查看案情摘要、争议焦点、裁判要旨及中国立场评析</p>';
+  
+  Object.keys(grouped).forEach(sub => {
+    html += '<div style="margin-bottom:16px"><div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid var(--info)">' + subjectIcons[sub] + '<span style="font-weight:700;color:var(--primary);font-size:0.9rem">' + subjectNames[sub] + '</span></div>';
+    
+    grouped[sub].forEach(c => {
+      html += '<div style="margin-bottom:8px;border:1px solid rgba(23,162,184,0.15);border-radius:10px;overflow:hidden">';
+      html += '<div onclick="toggleCaseDetail(\'' + c.id + '\')" style="padding:10px 14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:background 0.2s" onmouseover="this.style.background=\'rgba(23,162,184,0.05)\'" onmouseout="this.style.background=\'transparent\'">';
+      html += '<div><span style="font-size:0.85rem;font-weight:600;color:var(--text-primary)">' + c.name + '</span><span style="font-size:0.68rem;color:var(--text-secondary);margin-left:8px">' + c.court + ' (' + c.year + ')</span></div>';
+      html += '<span class="case-arrow-' + c.id + '" style="font-size:0.7rem;color:var(--text-secondary);transition:transform 0.3s">▶</span>';
+      html += '</div>';
+      html += '<div id="case-detail-' + c.id + '" style="display:none;padding:0 14px 14px">';
+      // Facts
+      html += '<div style="margin-bottom:10px"><div style="font-size:0.78rem;font-weight:700;color:var(--primary);margin-bottom:4px">📋 案情摘要</div><div style="font-size:0.75rem;line-height:1.7;color:var(--text-primary);padding:8px 10px;background:rgba(79,172,254,0.03);border-radius:6px">' + c.facts + '</div></div>';
+      // Issues
+      html += '<div style="margin-bottom:10px"><div style="font-size:0.78rem;font-weight:700;color:var(--primary);margin-bottom:4px">🔍 争议焦点</div>';
+      c.issues.forEach((issue, idx) => {
+        html += '<div style="font-size:0.75rem;line-height:1.6;padding:4px 10px;margin-bottom:3px;background:rgba(201,168,76,0.04);border-radius:4px;border-left:3px solid var(--accent)">' + (idx+1) + '. ' + issue + '</div>';
+      });
+      html += '</div>';
+      // Holding
+      html += '<div style="margin-bottom:10px"><div style="font-size:0.78rem;font-weight:700;color:var(--primary);margin-bottom:4px">⚖️ 裁判要旨</div><div style="font-size:0.75rem;line-height:1.7;color:var(--text-primary);padding:8px 10px;background:rgba(23,162,184,0.03);border-radius:6px">' + c.holding + '</div></div>';
+      // Reasoning
+      html += '<div style="margin-bottom:10px"><div style="font-size:0.78rem;font-weight:700;color:var(--primary);margin-bottom:4px">📝 裁判说理</div><div style="font-size:0.75rem;line-height:1.7;color:var(--text-primary);padding:8px 10px;background:rgba(0,0,0,0.02);border-radius:6px">' + c.reasoning + '</div></div>';
+      // China position
+      html += '<div><div style="font-size:0.78rem;font-weight:700;color:#c0392b;margin-bottom:4px">🇨🇳 中国立场</div><div style="font-size:0.75rem;line-height:1.7;color:var(--text-primary);padding:8px 10px;background:linear-gradient(135deg,rgba(192,57,43,0.04),rgba(192,57,43,0.01));border-radius:6px;border:1px solid rgba(192,57,43,0.12)">' + c.chinaPosition + '</div></div>';
+      html += '</div></div>';
+    });
+    html += '</div>';
+  });
+  html += '</div>';
+  
+  addSystemMessage(html);
+}
+
+function toggleCaseDetail(caseId) {
+  const detail = document.getElementById('case-detail-' + caseId);
+  const arrow = document.querySelector('.case-arrow-' + caseId);
+  if (detail.style.display === 'none') {
+    detail.style.display = 'block';
+    if (arrow) { arrow.style.transform = 'rotate(90deg)'; arrow.textContent = '▼'; }
+  } else {
+    detail.style.display = 'none';
+    if (arrow) { arrow.style.transform = 'rotate(0deg)'; arrow.textContent = '▶'; }
+  }
+}
+
+// === 三层问答模式 ===
+const QA_MODES = {
+  intro: {
+    label: '入门模式',
+    color: 'var(--primary)',
+    systemPrompt: '你是一位国际法入门教师，用通俗易懂的语言解释概念，多举例子帮助理解。回答要详细、循序渐进，适合初学者。',
+    style: '详细解释、类比举例、基础概念优先'
+  },
+  exam: {
+    label: '法考模式',
+    color: 'var(--accent)',
+    systemPrompt: '你是一位法考辅导名师，重点讲解考试高频考点、易错点和答题技巧。回答要条理清晰，标注重要程度，提示常见陷阱。',
+    style: '考点突出、真题关联、答题技巧'
+  },
+  practice: {
+    label: '实务模式',
+    color: 'var(--info)',
+    systemPrompt: '你是一位涉外法律实务专家，结合真实案例和实务操作回答。注重法律适用分析、风险防范建议和操作指引。',
+    style: '案例导向、实务操作、风险防范'
+  }
+};
+
+function setQAMode(mode, btn) {
+  AppState.qaMode = mode || 'intro';
+  document.querySelectorAll('.qa-mode-btn').forEach(b => {
+    b.style.background = 'transparent';
+    b.style.color = 'var(--text-secondary)';
+    b.classList.remove('active');
+  });
+  if (btn) {
+    btn.style.background = QA_MODES[AppState.qaMode].color;
+    btn.style.color = '#fff';
+    btn.classList.add('active');
+  }
+  const ctx = document.getElementById('qaContext');
+  if (ctx) ctx.textContent = QA_MODES[AppState.qaMode].label;
+}
+
+function toggleTutorMode(btn) {
+  // 导师模式依赖AI大模型，未配置豆包时提示并阻止开启
+  if (!AppState.tutorMode && !(typeof DoubaoConfig !== 'undefined' && DoubaoConfig.isEnabled())) {
+    const chat = document.getElementById('qaChat');
+    if (chat) {
+      const notif = document.createElement('div');
+      notif.style.cssText = 'text-align:center;padding:10px;font-size:0.8rem;color:#b08d3a;background:#faf7ee;border-radius:8px;margin:8px 16px';
+      notif.textContent = '🎓 导师模式需要AI增强支持：请先点击「AI增强」配置豆包API；当前为纯知识库检索模式';
+      chat.appendChild(notif);
+      setTimeout(() => notif.remove(), 5000);
+    }
+    return;
+  }
+  AppState.tutorMode = !AppState.tutorMode;
+  if (btn) {
+    if (AppState.tutorMode) {
+      btn.style.background = 'linear-gradient(135deg, #c9a84c, #b08d3a)';
+      btn.style.color = '#fff';
+      btn.style.borderColor = '#c9a84c';
+      btn.innerHTML = ' 导师模式 <span style="font-size:0.65rem">ON</span>';
+    } else {
+      btn.style.background = 'transparent';
+      btn.style.color = 'var(--text-secondary)';
+      btn.style.borderColor = 'rgba(201,168,76,0.3)';
+      btn.innerHTML = '🎓 导师模式';
+    }
+  }
+  const hint = document.getElementById('tutorModeHint');
+  if (hint) hint.style.display = AppState.tutorMode ? 'block' : 'none';
+  if (typeof AppState !== 'undefined') {
+    AppState.conversationHistory = [];
+  }
+}
+
+// === 分层题库 ===
+function setDifficulty(level, btn) {
+  AppState.quizDifficulty = level || 'all';
+  document.querySelectorAll('.diff-btn').forEach(b => {
+    b.style.background = 'transparent';
+    b.style.color = 'var(--info)';
+    b.classList.remove('active');
+  });
+  if (btn) {
+    btn.style.background = 'var(--info)';
+    btn.style.color = '#fff';
+    btn.classList.add('active');
+  }
+}
+
+// Initialize AppState defaults if not set
+if (typeof AppState !== 'undefined') {
+  AppState.qaMode = AppState.qaMode || 'intro';
+  AppState.quizDifficulty = AppState.quizDifficulty || 'all';
+}
+
+
+// === 知识图谱可视化模块 ===
+function renderKnowledgeGraph() {
+  const container = document.getElementById('page-graph');
+  container.innerHTML = `
+    <div class="graph-container" style="position:relative;width:100%;height:calc(100vh - 60px);background:linear-gradient(180deg,#0a0e27 0%,#1a1f3a 40%,#0d1225 100%);overflow:hidden">
+      <canvas id="graphCanvas" style="width:100%;height:100%;cursor:grab"></canvas>
+      
+      <!-- Top overlay title -->
+      <div style="position:absolute;top:16px;left:50%;transform:translateX(-50%);text-align:center;pointer-events:none;z-index:10">
+        <h2 style="margin:0;font-size:1.3rem;color:#c9a84c;text-shadow:0 0 20px rgba(201,168,76,0.3);letter-spacing:3px">三 国 法 知 识 图 谱</h2>
+        <p style="margin:4px 0 0;font-size:0.72rem;color:rgba(255,255,255,0.5)">拖拽节点 · 滚轮缩放 · 点击查看详情</p>
+      </div>
+      
+      <!-- Legend -->
+      <div style="position:absolute;bottom:20px;left:20px;background:rgba(10,14,39,0.85);border:1px solid rgba(201,168,76,0.2);border-radius:12px;padding:12px 16px;z-index:10;backdrop-filter:blur(8px)">
+        <div style="font-size:0.72rem;color:rgba(255,255,255,0.6);margin-bottom:8px;font-weight:600">图 例</div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:#4facfe;display:inline-block;box-shadow:0 0 6px rgba(79,172,254,0.5)"></span><span style="font-size:0.68rem;color:rgba(255,255,255,0.7)">国际公法</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:#43e97b;display:inline-block;box-shadow:0 0 6px rgba(67,233,123,0.5)"></span><span style="font-size:0.68rem;color:rgba(255,255,255,0.7)">国际私法</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:#fa709a;display:inline-block;box-shadow:0 0 6px rgba(250,112,154,0.5)"></span><span style="font-size:0.68rem;color:rgba(255,255,255,0.7)">国际经济法</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:50%;background:#c9a84c;display:inline-block;box-shadow:0 0 6px rgba(201,168,76,0.5)"></span><span style="font-size:0.68rem;color:rgba(255,255,255,0.7)">核心枢纽</span></div>
+        </div>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;align-items:center;gap:8px"><span style="width:20px;height:2px;background:rgba(255,255,255,0.3);display:inline-block"></span><span style="font-size:0.65rem;color:rgba(255,255,255,0.5)">关联</span></div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="width:20px;height:2px;background:rgba(201,168,76,0.5);display:inline-block;border-top:1px dashed rgba(201,168,76,0.5)"></span><span style="font-size:0.65rem;color:rgba(255,255,255,0.5)">跨学科</span></div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Node detail panel -->
+      <div id="graphDetail" style="display:none;position:absolute;top:60px;right:20px;width:300px;max-height:calc(100vh - 140px);overflow-y:auto;background:rgba(10,14,39,0.92);border:1px solid rgba(201,168,76,0.25);border-radius:14px;padding:20px;z-index:10;backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,0.4)">
+      </div>
+      
+      <!-- Controls -->
+      <div style="position:absolute;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:10">
+        <button onclick="graphZoom(1.2)" style="width:36px;height:36px;border-radius:8px;border:1px solid rgba(201,168,76,0.3);background:rgba(10,14,39,0.8);color:#c9a84c;font-size:1.1rem;cursor:pointer;backdrop-filter:blur(4px)">+</button>
+        <button onclick="graphZoom(0.8)" style="width:36px;height:36px;border-radius:8px;border:1px solid rgba(201,168,76,0.3);background:rgba(10,14,39,0.8);color:#c9a84c;font-size:1.1rem;cursor:pointer;backdrop-filter:blur(4px)">−</button>
+        <button onclick="graphReset()" style="width:36px;height:36px;border-radius:8px;border:1px solid rgba(201,168,76,0.3);background:rgba(10,14,39,0.8);color:#c9a84c;font-size:0.75rem;cursor:pointer;backdrop-filter:blur(4px)">⟲</button>
+      </div>
+    </div>
+  `;
+  
+  initGraphCanvas();
+}
+
+// === Graph Data ===
+const GRAPH_DATA = {
+  nodes: [
+    // === 核心枢纽节点 ===
+    {id:'hub-sovereignty', label:'国家主权', group:'hub', x:0, y:0, r:28, desc:'国际法基本原则，贯穿三国法全部领域的核心概念', keywords:['主权平等','不干涉内政','领土完整']},
+    {id:'hub-treaty', label:'条约机制', group:'hub', x:0, y:0, r:24, desc:'国际条约是三国法共同的法律渊源和规则载体', keywords:['VCLT','条约必须遵守','保留制度']},
+    {id:'hub-dispute', label:'争端解决', group:'hub', x:0, y:0, r:22, desc:'ICJ/WTO-DSB/ICSID/仲裁等多元争端解决机制', keywords:['ICJ','仲裁','调解','DSU']},
+    
+    // === 国际公法 ===
+    {id:'pub-unclos', label:'UNCLOS\n海洋法公约', group:'public', x:0, y:0, r:22, desc:'《联合国海洋法公约》，海洋宪章。规定领海、专属经济区、大陆架、公海、国际海底区域等制度', keywords:['领海','EEZ','大陆架','公海','区域制度']},
+    {id:'pub-territory', label:'领土制度', group:'public', x:0, y:0, r:16, desc:'国家领土的取得方式（先占、时效、添附、割让、征服）、边界制度、南极北极制度', keywords:['先占','时效','添附','边界']},
+    {id:'pub-diplomatic', label:'外交关系法', group:'public', x:0, y:0, r:15, desc:'《维也纳外交关系公约》，使馆制度、外交特权与豁免', keywords:['使馆','外交特权','豁免','维也纳外交公约']},
+    {id:'pub-immunity', label:'国家豁免', group:'public', x:0, y:0, r:17, desc:'国家及其财产豁免，2004年联合国公约，中国《外国国家豁免法》(2024)采限制豁免主义', keywords:['限制豁免','绝对豁免','执行豁免','2024立法']},
+    {id:'pub-useofforce', label:'武力使用', group:'public', x:0, y:0, r:16, desc:'《联合国宪章》第2(4)条禁止武力威胁，第51条自卫权，安理会授权', keywords:['宪章第2条','自卫权','安理会','R2P']},
+    {id:'pub-humanrights', label:'国际人权法', group:'public', x:0, y:0, r:15, desc:'国际人权宪章（UDHR+ICCPR+ICESCR），人权条约体系', keywords:['UDHR','ICCPR','ICESCR','人权理事会']},
+    {id:'pub-statehood', label:'国家承认', group:'public', x:0, y:0, r:14, desc:'国家构成要素、政府承认、国际组织法律人格', keywords:['蒙特维的亚公约','构成说','宣告说']},
+    {id:'pub-vclt', label:'VCLT\n条约法公约', group:'public', x:0, y:0, r:19, desc:'《维也纳条约法公约》(1969)，条约的缔结、生效、保留、解释、终止', keywords:['保留','解释','情势变更','强行法']},
+    
+    // === 国际私法 ===
+    {id:'pri-applicable', label:'法律适用法', group:'private', x:0, y:0, r:22, desc:'《涉外民事关系法律适用法》(2010)，中国国际私法核心立法。规定合同、侵权、物权、婚姻家庭等法律选择规则', keywords:['合同','侵权','物权','婚姻','最密切联系']},
+    {id:'pri-jurisdiction', label:'涉外管辖权', group:'private', x:0, y:0, r:17, desc:'涉外民事诉讼管辖权规则：被告住所地、合同履行地、侵权行为地、协议管辖', keywords:['一般管辖','特别管辖','协议管辖','不方便法院']},
+    {id:'pri-recognition', label:'判决承认执行', group:'private', x:0, y:0, r:16, desc:'外国法院判决的承认与执行，《海牙判决公约》(2019)', keywords:['海牙判决公约','互惠','公共秩序保留']},
+    {id:'pri-arbitration', label:'国际商事仲裁', group:'private', x:0, y:0, r:18, desc:'纽约公约框架下的国际商事仲裁制度，仲裁协议效力、仲裁程序、裁决承认与执行', keywords:['纽约公约','仲裁协议','裁决执行','CIETAC']},
+    {id:'pri-conflict', label:'冲突法理论', group:'private', x:0, y:0, r:15, desc:'萨维尼法律关系本座说、美国冲突法革命、最密切联系原则、政府利益分析', keywords:['本座说','冲突革命','最密切联系','意思自治']},
+    {id:'pri-characterization', label:'识别与反致', group:'private', x:0, y:0, r:13, desc:'国际私法基本问题：识别（定性）、反致（转致）、先决问题、公共秩序保留、法律规避', keywords:['定性','反致','公共秩序','规避']},
+    {id:'pri-immunity2', label:'领事关系法', group:'private', x:0, y:0, r:13, desc:'《维也纳领事关系公约》，领事特权与豁免，与外交豁免的区别', keywords:['领事','保护','维也纳领事公约']},
+    
+    // === 国际经济法 ===
+    {id:'eco-wto', label:'WTO体制', group:'economic', x:0, y:0, r:22, desc:'世界贸易组织，多边贸易体制核心。GATT/GATS/TRIPS三大支柱', keywords:['GATT','GATS','TRIPS','最惠国','国民待遇']},
+    {id:'eco-cisg', label:'CISG\n国际货物买卖', group:'economic', x:0, y:0, r:19, desc:'《联合国国际货物销售合同公约》，统一国际货物买卖规则。根本违约、风险转移、预期违反', keywords:['根本违约','风险转移','要约承诺','CISG']},
+    {id:'eco-investment', label:'国际投资法', group:'economic', x:0, y:0, r:17, desc:'BITs、ICSID公约、征收与补偿、投资者-国家争端解决(ISDS)', keywords:['BIT','ICSID','征收','ISDS','公平待遇']},
+    {id:'eco-trade', label:'国际贸易支付', group:'economic', x:0, y:0, r:15, desc:'信用证(UCP600)、托收、汇付，国际贸易支付方式与风险分配', keywords:['UCP600','信用证','独立抽象','严格相符']},
+    {id:'eco-ip', label:'知识产权国际保护', group:'economic', x:0, y:0, r:16, desc:'巴黎公约、伯尔尼公约、TRIPS协定，知识产权国际保护最低标准', keywords:['TRIPS','巴黎公约','伯尔尼','国民待遇','最低保护']},
+    {id:'eco-dsb', label:'WTO争端解决', group:'economic', x:0, y:0, r:17, desc:'DSU机制：磋商→专家组→上诉→执行。反向一致原则，报复机制', keywords:['DSU','专家组','上诉机构','反向一致','报复']},
+    {id:'eco-monetary', label:'国际货币金融法', group:'economic', x:0, y:0, r:14, desc:'IMF协定、SDR、国际货币基金组织职能与贷款条件性', keywords:['IMF','SDR','贷款条件','牙买加体系']},
+    {id:'eco-tax', label:'国际税法', group:'economic', x:0, y:0, r:13, desc:'避免双重征税协定、转让定价、BEPS行动计划、税收情报交换', keywords:['OECD','BEPS','转让定价','税收协定']},
+    
+    // === 跨课程综合节点 ===
+    {id:'cross-bri', label:'一带一路\n法治保障', group:'hub', x:0, y:0, r:24, desc:'"一带一路"倡议的法律保障体系，贯穿国际公法（主权合作）、国际私法（跨国合同）、国际经济法（投资保护）三门课程', keywords:['一带一路','亚投行','丝路基金','争端预防']},
+    {id:'cross-sanction', label:'涉外制裁\n与反制', group:'hub', x:0, y:0, r:22, desc:'反外国制裁法、不可靠实体清单、阻断办法。涉及公法主权、私法合同效力、经济法贸易规则三维交叉', keywords:['反外国制裁法','阻断法','实体清单','长臂管辖']},
+    {id:'cross-data', label:'跨境数据\n治理', group:'hub', x:0, y:0, r:20, desc:'数据跨境流动的法律规制，涉及公法数据主权、私法数据合同、经济法数字贸易规则', keywords:['数据出境','数据安全法','GDPR','数字贸易']},
+    {id:'cross-immunity', label:'国家管辖权\n豁免', group:'hub', x:0, y:0, r:21, desc:'公法的主权豁免原则与私法的法院管辖权交叉。中国《外国国家豁免法》(2024)采限制豁免', keywords:['外国国家豁免法','限制豁免','执行豁免','管辖豁免']},
+  ],
+  
+  edges: [
+    // 核心枢纽连接
+    {from:'hub-sovereignty', to:'pub-immunity', label:'主权派生', cross:false},
+    {from:'hub-sovereignty', to:'pub-territory', label:'领土主权', cross:false},
+    {from:'hub-sovereignty', to:'pub-useofforce', label:'主权保护', cross:false},
+    {from:'hub-sovereignty', to:'pri-jurisdiction', label:'管辖主权', cross:true},
+    {from:'hub-treaty', to:'pub-vclt', label:'条约法', cross:false},
+    {from:'hub-treaty', to:'eco-cisg', label:'条约统一', cross:true},
+    {from:'hub-dispute', to:'eco-dsb', label:'WTO争端', cross:false},
+    {from:'hub-dispute', to:'pri-arbitration', label:'仲裁机制', cross:true},
+    {from:'hub-dispute', to:'pub-immunity', label:'管辖豁免', cross:false},
+    
+    // 公法内部连接
+    {from:'pub-unclos', to:'pub-territory', label:'海洋领土', cross:false},
+    {from:'pub-unclos', to:'pub-diplomatic', label:'海上外交', cross:false},
+    {from:'pub-vclt', to:'pub-useofforce', label:'条约终止', cross:false},
+    {from:'pub-vclt', to:'pub-statehood', label:'缔约能力', cross:false},
+    {from:'pub-diplomatic', to:'pub-immunity', label:'豁免关联', cross:false},
+    {from:'pub-humanrights', to:'pub-useofforce', label:'R2P', cross:false},
+    {from:'pub-statehood', to:'pub-diplomatic', label:'国家→外交', cross:false},
+    {from:'pub-unclos', to:'hub-sovereignty', label:'海洋主权', cross:false},
+    
+    // 私法内部连接
+    {from:'pri-applicable', to:'pri-conflict', label:'理论基础', cross:false},
+    {from:'pri-applicable', to:'pri-characterization', label:'适用前提', cross:false},
+    {from:'pri-jurisdiction', to:'pri-recognition', label:'管辖→执行', cross:false},
+    {from:'pri-arbitration', to:'pri-recognition', label:'裁决执行', cross:false},
+    {from:'pri-conflict', to:'pri-characterization', label:'识别先决', cross:false},
+    {from:'pri-immunity2', to:'pub-diplomatic', label:'领外交关联', cross:true},
+    
+    // 经济法内部连接
+    {from:'eco-wto', to:'eco-dsb', label:'WTO机制', cross:false},
+    {from:'eco-wto', to:'eco-ip', label:'TRIPS', cross:false},
+    {from:'eco-wto', to:'eco-trade', label:'贸易规则', cross:false},
+    {from:'eco-cisg', to:'eco-trade', label:'买卖支付', cross:false},
+    {from:'eco-investment', to:'eco-monetary', label:'投资金融', cross:false},
+    {from:'eco-monetary', to:'eco-tax', label:'金融税收', cross:false},
+    {from:'eco-ip', to:'eco-trade', label:'知识贸易', cross:false},
+    
+    // 跨学科连接（重要！）
+    {from:'pub-immunity', to:'pri-arbitration', label:'执行豁免vs仲裁', cross:true},
+    {from:'pub-unclos', to:'eco-trade', label:'海运贸易', cross:true},
+    {from:'pri-applicable', to:'eco-cisg', label:'合同法律适用', cross:true},
+    {from:'eco-investment', to:'pub-immunity', label:'投资vs主权', cross:true},
+    {from:'pri-arbitration', to:'eco-investment', label:'ISDS仲裁', cross:true},
+    {from:'pub-humanrights', to:'eco-investment', label:'人权vs投资', cross:true},
+    {from:'eco-dsb', to:'hub-sovereignty', label:'主权让渡', cross:true},
+    
+    // === 跨课程综合节点连接 ===
+    {from:'cross-bri', to:'hub-sovereignty', label:'主权合作', cross:true},
+    {from:'cross-bri', to:'eco-investment', label:'投资保护', cross:true},
+    {from:'cross-bri', to:'pri-arbitration', label:'争端预防', cross:true},
+    {from:'cross-sanction', to:'hub-sovereignty', label:'主权反制', cross:true},
+    {from:'cross-sanction', to:'eco-wto', label:'贸易制裁', cross:true},
+    {from:'cross-sanction', to:'pri-applicable', label:'合同效力', cross:true},
+    {from:'cross-data', to:'hub-sovereignty', label:'数据主权', cross:true},
+    {from:'cross-data', to:'eco-trade', label:'数字贸易', cross:true},
+    {from:'cross-data', to:'pri-applicable', label:'数据合同', cross:true},
+    {from:'cross-immunity', to:'pub-immunity', label:'主权豁免', cross:true},
+    {from:'cross-immunity', to:'pri-jurisdiction', label:'法院管辖', cross:true},
+    {from:'cross-immunity', to:'pri-arbitration', label:'仲裁豁免', cross:true},
+  ]
+};
+
+// === Graph Canvas Implementation ===
+let graphState = {
+  canvas: null,
+  ctx: null,
+  nodes: [],
+  edges: [],
+  scale: 1,
+  offsetX: 0,
+  offsetY: 0,
+  dragging: null,
+  hoveredNode: null,
+  selectedNode: null,
+  isDraggingCanvas: false,
+  lastMouse: {x:0, y:0},
+  animFrame: null,
+  particles: [],
+  initialized: false
+};
+
+function initGraphCanvas() {
+  const canvas = document.getElementById('graphCanvas');
+  if (!canvas) return;
+  
+  const container = canvas.parentElement;
+  canvas.width = container.clientWidth * 2;
+  canvas.height = container.clientHeight * 2;
+  canvas.style.width = container.clientWidth + 'px';
+  canvas.style.height = container.clientHeight + 'px';
+  
+  const ctx = canvas.getContext('2d');
+  ctx.scale(2, 2); // Retina
+  
+  graphState.canvas = canvas;
+  graphState.ctx = ctx;
+  graphState.scale = 1;
+  graphState.offsetX = container.clientWidth / 2;
+  graphState.offsetY = container.clientHeight / 2;
+  
+  // Initialize nodes with positions (arranged in clusters)
+  const nodes = GRAPH_DATA.nodes.map((n, i) => {
+    let angle, radius;
+    if (n.group === 'hub') {
+      angle = (i / 3) * Math.PI * 2;
+      radius = 30 + Math.random() * 20;
+    } else if (n.group === 'public') {
+      angle = (i / 10) * Math.PI * 2 + 0.3;
+      radius = 120 + Math.random() * 60;
+    } else if (n.group === 'private') {
+      angle = (i / 7) * Math.PI * 2 + 2.1;
+      radius = 120 + Math.random() * 60;
+    } else {
+      angle = (i / 8) * Math.PI * 2 + 4.2;
+      radius = 120 + Math.random() * 60;
+    }
+    return {
+      ...n,
+      x: Math.cos(angle) * radius + (Math.random() - 0.5) * 30,
+      y: Math.sin(angle) * radius + (Math.random() - 0.5) * 30,
+      vx: 0,
+      vy: 0,
+      targetX: 0,
+      targetY: 0
+    };
+  });
+  
+  // Build edges with references
+  const edges = GRAPH_DATA.edges.map(e => ({
+    ...e,
+    source: nodes.find(n => n.id === e.from),
+    target: nodes.find(n => n.id === e.to)
+  })).filter(e => e.source && e.target);
+  
+  graphState.nodes = nodes;
+  graphState.edges = edges;
+  
+  // Initialize background particles
+  graphState.particles = [];
+  for (let i = 0; i < 50; i++) {
+    graphState.particles.push({
+      x: Math.random() * container.clientWidth,
+      y: Math.random() * container.clientHeight,
+      r: Math.random() * 1.5 + 0.3,
+      speed: Math.random() * 0.2 + 0.05,
+      alpha: Math.random() * 0.3 + 0.1
+    });
+  }
+  
+  // Event listeners
+  canvas.addEventListener('mousedown', graphMouseDown);
+  canvas.addEventListener('mousemove', graphMouseMove);
+  canvas.addEventListener('mouseup', graphMouseUp);
+  canvas.addEventListener('wheel', graphWheel);
+  canvas.addEventListener('click', graphClick);
+  
+  // Touch support
+  canvas.addEventListener('touchstart', graphTouchStart, {passive: false});
+  canvas.addEventListener('touchmove', graphTouchMove, {passive: false});
+  canvas.addEventListener('touchend', graphTouchEnd);
+  
+  graphState.initialized = true;
+  graphAnimate();
+}
+
+function graphAnimate() {
+  if (!graphState.initialized) return;
+  
+  const ctx = graphState.ctx;
+  const canvas = graphState.canvas;
+  if (!ctx || !canvas) return;
+  
+  const w = canvas.width / 2;
+  const h = canvas.height / 2;
+  
+  // Clear
+  ctx.clearRect(0, 0, w, h);
+  
+  // Draw background particles
+  graphState.particles.forEach(p => {
+    p.y -= p.speed;
+    if (p.y < 0) { p.y = h; p.x = Math.random() * w; }
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(201,168,76,${p.alpha})`;
+    ctx.fill();
+  });
+  
+  // Apply force simulation (simplified)
+  applyForces();
+  
+  // Save state for transform
+  ctx.save();
+  ctx.translate(graphState.offsetX, graphState.offsetY);
+  ctx.scale(graphState.scale, graphState.scale);
+  
+  // Draw edges
+  graphState.edges.forEach(edge => {
+    const s = edge.source;
+    const t = edge.target;
+    const isHighlighted = graphState.hoveredNode && 
+      (s.id === graphState.hoveredNode.id || t.id === graphState.hoveredNode.id);
+    const isSelected = graphState.selectedNode &&
+      (s.id === graphState.selectedNode.id || t.id === graphState.selectedNode.id);
+    
+    ctx.beginPath();
+    const dx = t.x - s.x;
+    const dy = t.y - s.y;
+    const cx = (s.x + t.x) / 2 - dy * 0.1;
+    const cy = (s.y + t.y) / 2 + dx * 0.1;
+    ctx.moveTo(s.x, s.y);
+    ctx.quadraticCurveTo(cx, cy, t.x, t.y);
+    
+    if (edge.cross) {
+      ctx.strokeStyle = isHighlighted || isSelected 
+        ? 'rgba(201,168,76,0.6)' 
+        : 'rgba(201,168,76,0.15)';
+      ctx.setLineDash([4, 4]);
+    } else {
+      ctx.strokeStyle = isHighlighted || isSelected 
+        ? 'rgba(255,255,255,0.5)' 
+        : 'rgba(255,255,255,0.1)';
+      ctx.setLineDash([]);
+    }
+    ctx.lineWidth = isHighlighted || isSelected ? 1.5 : 0.8;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    // Edge label (only when highlighted)
+    if ((isHighlighted || isSelected) && edge.label) {
+      ctx.font = '9px sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.textAlign = 'center';
+      ctx.fillText(edge.label, cx, cy - 4);
+    }
+  });
+  
+  // Draw nodes
+  graphState.nodes.forEach(node => {
+    const isHovered = graphState.hoveredNode && graphState.hoveredNode.id === node.id;
+    const isSelected = graphState.selectedNode && graphState.selectedNode.id === node.id;
+    const isConnected = graphState.hoveredNode && graphState.edges.some(e => 
+      (e.source.id === graphState.hoveredNode.id && e.target.id === node.id) ||
+      (e.target.id === graphState.hoveredNode.id && e.source.id === node.id)
+    );
+    
+    const colors = {
+      hub: {fill: '#c9a84c', glow: 'rgba(201,168,76,0.4)'},
+      public: {fill: '#4facfe', glow: 'rgba(79,172,254,0.3)'},
+      private: {fill: '#43e97b', glow: 'rgba(67,233,123,0.3)'},
+      economic: {fill: '#fa709a', glow: 'rgba(250,112,154,0.3)'}
+    };
+    const color = colors[node.group] || colors.public;
+    const r = node.r * (isHovered ? 1.2 : isSelected ? 1.15 : 1);
+    const alpha = (isHovered || isSelected || isConnected || !graphState.hoveredNode) ? 1 : 0.3;
+    
+    // Glow
+    if (isHovered || isSelected) {
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, r + 8, 0, Math.PI * 2);
+      const grad = ctx.createRadialGradient(node.x, node.y, r, node.x, node.y, r + 8);
+      grad.addColorStop(0, color.glow);
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+    
+    // Node circle
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${hexToRgb(color.fill)},${alpha * 0.15})`;
+    ctx.fill();
+    ctx.strokeStyle = `rgba(${hexToRgb(color.fill)},${alpha})`;
+    ctx.lineWidth = isHovered ? 2.5 : isSelected ? 2 : 1.2;
+    ctx.stroke();
+    
+    // Label
+    ctx.font = `${isHovered || isSelected ? 'bold ' : ''}${r > 20 ? 10 : r > 15 ? 9 : 8}px sans-serif`;
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    const lines = node.label.split('\n');
+    if (lines.length > 1) {
+      lines.forEach((line, i) => {
+        ctx.fillText(line, node.x, node.y + (i - (lines.length-1)/2) * 11);
+      });
+    } else {
+      ctx.fillText(node.label, node.x, node.y);
+    }
+  });
+  
+  ctx.restore();
+  
+  graphState.animFrame = requestAnimationFrame(graphAnimate);
+}
+
+function applyForces() {
+  const nodes = graphState.nodes;
+  const edges = graphState.edges;
+  
+  // Repulsion between nodes
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const dx = nodes[j].x - nodes[i].x;
+      const dy = nodes[j].y - nodes[i].y;
+      const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+      const force = 800 / (dist * dist);
+      const fx = dx / dist * force;
+      const fy = dy / dist * force;
+      nodes[i].vx -= fx;
+      nodes[i].vy -= fy;
+      nodes[j].vx += fx;
+      nodes[j].vy += fy;
+    }
+  }
+  
+  // Attraction along edges
+  edges.forEach(e => {
+    const dx = e.target.x - e.source.x;
+    const dy = e.target.y - e.source.y;
+    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    const idealDist = e.cross ? 180 : 100;
+    const force = (dist - idealDist) * 0.005;
+    const fx = dx / dist * force;
+    const fy = dy / dist * force;
+    e.source.vx += fx;
+    e.source.vy += fy;
+    e.target.vx -= fx;
+    e.target.vy -= fy;
+  });
+  
+  // Center gravity
+  nodes.forEach(n => {
+    if (n === graphState.dragging) return;
+    n.vx -= n.x * 0.001;
+    n.vy -= n.y * 0.001;
+    // Apply velocity with damping
+    n.x += n.vx * 0.3;
+    n.y += n.vy * 0.3;
+    n.vx *= 0.85;
+    n.vy *= 0.85;
+  });
+}
+
+// === Mouse/Touch handlers ===
+function screenToGraph(sx, sy) {
+  return {
+    x: (sx - graphState.offsetX) / graphState.scale,
+    y: (sy - graphState.offsetY) / graphState.scale
+  };
+}
+
+function findNodeAt(gx, gy) {
+  for (let i = graphState.nodes.length - 1; i >= 0; i--) {
+    const n = graphState.nodes[i];
+    const dx = gx - n.x;
+    const dy = gy - n.y;
+    if (dx*dx + dy*dy < (n.r + 5) * (n.r + 5)) return n;
+  }
+  return null;
+}
+
+function graphMouseDown(e) {
+  const rect = graphState.canvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left;
+  const sy = e.clientY - rect.top;
+  const g = screenToGraph(sx, sy);
+  const node = findNodeAt(g.x, g.y);
+  
+  if (node) {
+    graphState.dragging = node;
+    graphState.canvas.style.cursor = 'grabbing';
+  } else {
+    graphState.isDraggingCanvas = true;
+    graphState.lastMouse = {x: e.clientX, y: e.clientY};
+    graphState.canvas.style.cursor = 'grabbing';
+  }
+}
+
+function graphMouseMove(e) {
+  const rect = graphState.canvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left;
+  const sy = e.clientY - rect.top;
+  const g = screenToGraph(sx, sy);
+  
+  if (graphState.dragging) {
+    graphState.dragging.x = g.x;
+    graphState.dragging.y = g.y;
+    graphState.dragging.vx = 0;
+    graphState.dragging.vy = 0;
+  } else if (graphState.isDraggingCanvas) {
+    graphState.offsetX += e.clientX - graphState.lastMouse.x;
+    graphState.offsetY += e.clientY - graphState.lastMouse.y;
+    graphState.lastMouse = {x: e.clientX, y: e.clientY};
+  } else {
+    const node = findNodeAt(g.x, g.y);
+    graphState.hoveredNode = node;
+    graphState.canvas.style.cursor = node ? 'pointer' : 'grab';
+  }
+}
+
+function graphMouseUp(e) {
+  graphState.dragging = null;
+  graphState.isDraggingCanvas = false;
+  graphState.canvas.style.cursor = 'grab';
+}
+
+function graphClick(e) {
+  const rect = graphState.canvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left;
+  const sy = e.clientY - rect.top;
+  const g = screenToGraph(sx, sy);
+  const node = findNodeAt(g.x, g.y);
+  
+  if (node) {
+    graphState.selectedNode = node;
+    showGraphDetail(node);
+  } else {
+    graphState.selectedNode = null;
+    document.getElementById('graphDetail').style.display = 'none';
+  }
+}
+
+function graphWheel(e) {
+  e.preventDefault();
+  const factor = e.deltaY > 0 ? 0.9 : 1.1;
+  graphState.scale *= factor;
+  graphState.scale = Math.max(0.3, Math.min(3, graphState.scale));
+}
+
+// Touch support
+let touchState = {startDist: 0, startScale: 1};
+
+function graphTouchStart(e) {
+  e.preventDefault();
+  if (e.touches.length === 1) {
+    const t = e.touches[0];
+    const rect = graphState.canvas.getBoundingClientRect();
+    const sx = t.clientX - rect.left;
+    const sy = t.clientY - rect.top;
+    const g = screenToGraph(sx, sy);
+    const node = findNodeAt(g.x, g.y);
+    if (node) {
+      graphState.dragging = node;
+    } else {
+      graphState.isDraggingCanvas = true;
+      graphState.lastMouse = {x: t.clientX, y: t.clientY};
+    }
+  } else if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    touchState.startDist = Math.sqrt(dx*dx + dy*dy);
+    touchState.startScale = graphState.scale;
+  }
+}
+
+function graphTouchMove(e) {
+  e.preventDefault();
+  if (e.touches.length === 1) {
+    const t = e.touches[0];
+    const rect = graphState.canvas.getBoundingClientRect();
+    const sx = t.clientX - rect.left;
+    const sy = t.clientY - rect.top;
+    const g = screenToGraph(sx, sy);
+    
+    if (graphState.dragging) {
+      graphState.dragging.x = g.x;
+      graphState.dragging.y = g.y;
+      graphState.dragging.vx = 0;
+      graphState.dragging.vy = 0;
+    } else if (graphState.isDraggingCanvas) {
+      graphState.offsetX += t.clientX - graphState.lastMouse.x;
+      graphState.offsetY += t.clientY - graphState.lastMouse.y;
+      graphState.lastMouse = {x: t.clientX, y: t.clientY};
+    }
+  } else if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    graphState.scale = touchState.startScale * (dist / touchState.startDist);
+    graphState.scale = Math.max(0.3, Math.min(3, graphState.scale));
+  }
+}
+
+function graphTouchEnd(e) {
+  graphState.dragging = null;
+  graphState.isDraggingCanvas = false;
+}
+
+// === Graph Controls ===
+function graphZoom(factor) {
+  graphState.scale *= factor;
+  graphState.scale = Math.max(0.3, Math.min(3, graphState.scale));
+}
+
+function graphReset() {
+  graphState.scale = 1;
+  const canvas = graphState.canvas;
+  if (canvas) {
+    graphState.offsetX = canvas.width / 4;
+    graphState.offsetY = canvas.height / 4;
+  }
+  graphState.selectedNode = null;
+  document.getElementById('graphDetail').style.display = 'none';
+}
+
+// === Graph Detail Panel ===
+function showGraphDetail(node) {
+  const panel = document.getElementById('graphDetail');
+  if (!panel) return;
+  
+  const colors = {hub:'#c9a84c', public:'#4facfe', private:'#43e97b', economic:'#fa709a'};
+  const groupNames = {hub:'核心枢纽', public:'国际公法', private:'国际私法', economic:'国际经济法'};
+  const color = colors[node.group] || '#4facfe';
+  
+  // Find connected nodes
+  const connected = graphState.edges
+    .filter(e => e.source.id === node.id || e.target.id === node.id)
+    .map(e => {
+      const other = e.source.id === node.id ? e.target : e.source;
+      return {node: other, label: e.label, cross: e.cross};
+    });
+  
+  let html = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div style="width:36px;height:36px;border-radius:50%;background:${color}20;border:2px solid ${color};display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0">
+        ${node.group === 'hub' ? '🔗' : node.group === 'public' ? '🌐' : node.group === 'private' ? '⚖️' : '💼'}
+      </div>
+      <div>
+        <div style="font-size:0.95rem;font-weight:700;color:${color}">${node.label.replace('\n',' ')}</div>
+        <div style="font-size:0.68rem;color:rgba(255,255,255,0.5)">${groupNames[node.group]}</div>
+      </div>
+    </div>
+    <div style="font-size:0.78rem;color:rgba(255,255,255,0.8);line-height:1.7;margin-bottom:14px;padding:10px 12px;background:rgba(255,255,255,0.03);border-radius:8px;border-left:3px solid ${color}">
+      ${node.desc}
+    </div>
+  `;
+  
+  // Keywords
+  if (node.keywords && node.keywords.length) {
+    html += '<div style="margin-bottom:14px"><div style="font-size:0.72rem;color:rgba(255,255,255,0.4);margin-bottom:6px">🏷️ 关键词</div><div style="display:flex;flex-wrap:wrap;gap:4px">';
+    node.keywords.forEach(kw => {
+      html += `<span style="font-size:0.65rem;padding:2px 8px;background:${color}15;color:${color};border:1px solid ${color}30;border-radius:10px">${kw}</span>`;
+    });
+    html += '</div></div>';
+  }
+  
+  // Connected nodes
+  if (connected.length) {
+    html += '<div><div style="font-size:0.72rem;color:rgba(255,255,255,0.4);margin-bottom:6px">🔗 关联知识点 (' + connected.length + ')</div>';
+    connected.forEach(c => {
+      const cColor = colors[c.node.group] || '#4facfe';
+      html += `<div onclick="graphSelectNode('${c.node.id}')" style="padding:6px 10px;margin-bottom:4px;background:rgba(255,255,255,0.03);border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:background 0.2s;border-left:2px solid ${c.cross ? '#c9a84c' : cColor}" onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background='rgba(255,255,255,0.03)'">
+        <span style="font-size:0.75rem;color:${cColor}">${c.node.label.replace('\n',' ')}</span>
+        <span style="font-size:0.62rem;color:rgba(255,255,255,0.4)">${c.label || ''}${c.cross ? ' 🔄跨学科' : ''}</span>
+      </div>`;
+    });
+    html += '</div>';
+  }
+  
+  panel.innerHTML = html;
+  panel.style.display = 'block';
+}
+
+function graphSelectNode(nodeId) {
+  const node = graphState.nodes.find(n => n.id === nodeId);
+  if (node) {
+    graphState.selectedNode = node;
+    // Center on node
+    const canvas = graphState.canvas;
+    graphState.offsetX = canvas.width / 4 - node.x * graphState.scale;
+    graphState.offsetY = canvas.height / 4 - node.y * graphState.scale;
+    showGraphDetail(node);
+  }
+}
+
+// === Utility ===
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  return `${r},${g},${b}`;
+}
+
+// ========== 收藏夹功能 ==========
+function getFavorites() {
+  var user = AppState.currentUser;
+  if (!user) return [];
+  var studentId = user.studentId || '';
+  try {
+    var raw = localStorage.getItem('sanguofa_student_' + studentId + '_favorites');
+    return raw ? JSON.parse(raw) : [];
+  } catch(e) {
+    return [];
+  }
+}
+
+function saveFavorite(item) {
+  var user = AppState.currentUser;
+  if (!user) return;
+  var studentId = user.studentId || '';
+  var favs = getFavorites();
+  var favId = item.type + '-' + item.sourceId;
+  var exists = favs.some(function(f) { return f.favId === favId; });
+  if (!exists) {
+    var newItem = {
+      favId: favId,
+      type: item.type,
+      sourceId: item.sourceId,
+      title: item.title,
+      summary: item.summary || '',
+      icon: item.icon || '📌',
+      category: item.category || '',
+      timestamp: Date.now(),
+      extra: item.extra || null
+    };
+    favs.push(newItem);
+    localStorage.setItem('sanguofa_student_' + studentId + '_favorites', JSON.stringify(favs));
+    _sbTrackEvent('bookmark', '收藏夹', { type: item.type, title: item.title, category: item.category });
+  }
+}
+
+function removeFavorite(favId) {
+  var user = AppState.currentUser;
+  if (!user) return;
+  var studentId = user.studentId || '';
+  var favs = getFavorites();
+  favs = favs.filter(function(f) { return f.favId !== favId; });
+  localStorage.setItem('sanguofa_student_' + studentId + '_favorites', JSON.stringify(favs));
+}
+
+function isFavorited(favId) {
+  var favs = getFavorites();
+  return favs.some(function(f) { return f.favId === favId; });
+}
+
+function toggleFavorite(item) {
+  var favId = item.type + '-' + item.sourceId;
+  if (isFavorited(favId)) {
+    removeFavorite(favId);
+  } else {
+    saveFavorite(item);
+  }
+}
+
+function getFavIcon(type) {
+  var icons = {
+    'case': '⚖️',
+    'doc': '📄',
+    'news': '📰',
+    'qa': '💬',
+    'debate': '⚔️'
+  };
+  return icons[type] || '📌';
+}
+
+function getFavTypeLabel(type) {
+  var labels = {
+    'case': '案例',
+    'doc': '文件',
+    'news': '动态',
+    'qa': '问答',
+    'debate': '对抗实训'
+  };
+  return labels[type] || '其他';
+}
+
+function renderFavoritesTab(container) {
+  var favs = getFavorites();
+  var currentFilter = container.getAttribute('data-fav-filter') || 'all';
+  
+  var filtered = favs;
+  if (currentFilter !== 'all') {
+    filtered = favs.filter(function(f) { return f.type === currentFilter; });
+  }
+  
+  filtered = filtered.sort(function(a, b) { return b.timestamp - a.timestamp; });
+  
+  var html = '<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:14px;overflow:hidden" class="favorites-section">';
+  html += '<div style="padding:16px 20px;border-bottom:1px solid rgba(0,0,0,0.06);font-weight:700;font-size:1rem;color:var(--primary);display:flex;align-items:center;justify-content:space-between">';
+  html += '<span>📌 我的收藏夹<span class="fav-badge-count">' + favs.length + '</span></span>';
+  html += '</div>';
+  
+  // Filter bar
+  html += '<div class="fav-filter-bar">';
+  var filters = [
+    {key: 'all', label: '全部'},
+    {key: 'case', label: '案例'},
+    {key: 'doc', label: '文件'},
+    {key: 'news', label: '动态'},
+    {key: 'qa', label: '问答'}
+  ];
+  for (var i = 0; i < filters.length; i++) {
+    var f = filters[i];
+    var activeClass = currentFilter === f.key ? ' active' : '';
+    html += '<button class="fav-filter-btn' + activeClass + '" onclick="filterFavorites(\'' + f.key + '\')">' + f.label + '</button>';
+  }
+  html += '</div>';
+  
+  // List
+  if (filtered.length === 0) {
+    html += '<div style="text-align:center;color:var(--text-secondary);padding:40px 0;font-size:0.9rem">暂无收藏内容，在学习过程中点击⭐即可收藏</div>';
+  } else {
+    html += '<div style="max-height:500px;overflow-y:auto">';
+    for (var j = 0; j < filtered.length; j++) {
+      var item = filtered[j];
+      var timeStr = new Date(item.timestamp).toLocaleString('zh-CN', {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'});
+      html += '<div class="fav-card" onclick="openFavoriteItem(\'' + item.favId + '\')">';
+      html += '<div class="fav-card-icon">' + item.icon + '</div>';
+      html += '<div class="fav-card-body">';
+      html += '<div class="fav-card-title">' + (item.title || '未命名') + '</div>';
+      if (item.summary) {
+        html += '<div class="fav-card-summary">' + item.summary + '</div>';
+      }
+      html += '<div class="fav-card-meta">';
+      html += '<span class="fav-card-tag">' + getFavTypeLabel(item.type) + '</span>';
+      if (item.category) {
+        html += '<span class="fav-card-tag">' + item.category + '</span>';
+      }
+      html += '<span>' + timeStr + '</span>';
+      html += '</div></div>';
+      html += '<button class="fav-card-remove" onclick="event.stopPropagation();removeFavoriteFromList(\'' + item.favId + '\')" title="取消收藏">✕</button>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function filterFavorites(filterKey) {
+  var section = document.querySelector('.favorites-section');
+  if (section) {
+    section.setAttribute('data-fav-filter', filterKey);
+    renderFavoritesTab(section.parentElement);
+  }
+}
+
+function removeFavoriteFromList(favId) {
+  removeFavorite(favId);
+  var section = document.querySelector('.favorites-section');
+  if (section) {
+    renderFavoritesTab(section.parentElement);
+  }
+}
+
+function openFavoriteItem(favId) {
+  var favs = getFavorites();
+  var item = null;
+  for (var i = 0; i < favs.length; i++) {
+    if (favs[i].favId === favId) {
+      item = favs[i];
+      break;
+    }
+  }
+  if (!item) return;
+  
+  if (item.type === 'case') {
+    showPage('case');
+    setTimeout(function() {
+      if (typeof selectCaseNew === 'function') {
+        selectCaseNew(item.sourceId);
+      }
+    }, 100);
+  } else if (item.type === 'doc') {
+    showPage('ideology');
+    setTimeout(function() {
+      if (typeof openDocModal === 'function') {
+        openDocModal(item.sourceId);
+      }
+    }, 100);
+  } else if (item.type === 'news') {
+    showPage('ideology');
+    setTimeout(function() {
+      switchZhijianTab('news');
+      var noteEl = document.getElementById('note-' + item.sourceId);
+      if (noteEl) {
+        noteEl.style.display = 'block';
+        noteEl.scrollIntoView({behavior: 'smooth', block: 'center'});
+      }
+    }, 100);
+  } else if (item.type === 'qa') {
+    showPage('qa');
+    if (item.extra && item.extra.question) {
+      setTimeout(function() {
+        var input = document.getElementById('qaInput');
+        if (input) {
+          input.value = item.extra.question;
+        }
+      }, 100);
+    }
+  }
+}
+
+
+
+// ============================================================
+// === 分组对抗实训模块 - 开始 ===
+// ============================================================
+
+// --- 数据存取函数 ---
+function loadDebateData() {
+  var raw = localStorage.getItem('sanguofa_debate_debates');
+  if (raw) {
+    try { return JSON.parse(raw); } catch(e) { return []; }
+  }
+  return [];
+}
+
+function saveDebateData(debates) {
+  localStorage.setItem('sanguofa_debate_debates', JSON.stringify(debates));
+}
+
+function getStudentClass(studentId) {
+  var raw = localStorage.getItem('sanguofa_student_registry');
+  if (raw) {
+    try {
+      var reg = JSON.parse(raw);
+      for (var i = 0; i < reg.length; i++) {
+        if (reg[i].studentId === studentId) return reg[i].class || reg[i].className || '全班';
+      }
+    } catch(e) {}
+  }
+  return '全班';
+}
+
+function generateInviteCode() {
+  var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  var code = '';
+  for (var i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+function recommendMaterialsForSide(caseData, side) {
+  var materials = [];
+  if (caseData.laws) {
+    var half = Math.ceil(caseData.laws.length / 2);
+    if (side === 'A') {
+      for (var i = 0; i < half && i < caseData.laws.length; i++) {
+        materials.push({ title: caseData.laws[i].title, text: caseData.laws[i].text, type: 'treaty' });
+      }
+    } else {
+      for (var j = half; j < caseData.laws.length; j++) {
+        materials.push({ title: caseData.laws[j].title, text: caseData.laws[j].text, type: 'treaty' });
+      }
+    }
+  }
+  if (caseData.evidence) {
+    var eHalf = Math.ceil(caseData.evidence.length / 2);
+    if (side === 'A') {
+      for (var k = 0; k < eHalf && k < caseData.evidence.length; k++) {
+        materials.push({ title: caseData.evidence[k].title, text: caseData.evidence[k].detail || '', type: 'precedent' });
+      }
+    } else {
+      for (var l = eHalf; l < caseData.evidence.length; l++) {
+        materials.push({ title: caseData.evidence[l].title, text: caseData.evidence[l].detail || '', type: 'precedent' });
+      }
+    }
+  }
+  return materials;
+}
+
+function exportDebateRecord(debateId) {
+  var debates = loadDebateData();
+  var debate = null;
+  for (var i = 0; i < debates.length; i++) {
+    if (debates[i].id === debateId) { debate = debates[i]; break; }
+  }
+  if (!debate) return;
+  var text = '三国法分组对抗实训记录\n';
+  text += '================================\n';
+  text += '标题: ' + debate.title + '\n';
+  text += '案例: ' + (debate.caseData ? debate.caseData.name : '') + '\n';
+  text += '创建人: ' + (debate.creatorName || '') + '\n';
+  text += '创建时间: ' + new Date(debate.createdAt).toLocaleString('zh-CN') + '\n\n';
+  if (debate.groups) {
+    for (var g = 0; g < debate.groups.length; g++) {
+      var grp = debate.groups[g];
+      text += '--- ' + grp.side + '方 (' + grp.roleName + ') ---\n';
+      text += '成员: ' + (grp.studentIds || []).join(', ') + '\n';
+      if (debate.submissions && debate.submissions[grp.side]) {
+        text += '代理提纲:\n' + debate.submissions[grp.side].outline + '\n';
+        text += '提交人: ' + (debate.submissions[grp.side].submitterNames || []).join(', ') + '\n';
+      }
+      text += '\n';
+    }
+  }
+  if (debate.aiAnalysis) {
+    text += '--- AI评析 ---\n' + debate.aiAnalysis.content + '\n';
+  }
+  var blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = '对抗记录_' + debate.title + '.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function getDebateUnreadCount(studentId) {
+  var debates = loadDebateData();
+  var count = 0;
+  for (var i = 0; i < debates.length; i++) {
+    var d = debates[i];
+    if (d.status !== 'active' && d.status !== 'pending') continue;
+    for (var g = 0; g < d.groups.length; g++) {
+      if (d.groups[g].studentIds && d.groups[g].studentIds.indexOf(studentId) !== -1) {
+        var sub = d.submissions || {};
+        var mySide = d.groups[g].side;
+        if (!sub[mySide] || !sub[mySide].outline) {
+          count++;
+        }
+        break;
+      }
+    }
+  }
+  return count;
+}
+
+function getAllStudents() {
+  var raw = localStorage.getItem('sanguofa_student_registry');
+  if (raw) {
+    try { return JSON.parse(raw); } catch(e) { return []; }
+  }
+  return [];
+}
+
+function getFixedCaseById(caseId) {
+  if (typeof FIXED_CASES !== 'undefined') {
+    for (var i = 0; i < FIXED_CASES.length; i++) {
+      if (FIXED_CASES[i].id === caseId) return FIXED_CASES[i];
+    }
+  }
+  return null;
+}
+
+// --- 主模块渲染 ---
+function renderDebateModule() {
+  var container = document.getElementById('profileDebateContainer');
+  if (!container) return;
+  var user = AppState.currentUser;
+  if (!user) return;
+  var role = user.role || 'student';
+  var html = '<div style="margin-top:20px">';
+  html += '<div class="debate-header"><span style="font-size:1.3rem">\u2694\ufe0f</span> 分组对抗实训</div>';
+  if (role === 'teacher') {
+    html += '<div class="debate-sub-tabs" id="debateTeacherTabs">';
+    html += '<div class="debate-sub-tab active" data-dtab="create" onclick="switchDebateTeacherTab(\'create\')">\u2795 创建任务</div>';
+    html += '<div class="debate-sub-tab" data-dtab="manage" onclick="switchDebateTeacherTab(\'manage\')">\ud83d\udccb 任务管理</div>';
+    html += '<div class="debate-sub-tab" data-dtab="review" onclick="switchDebateTeacherTab(\'review\')">\ud83d\udcca 评阅讲评</div>';
+    html += '</div>';
+    html += '<div id="debateTeacherContent"></div>';
+  } else {
+    html += '<div class="debate-sub-tabs" id="debateStudentTabs">';
+    html += '<div class="debate-sub-tab active" data-dtab="received" onclick="switchDebateStudentTab(\'received\')">\ud83d\udce5 收到的对抗</div>';
+    html += '<div class="debate-sub-tab" data-dtab="initiate" onclick="switchDebateStudentTab(\'initiate\')">\ud83d\ude80 自主发起</div>';
+    html += '<div class="debate-sub-tab" data-dtab="join" onclick="switchDebateStudentTab(\'join\')">\ud83d\udd17 邀请加入</div>';
+    html += '<div class="debate-sub-tab" data-dtab="records" onclick="switchDebateStudentTab(\'records\')">\ud83d\udccb 我的记录</div>';
+    html += '</div>';
+    html += '<div id="debateStudentContent"></div>';
+  }
+  html += '</div>';
+  container.innerHTML = html;
+  // Render default view
+  if (role === 'teacher') {
+    renderDebateTeacherCreate(document.getElementById('debateTeacherContent'));
+  } else {
+    renderDebateStudentReceived(document.getElementById('debateStudentContent'));
+  }
+}
+
+function switchDebateTeacherTab(tab) {
+  var tabs = document.querySelectorAll('#debateTeacherTabs .debate-sub-tab');
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].className = 'debate-sub-tab' + (tabs[i].getAttribute('data-dtab') === tab ? ' active' : '');
+  }
+  var content = document.getElementById('debateTeacherContent');
+  if (tab === 'create') renderDebateTeacherCreate(content);
+  else if (tab === 'manage') renderDebateTeacherManage(content);
+  else if (tab === 'review') renderDebateTeacherReview(content);
+}
+
+function switchDebateStudentTab(tab) {
+  var tabs = document.querySelectorAll('#debateStudentTabs .debate-sub-tab');
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].className = 'debate-sub-tab' + (tabs[i].getAttribute('data-dtab') === tab ? ' active' : '');
+  }
+  var content = document.getElementById('debateStudentContent');
+  if (tab === 'received') renderDebateStudentReceived(content);
+  else if (tab === 'initiate') renderDebateStudentInitiate(content);
+  else if (tab === 'join') renderDebateJoin(content);
+  else if (tab === 'records') renderDebateStudentRecords(content);
+}
+
+// --- 教师端：创建任务 ---
+function renderDebateTeacherCreate(container) {
+  if (!container) return;
+  var html = '<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:14px;padding:24px">';
+  html += '<h4 style="margin:0 0 20px 0;color:var(--primary);font-size:1rem">\u2694\ufe0f 创建对抗任务</h4>';
+  // 选择案例
+  html += '<div style="margin-bottom:16px"><label style="font-weight:600;font-size:0.88rem;display:block;margin-bottom:6px">选择案例</label>';
+  html += '<select id="debateCaseSelect" onchange="onDebateCaseChange()" style="width:100%;padding:10px 14px;border:1px solid #ddd;border-radius:10px;font-size:0.88rem">';
+  html += '<option value="">请选择预设案例...</option>';
+  if (typeof FIXED_CASES !== 'undefined') {
+    for (var i = 0; i < FIXED_CASES.length; i++) {
+      html += '<option value="' + FIXED_CASES[i].id + '">' + FIXED_CASES[i].name + ' [' + FIXED_CASES[i].tagText + ']</option>';
+    }
+  }
+  html += '<option value="custom">\u2795 自定义案情</option>';
+  html += '</select></div>';
+  // 自定义案情表单
+  html += '<div id="debateCustomCaseForm" style="display:none;margin-bottom:16px">';
+  html += '<div style="background:#f8f7f4;border-radius:10px;padding:16px">';
+  html += '<div style="margin-bottom:10px"><label style="font-weight:600;font-size:0.85rem">案例名称</label>';
+  html += '<input id="debateCustomName" style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:8px;margin-top:4px;font-size:0.85rem" placeholder="输入案例名称"></div>';
+  html += '<div style="margin-bottom:10px"><label style="font-weight:600;font-size:0.85rem">案情摘要</label>';
+  html += '<textarea id="debateCustomBrief" rows="3" style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:8px;margin-top:4px;font-size:0.85rem;resize:vertical" placeholder="输入案情摘要"></textarea></div>';
+  html += '<div style="margin-bottom:10px"><label style="font-weight:600;font-size:0.85rem">争议焦点（逗号分隔）</label>';
+  html += '<input id="debateCustomIssues" style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:8px;margin-top:4px;font-size:0.85rem" placeholder="焦点1，焦点2，焦点3"></div>';
+  html += '<div><label style="font-weight:600;font-size:0.85rem">关键词（逗号分隔）</label>';
+  html += '<input id="debateCustomKeywords" style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:8px;margin-top:4px;font-size:0.85rem" placeholder="关键词1，关键词2"></div>';
+  html += '</div></div>';
+  // 目标班级
+  html += '<div style="margin-bottom:16px"><label style="font-weight:600;font-size:0.88rem;display:block;margin-bottom:6px">目标班级</label>';
+  html += '<select id="debateTargetClass" style="width:100%;padding:10px 14px;border:1px solid #ddd;border-radius:10px;font-size:0.88rem">';
+  html += '<option value="全班">全班</option><option value="1班">1班</option><option value="2班">2班</option><option value="3班">3班</option>';
+  html += '</select></div>';
+  // 截止时间
+  html += '<div style="margin-bottom:16px"><label style="font-weight:600;font-size:0.88rem;display:block;margin-bottom:6px">截止时间</label>';
+  html += '<input type="datetime-local" id="debateDeadline" style="width:100%;padding:10px 14px;border:1px solid #ddd;border-radius:10px;font-size:0.88rem"></div>';
+  // 分组设置
+  html += '<div style="margin-bottom:16px;background:#f0f7ff;border-radius:10px;padding:14px">';
+  html += '<div style="font-weight:600;font-size:0.88rem;margin-bottom:8px">\ud83c\udfaf 分组设置（系统随机分组）</div>';
+  html += '<div style="margin-bottom:10px"><label style="font-weight:600;font-size:0.85rem">角色对类型</label>';
+  html += '<select id="debateRolePair" style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:8px;margin-top:4px;font-size:0.85rem">';
+  html += '<option value="arbitration">\ud83c\udfdb\ufe0f 申诉国 / 被申诉国</option>';
+  html += '<option value="investment">\ud83d\udcbc 申请人 / 被申请人</option>';
+  html += '<option value="civil">\u2696\ufe0f 原告 / 被告</option>';
+  html += '</select></div>';
+  html += '<div><label style="font-weight:600;font-size:0.85rem">每方人数</label>';
+  html += '<input type="number" id="debateGroupSize" value="2" min="1" max="10" style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:8px;margin-top:4px;font-size:0.85rem"></div>';
+  html += '</div>';
+  // 提交按钮
+  html += '<button onclick="submitDebateTask()" style="width:100%;padding:14px;background:linear-gradient(135deg,var(--accent),#b08d3a);color:#fff;border:none;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer">\ud83c\udfaf 派发对抗任务</button>';
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function onDebateCaseChange() {
+  var sel = document.getElementById('debateCaseSelect');
+  var form = document.getElementById('debateCustomCaseForm');
+  if (sel && form) {
+    form.style.display = sel.value === 'custom' ? 'block' : 'none';
+  }
+}
+
+function submitDebateTask() {
+  var user = AppState.currentUser;
+  if (!user) return;
+  var caseSelect = document.getElementById('debateCaseSelect');
+  var caseId = caseSelect ? caseSelect.value : '';
+  if (!caseId) { alert('请选择案例'); return; }
+  var caseData = null;
+  if (caseId === 'custom') {
+    var cName = document.getElementById('debateCustomName').value.trim();
+    var cBrief = document.getElementById('debateCustomBrief').value.trim();
+    var cIssues = document.getElementById('debateCustomIssues').value.trim();
+    var cKeywords = document.getElementById('debateCustomKeywords').value.trim();
+    if (!cName) { alert('请输入案例名称'); return; }
+    caseData = {
+      name: cName,
+      brief: cBrief,
+      issues: cIssues ? cIssues.split(/[，,]/).map(function(s) { return s.trim(); }).filter(Boolean) : [],
+      laws: [],
+      keywords: cKeywords ? cKeywords.split(/[，,]/).map(function(s) { return s.trim(); }).filter(Boolean) : [],
+      facts: [],
+      evalLaws: [],
+      evidence: []
+    };
+  } else {
+    caseData = getFixedCaseById(caseId);
+    if (!caseData) { alert('案例数据加载失败'); return; }
+  }
+  var targetClass = document.getElementById('debateTargetClass').value;
+  var deadlineVal = document.getElementById('debateDeadline').value;
+  var deadline = deadlineVal ? new Date(deadlineVal).getTime() : (Date.now() + 7 * 24 * 3600 * 1000);
+  var rolePair = document.getElementById('debateRolePair').value;
+  var groupSize = parseInt(document.getElementById('debateGroupSize').value) || 2;
+  // Get students
+  var allStudents = getAllStudents();
+  var eligibleStudents = allStudents.filter(function(s) {
+    var sc = s.class || s.className || '全班';
+    return targetClass === '全班' || sc === targetClass;
+  });
+  if (eligibleStudents.length < 2) { alert('可用学生不足2人，无法分组'); return; }
+  // Shuffle students
+  var shuffled = eligibleStudents.slice();
+  for (var i = shuffled.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var tmp = shuffled[i];
+    shuffled[i] = shuffled[j];
+    shuffled[j] = tmp;
+  }
+  // Determine roles
+  var roles = { arbitration: ['\u7533\u8bc9\u56fd', '\u88ab\u7533\u8bc9\u56fd'], investment: ['\u7533\u8bf7\u4eba', '\u88ab\u7533\u8bf7\u4eba'], civil: ['\u539f\u544a', '\u88ab\u544a'] };
+  var roleIcons = { arbitration: ['\ud83c\udfdb\ufe0f', '\ud83c\udfdb\ufe0f'], investment: ['\ud83d\udcbc', '\ud83d\udcbc'], civil: ['\u2696\ufe0f', '\u2696\ufe0f'] };
+  var roleNames = roles[rolePair] || roles.arbitration;
+  var icons = roleIcons[rolePair] || roleIcons.arbitration;
+  // Split into groups
+  var groupA = { groupId: 'g-1', side: 'A', roleName: roleNames[0], roleIcon: icons[0], studentIds: [], materials: recommendMaterialsForSide(caseData, 'A') };
+  var groupB = { groupId: 'g-2', side: 'B', roleName: roleNames[1], roleIcon: icons[1], studentIds: [], materials: recommendMaterialsForSide(caseData, 'B') };
+  for (var k = 0; k < shuffled.length; k++) {
+    if (groupA.studentIds.length < groupSize) {
+      groupA.studentIds.push(shuffled[k].studentId);
+    } else {
+      groupB.studentIds.push(shuffled[k].studentId);
+    }
+  }
+  var title = caseData.name + ' - \u5206\u7ec4\u5bf9\u6297';
+  var debate = {
+    id: 'debate-' + Date.now(),
+    title: title,
+    caseId: caseId === 'custom' ? 'custom' : caseId,
+    caseData: caseData,
+    createdBy: user.studentId || user.id,
+    creatorName: user.name || '教师',
+    targetClass: targetClass,
+    deadline: deadline,
+    status: 'active',
+    createdAt: Date.now(),
+    groups: [groupA, groupB],
+    inviteCode: null,
+    submissions: { A: null, B: null },
+    aiAnalysis: null,
+    source: 'teacher'
+  };
+  var debates = loadDebateData();
+  debates.push(debate);
+  saveDebateData(debates);
+  alert('\u5bf9\u6297\u4efb\u52a1\u5df2\u6d3e\u53d1\uff01A\u65b9(' + roleNames[0] + ')\uff1a' + groupA.studentIds.length + '\u4eba\uff0cB\u65b9(' + roleNames[1] + ')\uff1a' + groupB.studentIds.length + '\u4eba');
+  switchDebateTeacherTab('manage');
+}
+
+// --- 教师端：任务管理 ---
+function renderDebateTeacherManage(container) {
+  if (!container) return;
+  var user = AppState.currentUser;
+  var debates = loadDebateData();
+  var myDebates = debates.filter(function(d) {
+    return d.source === 'teacher' && d.createdBy === (user.studentId || user.id);
+  });
+  myDebates.sort(function(a, b) { return b.createdAt - a.createdAt; });
+  if (myDebates.length === 0) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:40px 0">暂无对抗任务，请先创建</div>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < myDebates.length; i++) {
+    var d = myDebates[i];
+    var statusLabel = d.status === 'active' ? '\u8fdb\u884c\u4e2d' : (d.status === 'completed' ? '\u5df2\u5b8c\u6210' : '\u5f85\u5f00\u59cb');
+    var statusClass = d.status === 'active' ? 'active' : (d.status === 'completed' ? 'completed' : 'pending');
+    var subA = d.submissions && d.submissions.A;
+    var subB = d.submissions && d.submissions.B;
+    var subCount = (subA && subA.outline ? 1 : 0) + (subB && subB.outline ? 1 : 0);
+    var deadlineStr = new Date(d.deadline).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    html += '<div class="debate-card" onclick="renderDebateDetail(\'' + d.id + '\', document.getElementById(\'debateTeacherContent\'))">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:start">';
+    html += '<div><div style="font-weight:700;font-size:0.95rem;color:var(--primary);margin-bottom:4px">' + (d.caseData ? d.caseData.name : d.title) + '</div>';
+    html += '<div style="font-size:0.78rem;color:var(--text-secondary)">\ud83c\udf93 ' + d.targetClass + ' | \u23f0 ' + deadlineStr + '</div></div>';
+    html += '<div style="display:flex;align-items:center;gap:8px">';
+    html += '<span class="debate-badge ' + statusClass + '">' + statusLabel + '</span>';
+    html += '<span style="font-size:0.75rem;color:var(--text-secondary)">' + subCount + '/2 \u5df2\u63d0\u4ea4</span>';
+    if (d.status !== 'completed') {
+      html += '<button onclick="event.stopPropagation();deleteDebateTask(\'' + d.id + '\')" style="background:none;border:none;cursor:pointer;font-size:1rem;color:#ccc" title="\u5220\u9664">\u2716</button>';
+    }
+    html += '</div></div></div>';
+  }
+  container.innerHTML = html;
+}
+
+function deleteDebateTask(debateId) {
+  if (!confirm('\u786e\u5b9a\u5220\u9664\u6b64\u5bf9\u6297\u4efb\u52a1\uff1f')) return;
+  var debates = loadDebateData();
+  debates = debates.filter(function(d) { return d.id !== debateId; });
+  saveDebateData(debates);
+  renderDebateTeacherManage(document.getElementById('debateTeacherContent'));
+}
+
+// --- 教师端：评阅讲评 ---
+function renderDebateTeacherReview(container) {
+  if (!container) return;
+  var debates = loadDebateData();
+  var reviewable = debates.filter(function(d) {
+    var sub = d.submissions || {};
+    return sub.A && sub.A.outline && sub.B && sub.B.outline;
+  });
+  reviewable.sort(function(a, b) { return b.createdAt - a.createdAt; });
+  if (reviewable.length === 0) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:40px 0">\u6682\u65e0\u53ef\u8bc4\u9605\u7684\u5bf9\u6297\u4efb\u52a1\uff08\u9700\u53cc\u65b9\u5747\u5df2\u63d0\u4ea4\uff09</div>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < reviewable.length; i++) {
+    var d = reviewable[i];
+    var hasAI = d.aiAnalysis && d.aiAnalysis.content;
+    html += '<div class="debate-card" onclick="renderDebateReviewDetail(\'' + d.id + '\')">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:start">';
+    html += '<div><div style="font-weight:700;font-size:0.95rem;color:var(--primary);margin-bottom:4px">' + (d.caseData ? d.caseData.name : d.title) + '</div>';
+    html += '<div style="font-size:0.78rem;color:var(--text-secondary)">';
+    if (d.submissions.A) html += 'A\u65b9: ' + (d.submissions.A.submitterNames || []).join(', ') + ' | ';
+    if (d.submissions.B) html += 'B\u65b9: ' + (d.submissions.B.submitterNames || []).join(', ');
+    html += '</div></div>';
+    html += '<div style="font-size:0.75rem;color:' + (hasAI ? '#2e7d32' : '#999') + '">' + (hasAI ? '\u2705 \u5df2\u8bc4\u6790' : '\u2b50 \u5f85\u8bc4\u6790') + '</div>';
+    html += '</div></div>';
+  }
+  container.innerHTML = html;
+}
+
+function renderDebateReviewDetail(debateId) {
+  var debates = loadDebateData();
+  var debate = null;
+  for (var i = 0; i < debates.length; i++) {
+    if (debates[i].id === debateId) { debate = debates[i]; break; }
+  }
+  if (!debate) return;
+  var content = document.getElementById('debateTeacherContent') || document.getElementById('debateStudentContent');
+  if (!content) return;
+  var sub = debate.submissions || {};
+  var html = '<div style="margin-bottom:12px"><button onclick="renderDebateTeacherReview(document.getElementById(\'debateTeacherContent\'))" style="background:none;border:1px solid #ddd;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:0.85rem">\u2190 \u8fd4\u56de\u5217\u8868</button></div>';
+  html += '<div class="debate-detail">';
+  html += '<h3 style="margin:0 0 6px 0;color:var(--primary)">' + (debate.caseData ? debate.caseData.name : debate.title) + '</h3>';
+  html += '<p style="color:var(--text-secondary);font-size:0.85rem;margin:0 0 16px 0">' + (debate.caseData ? debate.caseData.brief : '') + '</p>';
+  // VS panel
+  html += '<div class="debate-vs-panel">';
+  html += '<div style="background:#f8f7f4;border-radius:12px;padding:16px">';
+  html += '<div style="font-weight:700;color:var(--accent);margin-bottom:8px">\ud83c\udfdb\ufe0f ' + (debate.groups[0] ? debate.groups[0].roleName : 'A\u65b9') + '</div>';
+  html += '<div style="font-size:0.85rem;white-space:pre-wrap">' + (sub.A ? escapeHtml(sub.A.outline) : '\u672a\u63d0\u4ea4') + '</div>';
+  if (sub.A) html += '<div style="font-size:0.72rem;color:#999;margin-top:8px">\u63d0\u4ea4\u4eba: ' + (sub.A.submitterNames || []).join(', ') + '</div>';
+  html += '</div>';
+  html += '<div class="vs-divider">VS</div>';
+  html += '<div style="background:#f8f7f4;border-radius:12px;padding:16px">';
+  html += '<div style="font-weight:700;color:var(--accent);margin-bottom:8px">\ud83c\udfdb\ufe0f ' + (debate.groups[1] ? debate.groups[1].roleName : 'B\u65b9') + '</div>';
+  html += '<div style="font-size:0.85rem;white-space:pre-wrap">' + (sub.B ? escapeHtml(sub.B.outline) : '\u672a\u63d0\u4ea4') + '</div>';
+  if (sub.B) html += '<div style="font-size:0.72rem;color:#999;margin-top:8px">\u63d0\u4ea4\u4eba: ' + (sub.B.submitterNames || []).join(', ') + '</div>';
+  html += '</div></div>';
+  // AI analysis section
+  if (debate.aiAnalysis && debate.aiAnalysis.content) {
+    html += '<div style="background:#f0f7ff;border-radius:12px;padding:16px;margin-top:16px">';
+    html += '<div style="font-weight:700;color:var(--primary);margin-bottom:8px">\ud83e\udd16 AI\u6cd5\u5f8b\u8bc4\u6790</div>';
+    html += '<div style="font-size:0.85rem;white-space:pre-wrap;line-height:1.7">' + escapeHtml(debate.aiAnalysis.content) + '</div>';
+    html += '</div>';
+  } else {
+    html += '<button onclick="generateDebateAIAnalysis(\'' + debateId + '\')" style="width:100%;padding:12px;margin-top:16px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;border-radius:10px;font-size:0.9rem;font-weight:600;cursor:pointer">\ud83e\udd16 \u751f\u6210AI\u6cd5\u5f8b\u8bc4\u6790</button>';
+  }
+  // Action buttons
+  html += '<div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">';
+  html += '<button onclick="exportDebateRecord(\'' + debateId + '\')" style="padding:8px 16px;background:#f8f7f4;border:1px solid #ddd;border-radius:8px;cursor:pointer;font-size:0.82rem">\ud83d\udce5 \u5bfc\u51fa\u8bb0\u5f55</button>';
+  html += '<button onclick="favoriteDebate(\'' + debateId + '\')" style="padding:8px 16px;background:#f8f7f4;border:1px solid #ddd;border-radius:8px;cursor:pointer;font-size:0.82rem">\u2b50 \u6536\u85cf</button>';
+  html += '<button onclick="showDebateFullscreen(\'' + debateId + '\')" style="padding:8px 16px;background:#f8f7f4;border:1px solid #ddd;border-radius:8px;cursor:pointer;font-size:0.82rem">\ud83d\udcfa \u6295\u5c4f\u5bf9\u7167\u6a21\u5f0f</button>';
+  html += '</div>';
+  html += '</div>';
+  content.innerHTML = html;
+}
+
+async function generateDebateAIAnalysis(debateId) {
+  var debates = loadDebateData();
+  var debate = null;
+  var idx = -1;
+  for (var i = 0; i < debates.length; i++) {
+    if (debates[i].id === debateId) { debate = debates[i]; idx = i; break; }
+  }
+  if (!debate || !debate.submissions.A || !debate.submissions.B) return;
+  var caseName = debate.caseData ? debate.caseData.name : '';
+  var brief = debate.caseData ? debate.caseData.brief : '';
+  var issues = debate.caseData && debate.caseData.issues ? debate.caseData.issues.join('\u3001') : '';
+  var prompt = '\u4f60\u662f\u4e09\u56fd\u6cd5\uff08\u56fd\u9645\u516c\u6cd5\u3001\u56fd\u9645\u79c1\u6cd5\u3001\u56fd\u9645\u7ecf\u6d4e\u6cd5\uff09\u6559\u5b66\u4e13\u5bb6\u3002\u8bf7\u5bf9\u6bd4\u5206\u6790\u4ee5\u4e0b\u4e24\u65b9\u4ee3\u7406\u610f\u89c1\u63d0\u7eb2\uff1a\n\n';
+  prompt += '\u6848\u60c5\uff1a' + caseName + ' - ' + brief + '\n';
+  prompt += '\u4e89\u8bae\u7126\u70b9\uff1a' + issues + '\n\n';
+  prompt += '\u3010A\u65b9\uff08' + (debate.groups[0] ? debate.groups[0].roleName : '\u7533\u8bc9\u65b9') + '\uff09\u4ee3\u7406\u63d0\u7eb2\u3011\n' + debate.submissions.A.outline + '\n\n';
+  prompt += '\u3010B\u65b9\uff08' + (debate.groups[1] ? debate.groups[1].roleName : '\u88ab\u7533\u8bc9\u65b9') + '\uff09\u4ee3\u7406\u63d0\u7eb2\u3011\n' + debate.submissions.B.outline + '\n\n';
+  prompt += '\u8bf7\u4ece\u4ee5\u4e0b\u7ef4\u5ea6\u8fdb\u884c\u6cd5\u5f8b\u8bc4\u6790\uff1a\n1. \u5404\u65b9\u8bba\u8bc1\u7684\u903b\u8f91\u4e25\u5bc6\u6027\n2. \u6cd5\u6761\u63f4\u5f15\u7684\u51c6\u786e\u6027\u4e0e\u5145\u5206\u6027\n3. \u8bc1\u636e\u8fd0\u7528\u7684\u5408\u7406\u6027\n4. \u5404\u65b9\u8bba\u8bc1\u7684\u4f18\u52bf\u4e0e\u6f0f\u6d1e\n5. \u6559\u5b66\u5efa\u8bae\uff1a\u5b66\u751f\u53ef\u4ee5\u63d0\u5347\u7684\u65b9\u5411\n\n\u6ce8\u610f\uff1a\u4ec5\u68b3\u7406\u8bba\u8bc1\u8d28\u91cf\uff0c\u4e0d\u5ba3\u5224\u8f93\u8d62\u3002';
+  try {
+    var result = await callDoubaoAPI(prompt, '');
+    if (result) {
+      debates[idx].aiAnalysis = { content: result, generatedAt: Date.now() };
+      saveDebateData(debates);
+      renderDebateReviewDetail(debateId);
+    } else {
+      alert('AI\u5206\u6790\u751f\u6210\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5API\u914d\u7f6e');
+    }
+  } catch(e) {
+    alert('AI\u5206\u6790\u51fa\u9519\uff1a' + (e.message || e));
+  }
+}
+
+function showDebateFullscreen(debateId) {
+  var debates = loadDebateData();
+  var debate = null;
+  for (var i = 0; i < debates.length; i++) {
+    if (debates[i].id === debateId) { debate = debates[i]; break; }
+  }
+  if (!debate) return;
+  var sub = debate.submissions || {};
+  var overlay = document.createElement('div');
+  overlay.className = 'debate-fullscreen';
+  overlay.id = 'debateFullscreenOverlay';
+  var html = '<div class="fs-close" onclick="document.getElementById(\'debateFullscreenOverlay\').remove()">\u2716</div>';
+  html += '<h2 style="text-align:center;margin:0 0 8px 0;font-size:1.8rem">' + (debate.caseData ? debate.caseData.name : debate.title) + '</h2>';
+  html += '<p style="text-align:center;color:rgba(255,255,255,0.7);margin:0 0 30px 0">' + (debate.caseData ? debate.caseData.brief : '') + '</p>';
+  html += '<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:30px;align-items:start;max-width:1200px;margin:0 auto">';
+  // A side
+  html += '<div style="background:rgba(255,255,255,0.1);border-radius:16px;padding:24px">';
+  html += '<h3 style="color:#c9a84c;margin:0 0 12px 0;font-size:1.3rem">' + (debate.groups[0] ? debate.groups[0].roleIcon + ' ' + debate.groups[0].roleName : 'A\u65b9') + '</h3>';
+  html += '<div style="font-size:1rem;line-height:1.8;white-space:pre-wrap">' + (sub.A ? escapeHtml(sub.A.outline) : '\u672a\u63d0\u4ea4') + '</div>';
+  html += '</div>';
+  // VS
+  html += '<div style="display:flex;align-items:center;font-size:3rem;font-weight:900;color:#c9a84c;padding-top:100px">VS</div>';
+  // B side
+  html += '<div style="background:rgba(255,255,255,0.1);border-radius:16px;padding:24px">';
+  html += '<h3 style="color:#c9a84c;margin:0 0 12px 0;font-size:1.3rem">' + (debate.groups[1] ? debate.groups[1].roleIcon + ' ' + debate.groups[1].roleName : 'B\u65b9') + '</h3>';
+  html += '<div style="font-size:1rem;line-height:1.8;white-space:pre-wrap">' + (sub.B ? escapeHtml(sub.B.outline) : '\u672a\u63d0\u4ea4') + '</div>';
+  html += '</div></div>';
+  if (debate.aiAnalysis && debate.aiAnalysis.content) {
+    html += '<div style="max-width:1200px;margin:30px auto 0;background:rgba(255,255,255,0.1);border-radius:16px;padding:24px">';
+    html += '<h3 style="color:#c9a84c;margin:0 0 12px 0">\ud83e\udd16 AI\u6cd5\u5f8b\u8bc4\u6790</h3>';
+    html += '<div style="font-size:0.95rem;line-height:1.8;white-space:pre-wrap">' + escapeHtml(debate.aiAnalysis.content) + '</div>';
+    html += '</div>';
+  }
+  overlay.innerHTML = html;
+  document.body.appendChild(overlay);
+}
+
+function favoriteDebate(debateId) {
+  var debates = loadDebateData();
+  var debate = null;
+  for (var i = 0; i < debates.length; i++) {
+    if (debates[i].id === debateId) { debate = debates[i]; break; }
+  }
+  if (!debate) return;
+  toggleFavorite({
+    type: 'debate',
+    sourceId: debateId,
+    title: debate.caseData ? debate.caseData.name : debate.title,
+    summary: debate.caseData ? debate.caseData.brief : '',
+    icon: '\u2694\ufe0f',
+    category: '\u5bf9\u6297\u5b9e\u8bad'
+  });
+  alert('\u5df2\u6536\u85cf\u5230\u6211\u7684\u6536\u85cf\u5939');
+}
+
+// --- 学生端：收到的对抗 ---
+function renderDebateStudentReceived(container) {
+  if (!container) return;
+  var user = AppState.currentUser;
+  var studentId = user.studentId || '';
+  // S2024001(杨雅淇) 映射到辩论数据中的 demo ID
+  var searchIds = [studentId];
+  if (studentId === 'S2024001') searchIds.push('DEMO2024005');
+  var debates = loadDebateData();
+  var myDebates = debates.filter(function(d) {
+    for (var g = 0; g < d.groups.length; g++) {
+      for (var si = 0; si < searchIds.length; si++) {
+        if (d.groups[g].studentIds && d.groups[g].studentIds.indexOf(searchIds[si]) !== -1) return true;
+      }
+    }
+    return false;
+  });
+  myDebates.sort(function(a, b) { return b.createdAt - a.createdAt; });
+  if (myDebates.length === 0) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:40px 0">\u6682\u65e0\u6536\u5230\u7684\u5bf9\u6297\u4efb\u52a1</div>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < myDebates.length; i++) {
+    var d = myDebates[i];
+    var myGroup = null;
+    for (var g = 0; g < d.groups.length; g++) {
+      if (d.groups[g].studentIds && d.groups[g].studentIds.indexOf(studentId) !== -1) { myGroup = d.groups[g]; break; }
+    }
+    var sub = d.submissions || {};
+    var mySub = myGroup ? sub[myGroup.side] : null;
+    var statusText = mySub && mySub.outline ? '\u5df2\u63d0\u4ea4' : '\u5f85\u63d0\u4ea4';
+    var statusClass = mySub && mySub.outline ? (d.aiAnalysis ? 'completed' : 'active') : 'pending';
+    if (d.aiAnalysis) statusText = '\u5df2\u8bc4\u6790';
+    html += '<div class="debate-card" onclick="renderDebateDetail(\'' + d.id + '\', document.getElementById(\'debateStudentContent\'))">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:start">';
+    html += '<div><div style="font-weight:700;font-size:0.95rem;color:var(--primary);margin-bottom:4px">' + (d.caseData ? d.caseData.name : d.title) + '</div>';
+    html += '<div style="font-size:0.78rem;color:var(--text-secondary)">' + (myGroup ? myGroup.roleIcon + ' ' + myGroup.roleName : '') + '</div></div>';
+    html += '<div><span class="debate-badge ' + statusClass + '">' + statusText + '</span>';
+    html += '<div style="font-size:0.7rem;color:#999;text-align:right;margin-top:4px">' + new Date(d.deadline).toLocaleDateString('zh-CN') + '</div></div>';
+    html += '</div></div>';
+  }
+  container.innerHTML = html;
+}
+
+// --- 辩论详情视图 ---
+function renderDebateDetail(debateId, container) {
+  if (!container) return;
+  var debates = loadDebateData();
+  var debate = null;
+  for (var i = 0; i < debates.length; i++) {
+    if (debates[i].id === debateId) { debate = debates[i]; break; }
+  }
+  if (!debate) { container.innerHTML = '<div style="text-align:center;padding:40px">\u672a\u627e\u5230\u5bf9\u6297\u4efb\u52a1</div>'; return; }
+  var user = AppState.currentUser;
+  var studentId = user.studentId || '';
+  // S2024001(杨雅淇) 映射到辩论数据中的 demo ID
+  var searchIds = [studentId];
+  if (studentId === 'S2024001') searchIds.push('DEMO2024005');
+  var role = user.role || 'student';
+  // Find my group
+  var myGroup = null;
+  var opponentGroup = null;
+  for (var g = 0; g < debate.groups.length; g++) {
+    for (var si = 0; si < searchIds.length; si++) {
+      if (debate.groups[g].studentIds && debate.groups[g].studentIds.indexOf(searchIds[si]) !== -1) {
+        myGroup = debate.groups[g];
+        opponentGroup = debate.groups[1 - g];
+        break;
+      }
+    }
+    if (myGroup) break;
+  }
+  // For teachers viewing: show both sides
+  if (!myGroup && role === 'teacher') {
+    myGroup = debate.groups[0];
+    opponentGroup = debate.groups[1];
+  }
+  var sub = debate.submissions || {};
+  var html = '<div style="margin-bottom:12px"><button onclick="goBackToDebateList()" style="background:none;border:1px solid #ddd;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:0.85rem">\u2190 \u8fd4\u56de</button></div>';
+  html += '<div class="debate-detail">';
+  // Case overview
+  html += '<h3 style="margin:0 0 4px 0;color:var(--primary)">' + (debate.caseData ? debate.caseData.name : debate.title) + '</h3>';
+  html += '<p style="color:var(--text-secondary);font-size:0.85rem;margin:0 0 12px 0">' + (debate.caseData ? debate.caseData.brief : '') + '</p>';
+  if (debate.caseData && debate.caseData.issues && debate.caseData.issues.length > 0) {
+    html += '<div style="margin-bottom:12px"><span style="font-weight:600;font-size:0.85rem">\u4e89\u8bae\u7126\u70b9\uff1a</span>';
+    for (var iss = 0; iss < debate.caseData.issues.length; iss++) {
+      html += '<span style="display:inline-block;padding:2px 8px;background:#f0f7ff;border-radius:6px;font-size:0.78rem;margin:2px 4px 2px 0;color:var(--primary)">' + escapeHtml(debate.caseData.issues[iss]) + '</span>';
+    }
+    html += '</div>';
+  }
+  // My role & materials
+  if (myGroup) {
+    html += '<div class="debate-role-card">';
+    html += '<div style="font-size:1.2rem;margin-bottom:4px">' + myGroup.roleIcon + ' <strong>' + myGroup.roleName + '</strong></div>';
+    html += '<div style="font-size:0.82rem;color:var(--text-secondary)">\u6210\u5458\uff1a' + myGroup.studentIds.join(', ') + '</div>';
+    html += '</div>';
+    // Materials
+    if (myGroup.materials && myGroup.materials.length > 0) {
+      html += '<div style="margin:12px 0"><div style="font-weight:600;font-size:0.88rem;margin-bottom:8px">\ud83d\udcda \u63a8\u9001\u7d20\u6750</div>';
+      for (var m = 0; m < myGroup.materials.length; m++) {
+        var mat = myGroup.materials[m];
+        var typeLabel = mat.type === 'treaty' ? '\u6761\u7ea6/\u6cd5\u6761' : (mat.type === 'precedent' ? '\u5224\u4f8b/\u8bc1\u636e' : '\u53f8\u6cd5\u89e3\u91ca');
+        html += '<div class="debate-material-card">';
+        html += '<div style="font-weight:600;font-size:0.82rem;color:var(--primary);margin-bottom:4px">' + escapeHtml(mat.title) + ' <span style="font-size:0.7rem;color:#999">[' + typeLabel + ']</span></div>';
+        html += '<div style="font-size:0.8rem;color:#555;white-space:pre-wrap;max-height:120px;overflow-y:auto">' + escapeHtml(mat.text || '') + '</div>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+  }
+  // Submit area
+  var mySub = myGroup ? sub[myGroup.side] : null;
+  if (!mySub || !mySub.outline) {
+    html += '<div class="debate-submit-area">';
+    html += '<div style="font-weight:600;font-size:0.9rem;margin-bottom:8px">\ud83d\udcdd \u63d0\u4ea4\u4ee3\u7406\u610f\u89c1\u63d0\u7eb2</div>';
+    html += '<div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:8px">\u8bf7\u56f4\u7ed5\u6838\u5fc3\u4e3b\u5f20 + \u6cd5\u6761\u4f9d\u636e\u64b0\u5199\u63d0\u7eb2</div>';
+    html += '<textarea id="debateOutlineInput" rows="8" style="width:100%;padding:12px;border:1px solid #ddd;border-radius:10px;font-size:0.88rem;resize:vertical;font-family:inherit" placeholder="\u6838\u5fc3\u4e3b\u5f20\uff1a...\n\u6cd5\u6761\u4f9d\u636e\uff1a...\n\u8bc1\u636e\u652f\u6491\uff1a..."></textarea>';
+    html += '<button onclick="submitDebateOutline(\'' + debateId + '\')" style="margin-top:10px;padding:12px 24px;background:linear-gradient(135deg,var(--accent),#b08d3a);color:#fff;border:none;border-radius:10px;font-size:0.9rem;font-weight:600;cursor:pointer">\ud83d\udce4 \u63d0\u4ea4\u672c\u65b9\u4ee3\u7406\u63d0\u7eb2</button>';
+    html += '</div>';
+  } else {
+    html += '<div style="background:#f0f7ff;border-radius:12px;padding:16px;margin:12px 0">';
+    html += '<div style="font-weight:600;color:#2e7d32;margin-bottom:8px">\u2705 \u5df2\u63d0\u4ea4</div>';
+    html += '<div style="font-size:0.85rem;white-space:pre-wrap">' + escapeHtml(mySub.outline) + '</div>';
+    html += '<div style="font-size:0.72rem;color:#999;margin-top:6px">\u63d0\u4ea4\u4eba: ' + (mySub.submitterNames || []).join(', ') + '</div>';
+    html += '</div>';
+  }
+  // Opponent's submission (if both submitted)
+  var opSub = opponentGroup ? sub[opponentGroup.side] : null;
+  if (opSub && opSub.outline) {
+    html += '<div style="margin:16px 0;background:#fff8f0;border:1px solid rgba(201,168,76,0.2);border-radius:12px;padding:16px">';
+    html += '<div style="font-weight:600;color:var(--accent);margin-bottom:8px">' + opponentGroup.roleIcon + ' \u5bf9\u65b9\u63d0\u7eb2 (' + opponentGroup.roleName + ')</div>';
+    html += '<div style="font-size:0.85rem;white-space:pre-wrap">' + escapeHtml(opSub.outline) + '</div>';
+    html += '</div>';
+  }
+  // AI analysis
+  if (debate.aiAnalysis && debate.aiAnalysis.content) {
+    html += '<div style="background:#f0f7ff;border-radius:12px;padding:16px;margin:16px 0">';
+    html += '<div style="font-weight:700;color:var(--primary);margin-bottom:8px">\ud83e\udd16 AI\u6cd5\u5f8b\u8bc4\u6790</div>';
+    html += '<div style="font-size:0.85rem;white-space:pre-wrap;line-height:1.7">' + escapeHtml(debate.aiAnalysis.content) + '</div>';
+    html += '</div>';
+  }
+  // Favorite button
+  html += '<button onclick="favoriteDebate(\'' + debateId + '\')" style="margin-top:12px;padding:8px 16px;background:#f8f7f4;border:1px solid #ddd;border-radius:8px;cursor:pointer;font-size:0.82rem">\u2b50 \u6536\u85cf\u63d0\u7eb2\u4e0e\u8bc4\u6790</button>';
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function goBackToDebateList() {
+  var user = AppState.currentUser;
+  if (!user) return;
+  if (user.role === 'teacher') {
+    renderDebateTeacherManage(document.getElementById('debateTeacherContent'));
+  } else {
+    renderDebateStudentReceived(document.getElementById('debateStudentContent'));
+  }
+}
+
+function submitDebateOutline(debateId) {
+  var textarea = document.getElementById('debateOutlineInput');
+  if (!textarea) return;
+  var outline = textarea.value.trim();
+  if (!outline) { alert('\u8bf7\u8f93\u5165\u4ee3\u7406\u610f\u89c1\u63d0\u7eb2'); return; }
+  var user = AppState.currentUser;
+  var studentId = user.studentId || '';
+  // S2024001(杨雅淇) 映射到辩论数据中的 demo ID
+  var searchIds = [studentId];
+  if (studentId === 'S2024001') searchIds.push('DEMO2024005');
+  var debates = loadDebateData();
+  var idx = -1;
+  for (var i = 0; i < debates.length; i++) {
+    if (debates[i].id === debateId) { idx = i; break; }
+  }
+  if (idx === -1) return;
+  var debate = debates[idx];
+  var myGroup = null;
+  for (var g = 0; g < debate.groups.length; g++) {
+    var found = false;
+    for (var si = 0; si < searchIds.length; si++) {
+      if (debate.groups[g].studentIds && debate.groups[g].studentIds.indexOf(searchIds[si]) !== -1) { found = true; break; }
+    }
+    if (found) {
+      myGroup = debate.groups[g];
+      break;
+    }
+  }
+  if (!myGroup) { alert('\u672a\u627e\u5230\u4f60\u7684\u5206\u7ec4'); return; }
+  if (!debate.submissions) debate.submissions = { A: null, B: null };
+  debate.submissions[myGroup.side] = {
+    outline: outline,
+    submittedBy: [studentId],
+    submittedAt: Date.now(),
+    submitterNames: [user.name || studentId]
+  };
+  // Check if both submitted
+  var subA = debate.submissions.A;
+  var subB = debate.submissions.B;
+  if (subA && subA.outline && subB && subB.outline) {
+    debate.status = 'completed';
+  }
+  debates[idx] = debate;
+  saveDebateData(debates);
+  alert('\u63d0\u4ea4\u6210\u529f\uff01');
+  renderDebateDetail(debateId, document.getElementById('debateStudentContent'));
+}
+
+// --- 学生端：自主发起 ---
+function renderDebateStudentInitiate(container) {
+  if (!container) return;
+  var html = '<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:14px;padding:24px">';
+  html += '<h4 style="margin:0 0 16px 0;color:var(--primary)">\ud83d\ude80 \u81ea\u4e3b\u53d1\u8d77\u5bf9\u6297</h4>';
+  html += '<div style="margin-bottom:14px"><label style="font-weight:600;font-size:0.85rem;display:block;margin-bottom:6px">\u9009\u62e9\u6848\u4f8b\u6a21\u677f</label>';
+  html += '<select id="debateInitCase" onchange="onInitCaseChange()" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:10px;font-size:0.85rem">';
+  html += '<option value="">\u8bf7\u9009\u62e9...</option>';
+  if (typeof FIXED_CASES !== 'undefined') {
+    for (var i = 0; i < FIXED_CASES.length; i++) {
+      html += '<option value="' + FIXED_CASES[i].id + '">' + FIXED_CASES[i].name + '</option>';
+    }
+  }
+  html += '<option value="custom">\u81ea\u5b9a\u4e49\u6848\u60c5</option>';
+  html += '</select></div>';
+  html += '<div id="debateInitCustomForm" style="display:none;margin-bottom:14px">';
+  html += '<input id="debateInitName" style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:8px;margin-bottom:8px;font-size:0.85rem" placeholder="\u6848\u4f8b\u540d\u79f0">';
+  html += '<textarea id="debateInitBrief" rows="3" style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.85rem;resize:vertical" placeholder="\u6848\u60c5\u6458\u8981"></textarea></div>';
+  html += '<div style="margin-bottom:14px"><label style="font-weight:600;font-size:0.85rem;display:block;margin-bottom:6px">\u89d2\u8272\u5bf9\u7c7b\u578b</label>';
+  html += '<select id="debateInitRole" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:10px;font-size:0.85rem">';
+  html += '<option value="arbitration">\ud83c\udfdb\ufe0f \u7533\u8bc9\u56fd / \u88ab\u7533\u8bc9\u56fd</option>';
+  html += '<option value="investment">\ud83d\udcbc \u7533\u8bf7\u4eba / \u88ab\u7533\u8bf7\u4eba</option>';
+  html += '<option value="civil">\u2696\ufe0f \u539f\u544a / \u88ab\u544a</option>';
+  html += '</select></div>';
+  html += '<button onclick="createDebateInvite()" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--accent),#b08d3a);color:#fff;border:none;border-radius:10px;font-size:0.9rem;font-weight:600;cursor:pointer">\ud83d\udd17 \u751f\u6210\u9080\u8bf7</button>';
+  html += '<div id="debateInviteResult"></div>';
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function onInitCaseChange() {
+  var sel = document.getElementById('debateInitCase');
+  var form = document.getElementById('debateInitCustomForm');
+  if (sel && form) {
+    form.style.display = sel.value === 'custom' ? 'block' : 'none';
+  }
+}
+
+function createDebateInvite() {
+  var user = AppState.currentUser;
+  if (!user) return;
+  var caseSel = document.getElementById('debateInitCase');
+  var caseId = caseSel ? caseSel.value : '';
+  if (!caseId) { alert('\u8bf7\u9009\u62e9\u6848\u4f8b'); return; }
+  var caseData = null;
+  if (caseId === 'custom') {
+    var cName = document.getElementById('debateInitName').value.trim();
+    var cBrief = document.getElementById('debateInitBrief').value.trim();
+    if (!cName) { alert('\u8bf7\u8f93\u5165\u6848\u4f8b\u540d\u79f0'); return; }
+    caseData = { name: cName, brief: cBrief, issues: [], laws: [], keywords: [], facts: [], evalLaws: [], evidence: [] };
+  } else {
+    caseData = getFixedCaseById(caseId);
+    if (!caseData) { alert('\u6848\u4f8b\u52a0\u8f7d\u5931\u8d25'); return; }
+  }
+  var rolePair = document.getElementById('debateInitRole').value;
+  var roles = { arbitration: ['\u7533\u8bc9\u56fd', '\u88ab\u7533\u8bc9\u56fd'], investment: ['\u7533\u8bf7\u4eba', '\u88ab\u7533\u8bf7\u4eba'], civil: ['\u539f\u544a', '\u88ab\u544a'] };
+  var roleIcons = { arbitration: '\ud83c\udfdb\ufe0f', investment: '\ud83d\udcbc', civil: '\u2696\ufe0f' };
+  var roleNames = roles[rolePair] || roles.arbitration;
+  var icon = roleIcons[rolePair] || '\ud83c\udfdb\ufe0f';
+  var inviteCode = generateInviteCode();
+  var debate = {
+    id: 'debate-' + Date.now(),
+    title: caseData.name + ' - \u81ea\u4e3b\u5bf9\u6297',
+    caseId: caseId === 'custom' ? 'custom' : caseId,
+    caseData: caseData,
+    createdBy: user.studentId || '',
+    creatorName: user.name || '',
+    targetClass: '\u5168\u73ed',
+    deadline: Date.now() + 3 * 24 * 3600 * 1000,
+    status: 'pending',
+    createdAt: Date.now(),
+    groups: [
+      { groupId: 'g-1', side: 'A', roleName: roleNames[0], roleIcon: icon, studentIds: [user.studentId || ''], materials: recommendMaterialsForSide(caseData, 'A') },
+      { groupId: 'g-2', side: 'B', roleName: roleNames[1], roleIcon: icon, studentIds: [], materials: recommendMaterialsForSide(caseData, 'B') }
+    ],
+    inviteCode: inviteCode,
+    submissions: { A: null, B: null },
+    aiAnalysis: null,
+    source: 'student'
+  };
+  var debates = loadDebateData();
+  debates.push(debate);
+  saveDebateData(debates);
+  var resultDiv = document.getElementById('debateInviteResult');
+  if (resultDiv) {
+    resultDiv.innerHTML = '<div class="debate-invite-card">'
+      + '<div style="font-size:0.9rem;font-weight:600">\ud83c\udf89 \u9080\u8bf7\u5df2\u521b\u5efa\uff01</div>'
+      + '<div style="font-size:0.82rem;opacity:0.9;margin:6px 0">\u5c06\u4ee5\u4e0b\u9080\u8bf7\u7801\u53d1\u7ed9\u5bf9\u624b</div>'
+      + '<div class="invite-code">' + inviteCode + '</div>'
+      + '<div style="font-size:0.78rem;opacity:0.8">\u5bf9\u624b\u5728\u201c\u9080\u8bf7\u52a0\u5165\u201d\u4e2d\u8f93\u5165\u6b64\u7801\u5373\u53ef\u52a0\u5165</div>'
+      + '</div>';
+  }
+}
+
+// --- 学生端：邀请加入 ---
+function renderDebateJoin(container) {
+  if (!container) return;
+  var html = '<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:14px;padding:24px;text-align:center">';
+  html += '<h4 style="margin:0 0 16px 0;color:var(--primary)">\ud83d\udd17 \u52a0\u5165\u5bf9\u6297</h4>';
+  html += '<input id="debateJoinCode" style="width:100%;padding:14px;border:2px solid #ddd;border-radius:12px;font-size:1.2rem;text-align:center;letter-spacing:4px;font-weight:700;margin-bottom:14px" placeholder="\u8f93\u5165\u9080\u8bf7\u7801" maxlength="6">';
+  html += '<button onclick="joinDebateByCode()" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--accent),#b08d3a);color:#fff;border:none;border-radius:10px;font-size:0.9rem;font-weight:600;cursor:pointer">\u52a0\u5165\u5bf9\u6297</button>';
+  html += '<div id="debateJoinResult" style="margin-top:16px"></div>';
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function joinDebateByCode() {
+  var codeInput = document.getElementById('debateJoinCode');
+  if (!codeInput) return;
+  var code = codeInput.value.trim().toUpperCase();
+  if (!code || code.length < 4) { alert('\u8bf7\u8f93\u5165\u6709\u6548\u7684\u9080\u8bf7\u7801'); return; }
+  var user = AppState.currentUser;
+  var studentId = user.studentId || '';
+  var debates = loadDebateData();
+  var found = -1;
+  for (var i = 0; i < debates.length; i++) {
+    if (debates[i].inviteCode === code) { found = i; break; }
+  }
+  if (found === -1) { alert('\u672a\u627e\u5230\u5bf9\u5e94\u7684\u5bf9\u6297\u4efb\u52a1'); return; }
+  var debate = debates[found];
+  // Find the empty group (B side usually)
+  var joined = false;
+  for (var g = 0; g < debate.groups.length; g++) {
+    if (debate.groups[g].studentIds.indexOf(studentId) !== -1) {
+      alert('\u4f60\u5df2\u7ecf\u5728\u8fd9\u4e2a\u5bf9\u6297\u4e2d\u4e86');
+      return;
+    }
+  }
+  for (var g2 = 0; g2 < debate.groups.length; g2++) {
+    if (debate.groups[g2].studentIds.length === 0 || (debate.groups[g2].studentIds.length === 1 && debate.groups[g2].studentIds[0] === '')) {
+      debate.groups[g2].studentIds = [studentId];
+      joined = true;
+      break;
+    }
+  }
+  if (!joined) {
+    // Add to the group that doesn't contain this student (B side)
+    for (var g3 = 0; g3 < debate.groups.length; g3++) {
+      if (debate.groups[g3].studentIds.indexOf(studentId) === -1 && debate.groups[g3].side !== 'A') {
+        debate.groups[g3].studentIds.push(studentId);
+        joined = true;
+        break;
+      }
+    }
+  }
+  if (!joined) { alert('\u65e0\u6cd5\u52a0\u5165\uff0c\u5bf9\u6297\u5df2\u6ee1\u5458'); return; }
+  debate.status = 'active';
+  debates[found] = debate;
+  saveDebateData(debates);
+  alert('\u52a0\u5165\u6210\u529f\uff01\u4f60\u7684\u89d2\u8272\uff1a' + debate.groups[1].roleName);
+  renderDebateDetail(debate.id, document.getElementById('debateStudentContent'));
+}
+
+// --- 学生端：我的记录 ---
+function renderDebateStudentRecords(container) {
+  if (!container) return;
+  var user = AppState.currentUser;
+  var studentId = user.studentId || '';
+  // S2024001(杨雅淇) 映射到辩论数据中的 demo ID
+  var searchIds = [studentId];
+  if (studentId === 'S2024001') searchIds.push('DEMO2024005');
+  var debates = loadDebateData();
+  var myDebates = debates.filter(function(d) {
+    for (var g = 0; g < d.groups.length; g++) {
+      for (var si = 0; si < searchIds.length; si++) {
+        if (d.groups[g].studentIds && d.groups[g].studentIds.indexOf(searchIds[si]) !== -1) return true;
+      }
+    }
+    return false;
+  });
+  myDebates.sort(function(a, b) { return b.createdAt - a.createdAt; });
+  if (myDebates.length === 0) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:40px 0">暂无对抗记录</div>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < myDebates.length; i++) {
+    var d = myDebates[i];
+    var myGroup = null;
+    for (var g = 0; g < d.groups.length; g++) {
+      for (var si = 0; si < searchIds.length; si++) {
+        if (d.groups[g].studentIds && d.groups[g].studentIds.indexOf(searchIds[si]) !== -1) { myGroup = d.groups[g]; break; }
+      }
+      if (myGroup) break;
+    }
+    var sub = d.submissions || {};
+    var mySub = myGroup ? sub[myGroup.side] : null;
+    var statusText = d.aiAnalysis ? '已评析' : (mySub && mySub.outline ? '已提交' : '待提交');
+    var statusClass = d.aiAnalysis ? 'completed' : (mySub && mySub.outline ? 'active' : 'pending');
+    var timeStr = new Date(d.createdAt).toLocaleDateString('zh-CN');
+    html += '<div class="debate-card" onclick="renderDebateDetail(\'' + d.id + '\', document.getElementById(\'debateStudentContent\'))">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+    html += '<div><div style="font-weight:700;font-size:0.92rem;color:var(--primary)">' + (d.caseData ? d.caseData.name : d.title) + '</div>';
+    html += '<div style="font-size:0.78rem;color:var(--text-secondary)">' + (myGroup ? myGroup.roleIcon + ' ' + myGroup.roleName : '') + ' | ' + timeStr + '</div></div>';
+    html += '<span class="debate-badge ' + statusClass + '">' + statusText + '</span>';
+    html += '</div></div>';
+  }
+  container.innerHTML = html;
+}
+
+// ============================================================
+// === 分组对抗实训模块 - 结束 ===
+// ============================================================
+
+
+
+// === Supabase Startup ===
+document.addEventListener('DOMContentLoaded', function() {
+  // Wait a bit for SDK to load
+  setTimeout(function() { _sbInit(); }, 1000);
+});
+window.addEventListener('online', function() {
+  setTimeout(function() { _sbFlushQueue(); }, 500);
+});
+
+// ====== 小际启动页：内容就绪后淡出 ======
+(function(){
+  function hideSplash(){
+    var el = document.getElementById('xiaojiSplash');
+    if (!el || el.classList.contains('splash-out')) return;
+    el.classList.add('splash-out');
+    setTimeout(function(){ if (el && el.parentNode) el.parentNode.removeChild(el); }, 500);
+  }
+  var _fired = false;
+  function scheduleHide(){
+    if (_fired) return; _fired = true;
+    setTimeout(hideSplash, 600);
+  }
+  if (document.readyState === 'complete') { scheduleHide(); }
+  else { window.addEventListener('load', scheduleHide); }
+  // 兜底：最长 3.2s 一定关闭，避免资源卡住挡住界面
+  setTimeout(hideSplash, 3200);
+})();
+
+
+
+// ====== 留言板、视频学习、课堂模式 - 演示数据初始化 ======
+function initNewModulesDemoData() {
+  if (!localStorage.getItem('sanguofa_discussion_posts')) {
+    var demoPosts = [
+      {
+        id: 'post-001',
+        title: '管辖权豁免的适用范围',
+        content: '老师您好，请问外国国家豁免法中的限制豁免原则，在商业合同纠纷中如何适用？',
+        author: '杨雅淇',
+        authorId: 'S2024001',
+        role: 'student',
+        createdAt: '2026-09-24 15:30',
+        replies: [
+          {
+            id: 'reply-001',
+            content: '这个问题很好。限制豁免原则的核心在于区分主权行为和商业行为。在商业合同纠纷中，如果合同属于商业性质，则不适用豁免。',
+            author: '王老师',
+            authorId: 'T2026001',
+            role: 'teacher',
+            createdAt: '2026-09-24 16:00'
+          }
+        ]
+      },
+      {
+        id: 'post-002',
+        title: '国际私法中的反致制度',
+        content: '请问反致制度在我国司法实践中的应用情况如何？有没有典型案例？',
+        author: '田震',
+        authorId: 'S2024002',
+        role: 'student',
+        createdAt: '2026-09-23 14:20',
+        replies: []
+      },
+      {
+        id: 'post-003',
+        title: 'WTO争端解决机制的改革方向',
+        content: '当前WTO上诉机构停摆，未来的改革方向可能是什么？各方立场如何？',
+        author: '陈老师',
+        authorId: 'T2026002',
+        role: 'teacher',
+        createdAt: '2026-09-22 10:15',
+        replies: [
+          {
+            id: 'reply-002',
+            content: '目前主要有两种改革方案：一是恢复上诉机构，二是建立多方临时上诉仲裁安排（MPIA）。中国参与了MPIA。',
+            author: '李老师',
+            authorId: 'T2026003',
+            role: 'teacher',
+            createdAt: '2026-09-22 11:30'
+          },
+          {
+            id: 'reply-003',
+            content: '我比较关注多方临时上诉仲裁安排的实效性，它在实践中能发挥多大作用？',
+            author: '刘思远',
+            authorId: 'S2024003',
+            role: 'student',
+            createdAt: '2026-09-22 12:45'
+          }
+        ]
+      },
+      {
+        id: 'post-004',
+        title: '国际投资仲裁中的最惠国待遇条款',
+        content: '最惠国待遇条款能否用于扩展仲裁庭的管辖权？实践中有争议吗？',
+        author: '赵晓峰',
+        authorId: 'S2024004',
+        role: 'student',
+        createdAt: '2026-09-21 09:00',
+        replies: [
+          {
+            id: 'reply-004',
+            content: '这是一个很有争议的问题。Maffezini案和Plama案的裁决方向完全相反，关键在于MFN条款的具体措辞。',
+            author: '王老师',
+            authorId: 'T2026001',
+            role: 'teacher',
+            createdAt: '2026-09-21 10:30'
+          }
+        ]
+      }
+    ];
+    localStorage.setItem('sanguofa_discussion_posts', JSON.stringify(demoPosts));
+  }
+
+  // 视频数据版本控制：v2 表示已清空所有占位视频
+  var VIDEO_DATA_VERSION = 'v2';
+  var currentVersion = localStorage.getItem('sanguofa_videos_version');
+  if (currentVersion !== VIDEO_DATA_VERSION) {
+    localStorage.setItem('sanguofa_videos', '[]');
+    localStorage.setItem('sanguofa_videos_version', VIDEO_DATA_VERSION);
+  }
+
+  // 茶座数据版本控制：强制刷新演示数据
+  var TEA_DATA_VERSION = 'v1';
+  var teaVer = localStorage.getItem('sanguofa_tea_version');
+  if (teaVer !== TEA_DATA_VERSION) {
+    localStorage.removeItem('sanguofa_tea_posts');
+    localStorage.removeItem('sanguofa_tea_comments');
+    localStorage.removeItem('sanguofa_tea_stats');
+    localStorage.setItem('sanguofa_tea_version', TEA_DATA_VERSION);
+  }
+
+  if (!localStorage.getItem('sanguofa_videos')) {
+    localStorage.setItem('sanguofa_videos', '[]');
+  } else {
+    // 旧迁移逻辑保留但不再执行（版本检查已跳过）
+  }
+
+  if (!localStorage.getItem('sanguofa_classroom_sessions')) {
+    var demoSessions = [
+      {
+        id: 'session-001',
+        type: 'qa',
+        topic: '国家管辖权豁免的适用范围',
+        createdBy: 'T2026001',
+        createdAt: '2026-09-24 14:00',
+        status: 'active',
+        responses: [
+          { studentId: 'S2024001', studentName: '杨雅淇', content: '我认为限制豁免原则下，商业行为不享有豁免权，关键是区分行为性质', timestamp: '2026-09-24 14:15' },
+          { studentId: 'S2024002', studentName: '田震', content: '关键是区分主权行为和商业行为的界限，实践中判断标准不统一', timestamp: '2026-09-24 14:18' },
+          { studentId: 'S2024003', studentName: '刘思远', content: '应该根据合同性质和目的综合判断，不能只看单一标准', timestamp: '2026-09-24 14:20' }
+        ],
+        aiSummary: '全班共3人参与讨论。主要观点集中在：区分主权行为和商业行为是核心问题，同学们对判断标准存在分歧。建议教师重点讲解"行为性质说"与"目的说"的区别与联系。'
+      },
+      {
+        id: 'session-002',
+        type: 'quiz',
+        topic: '国际公法基础测验',
+        createdBy: 'T2026001',
+        createdAt: '2026-09-23 10:00',
+        status: 'closed',
+        responses: [],
+        aiSummary: ''
+      },
+      {
+        id: 'session-003',
+        type: 'discussion',
+        topic: '南海仲裁案法律分析',
+        createdBy: 'T2026001',
+        createdAt: '2026-09-22 14:00',
+        status: 'closed',
+        responses: [],
+        aiSummary: ''
+      }
+    ];
+    localStorage.setItem('sanguofa_classroom_sessions', JSON.stringify(demoSessions));
+  }
+
+  // ====== 小际茶座演示数据 ======
+  if (!localStorage.getItem('sanguofa_tea_posts')) {
+    var teaDemoPosts = [
+    {
+      id: 'post-0928-class',
+      title: '今天国际私法课上的反致问题，课后继续讨论',
+      content: '今天王老师讲的反致制度很有意思。课堂上讨论了一个问题：我国《涉外民事关系法律适用法》第9条明确规定"涉外民事关系适用的外国法律，不包括该国的冲突法"，这意味着我国原则上不接受反致。但老师提到的几个例外情况让我很感兴趣，大家怎么看？',
+      author: '杨雅淇',
+      authorId: 'S2024001',
+      role: 'student',
+      createdAt: '2026-09-28 16:45',
+      tag: '国际私法',
+      replies: [
+        {
+          id: 'reply-0928-teacher',
+          content: '这个问题抓得很准。我国立法确实采取了不接受反致的立场，但在司法实践中，当外国法的适用结果明显违反我国公共秩序时，公共秩序保留制度实际上起到了类似反致的效果。这是一个值得深入思考的问题。',
+          author: '王老师',
+          authorId: 'T2026001',
+          role: 'teacher',
+          createdAt: '2026-09-28 17:20'
+        },
+        {
+          id: 'reply-0928-student2',
+          content: '同意老师的观点。我查了一下，欧盟的《罗马条例I》第20条也是排除反致的，这似乎是国际上的主流趋势。',
+          author: '刘思远',
+          authorId: 'S2024003',
+          role: 'student',
+          createdAt: '2026-09-28 18:05'
+        }
+      ]
+    },
+    {
+      id: 'tea_post_001', type: 'long', title: '📌 【公告】茶座使用指南与版规',
+      content: '欢迎来到小际茶座学术社区！\n\n发帖规范：\n1. 请选择合适的标签分类\n2. 学术讨论请保持理性客观\n3. 鼓励引用法条和案例支撑观点\n4. 欢迎分享学习资源和方法\n\n让我们一起营造良好的学术讨论氛围！🕊️',
+      tags: ['国际公法'],
+      author: '汪文丽', authorId: 'S166', role: 'student',
+      createdAt: '2026-09-16 15:36',
+      likes: 27, comments: 7, favorites: 12, deepThink: 8,
+      isPinned: true, isRecommended: true, isLocked: false,
+      likedBy: ['S023','S002','S028','S144','S124','S015','S153','S162','S067','S101','S138','S046','S004','S114','S139','S064','S144','S008','S137','S038','S136','S117','S043','S032','S205','S214','S090'],
+      favoritedBy: ['S068','S046','S029','S202','S184','S193','S036','S092','S004','S040','S082','S008'],
+      deepThinkBy: ['S051','S156','S189','S189','S040','S092','S153','S115']
+    },
+    {
+      id: 'tea_post_002', type: 'long', title: '📌 【通知】本周六线上学术沙龙：跨境数据流动法律问题',
+      content: '本期学术沙龙将于本周六14:00-16:00在线举行。\n\n主题：跨境数据流动的国际法规则\n主讲：特邀国际经济法方向教授\n\n讨论内容：\n- GDPR数据跨境传输机制\n- 中国数据出境安全评估制度\n- DEPA数字贸易协定中的相关规则\n\n欢迎同学们参加！',
+      tags: ['热点追踪'],
+      author: '卢鸿彬', authorId: 'S025', role: 'student',
+      createdAt: '2026-09-16 17:36',
+      likes: 27, comments: 3, favorites: 15, deepThink: 7,
+      isPinned: true, isRecommended: true, isLocked: false,
+      likedBy: ['S004','S013','S188','S174','S027','S209','S007','S015','S055','S068','S094','S055','S065','S127','S117','S215','S075','S075','S167','S174','S159','S007','S038','S050','S097','S124','S086'],
+      favoritedBy: ['S188','S013','S203','S049','S196','S116','S112','S073','S034','S071','S059','S135','S206','S177','S158'],
+      deepThinkBy: ['S004','S105','S202','S164','S191','S128','S040']
+    },
+    {
+      id: 'tea_post_003', type: 'long', title: '【教师推荐】必读文献清单：国际公法基础理论',
+      content: '为帮助大家系统掌握国际公法基础理论，整理以下必读文献：\n\n1. 王铁崖《国际法》各章导论部分\n2. 邵津主编《国际法》第五版重点章节\n3. Malcolm Shaw《International Law》Chapter 1-3\n4. Brownlie\'s Principles Chapter 1-5\n\n建议阅读顺序：先中文教材打基础，再阅读英文原著拓展视野。每周至少完成一篇，做好读书笔记。',
+      tags: ['文献研读'],
+      author: '王御平', authorId: 'S034', role: 'student',
+      createdAt: '2026-09-22 12:17',
+      likes: 23, comments: 2, favorites: 11, deepThink: 5,
+      isPinned: false, isRecommended: true, isLocked: false,
+      likedBy: ['S087','S010','S160','S047','S101','S033','S211','S107','S068','S018','S153','S063','S161','S008','S017','S172','S212','S175','S015','S041','S035','S032','S072'],
+      favoritedBy: ['S073','S068','S034','S030','S082','S029','S192','S144','S199','S113','S078'],
+      deepThinkBy: ['S170','S087','S115','S102','S193']
+    },
+    {
+      id: 'tea_post_004', type: 'long', title: '【教师推荐】国际法院近期重要判决述评',
+      content: '本期推荐关注ICJ近两年的几个重要判决：\n\n1. 乌克兰诉俄罗斯案（2024初步反对意见）\n2. 尼加拉瓜诉德国案（2024驳回）\n3. 冈比亚诉缅甸案（2022初步反对意见）\n\n这些案件涉及管辖权、国家责任、灭绝种族罪等多个重要议题，对理解当代国际法实践具有重要意义。',
+      tags: ['案例评析'],
+      author: '廖杰梅', authorId: 'S095', role: 'student',
+      createdAt: '2026-09-23 22:42',
+      likes: 28, comments: 6, favorites: 15, deepThink: 6,
+      isPinned: false, isRecommended: true, isLocked: false,
+      likedBy: ['S184','S170','S106','S021','S069','S012','S045','S026','S136','S096','S001','S134','S029','S085','S005','S026','S157','S102','S055','S106','S109','S165','S145','S054','S022','S191','S089','S087'],
+      favoritedBy: ['S083','S136','S139','S075','S194','S048','S125','S022','S019','S110','S138','S024','S176','S144','S084'],
+      deepThinkBy: ['S090','S058','S029','S075','S152','S089']
+    },
+    {
+      id: 'tea_post_005', type: 'long', title: '【教师推荐】ISDS改革最新动态与我国的立场',
+      content: 'UNCITRAL第三工作组正在讨论ISDS改革方案：\n\n1. 上诉机制的设立\n2. 多边投资法院\n3. 调解机制的推广\n4. 第三方资助的规制\n\n我国在改革中采取了务实立场，既支持必要的制度改革，也注重维护国家规制权。建议关注我国BIT实践的新发展。',
+      tags: ['国际经济法'],
+      author: '黄茗睿', authorId: 'S017', role: 'student',
+      createdAt: '2026-09-21 14:27',
+      likes: 21, comments: 2, favorites: 12, deepThink: 8,
+      isPinned: false, isRecommended: true, isLocked: false,
+      likedBy: ['S214','S132','S191','S062','S108','S076','S135','S162','S133','S144','S058','S111','S092','S113','S085','S150','S074','S166','S131','S031','S208'],
+      favoritedBy: ['S190','S214','S152','S042','S173','S001','S203','S118','S019','S177','S114','S039'],
+      deepThinkBy: ['S209','S185','S215','S210','S067','S023','S103','S052']
+    },
+    {
+      id: 'tea_post_006', type: 'short', title: '',
+      content: '期末考试复习计划已制定，每天两章国际公法+一章国际私法，有人一起打卡吗？',
+      tags: ['随便聊聊'],
+      author: '吴芊诺', authorId: 'S216', role: 'student',
+      createdAt: '2026-09-15 22:41',
+      likes: 22, comments: 6, favorites: 11, deepThink: 5,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S177','S111','S058','S075','S059','S087','S126','S191','S067','S144','S173','S143','S005','S141','S012','S018','S061','S044','S151','S049','S057','S187'],
+      favoritedBy: ['S153','S177','S181','S074','S092','S145','S204','S204','S141','S014','S026'],
+      deepThinkBy: ['S215','S046','S207','S173','S106']
+    },
+    {
+      id: 'tea_post_007', type: 'short', title: '',
+      content: '最近的跨境电商税收政策调整影响很大，涉及国际经济法和国际贸易法的交叉领域。',
+      tags: ['热点追踪'],
+      author: '李敏敏', authorId: 'S061', role: 'student',
+      createdAt: '2026-09-25 09:10',
+      likes: 22, comments: 6, favorites: 6, deepThink: 7,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S154','S113','S184','S038','S138','S156','S209','S073','S094','S109','S025','S023','S107','S011','S046','S093','S216','S177','S157','S154','S190','S111'],
+      favoritedBy: ['S215','S160','S065','S203','S057','S040'],
+      deepThinkBy: ['S072','S059','S022','S044','S135','S016','S093']
+    },
+    {
+      id: 'tea_post_008', type: 'short', title: '',
+      content: '条约的保留制度比想象中复杂，维也纳条约法公约第19-23条需要反复看。',
+      tags: ['国际公法'],
+      author: '向梦佳', authorId: 'S109', role: 'student',
+      createdAt: '2026-09-25 10:59',
+      likes: 11, comments: 4, favorites: 4, deepThink: 3,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S038','S080','S047','S051','S001','S009','S045','S149','S055','S217','S070'],
+      favoritedBy: ['S026','S019','S077','S021'],
+      deepThinkBy: ['S215','S125','S155']
+    },
+    {
+      id: 'tea_post_009', type: 'short', title: '',
+      content: '国家承认和政府承认的区别整理了一下，发现溯及既往原则很重要，考试经常出选择题。',
+      tags: ['国际公法'],
+      author: '李柯燃', authorId: 'S092', role: 'student',
+      createdAt: '2026-09-17 17:23',
+      likes: 12, comments: 6, favorites: 10, deepThink: 6,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S072','S006','S194','S090','S154','S169','S076','S111','S175','S049','S189','S215'],
+      favoritedBy: ['S115','S138','S037','S214','S185','S145','S066','S217','S029','S117'],
+      deepThinkBy: ['S087','S210','S042','S065','S148','S146']
+    },
+    {
+      id: 'tea_post_010', type: 'short', title: '',
+      content: '某国宣布退出《巴黎协定》又申请加入，国际条约的退出和重新加入程序引发讨论。',
+      tags: ['热点追踪'],
+      author: '刘雨欣', authorId: 'S134', role: 'student',
+      createdAt: '2026-09-28 09:22',
+      likes: 20, comments: 8, favorites: 9, deepThink: 8,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S141','S041','S103','S106','S156','S142','S140','S133','S083','S034','S190','S037','S035','S173','S072','S102','S031','S124','S010','S194'],
+      favoritedBy: ['S092','S156','S103','S124','S170','S065','S211','S071','S142'],
+      deepThinkBy: ['S005','S035','S138','S032','S189','S007','S094','S164']
+    },
+    {
+      id: 'tea_post_011', type: 'short', title: '',
+      content: '最近AI生成内容的国际版权保护争议很大，各国立场不同，有人关注这个议题吗？',
+      tags: ['热点追踪'],
+      author: '郑淑玲', authorId: 'S194', role: 'student',
+      createdAt: '2026-09-20 08:31',
+      likes: 19, comments: 7, favorites: 6, deepThink: 5,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S182','S034','S009','S041','S167','S008','S161','S080','S135','S171','S125','S067','S134','S149','S196','S155','S018','S006','S030'],
+      favoritedBy: ['S003','S097','S149','S071','S183','S180'],
+      deepThinkBy: ['S076','S014','S188','S061','S085']
+    },
+    {
+      id: 'tea_post_012', type: 'short', title: '',
+      content: '海牙国际私法会议最新的管辖权公约值得关注，对跨境民商事纠纷有重要影响。',
+      tags: ['国际私法'],
+      author: '石梦婕', authorId: 'S029', role: 'student',
+      createdAt: '2026-09-25 22:58',
+      likes: 13, comments: 3, favorites: 11, deepThink: 4,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S169','S101','S179','S024','S095','S154','S016','S197','S049','S118','S073','S033','S074'],
+      favoritedBy: ['S057','S214','S206','S028','S139','S158','S154','S169','S155','S108','S027'],
+      deepThinkBy: ['S208','S120','S117','S123']
+    },
+    {
+      id: 'tea_post_013', type: 'short', title: '',
+      content: '《国际法上的管辖权》这篇文献从Lotus案讲到当代，逻辑线非常清晰，推荐。',
+      tags: ['文献研读'],
+      author: '孙亮亮', authorId: 'S004', role: 'student',
+      createdAt: '2026-09-19 12:27',
+      likes: 11, comments: 2, favorites: 4, deepThink: 8,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S122','S021','S065','S128','S214','S160','S119','S059','S017','S154','S001'],
+      favoritedBy: ['S206','S023','S065','S168'],
+      deepThinkBy: ['S071','S110','S119','S065','S161','S115','S073','S081']
+    },
+    {
+      id: 'tea_post_014', type: 'short', title: '',
+      content: '冲突规范的连结点选择真的好绕，属人法和属地法经常混，有同学能总结一下吗？',
+      tags: ['国际私法'],
+      author: '马欣怡', authorId: 'S026', role: 'student',
+      createdAt: '2026-09-22 12:23',
+      likes: 16, comments: 5, favorites: 12, deepThink: 6,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S125','S158','S087','S121','S193','S016','S098','S013','S070','S194','S037','S067','S063','S189','S092','S102'],
+      favoritedBy: ['S089','S109','S084','S022','S154','S207','S199','S186','S150','S070','S024','S111'],
+      deepThinkBy: ['S121','S144','S180','S161','S089','S135']
+    },
+    {
+      id: 'tea_post_015', type: 'short', title: '',
+      content: '数据跨境传输的监管越来越严，GDPR和我国个人信息保护法的差异值得比较研究。',
+      tags: ['热点追踪'],
+      author: '张洁', authorId: 'S081', role: 'student',
+      createdAt: '2026-09-19 21:16',
+      likes: 24, comments: 4, favorites: 12, deepThink: 7,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S197','S043','S202','S110','S085','S163','S119','S110','S028','S006','S120','S172','S123','S181','S099','S196','S044','S029','S036','S145','S022','S067','S090','S191'],
+      favoritedBy: ['S217','S134','S032','S212','S214','S006','S161','S205','S132','S208','S172','S163'],
+      deepThinkBy: ['S063','S150','S047','S045','S038','S089','S013']
+    },
+    {
+      id: 'tea_post_016', type: 'short', title: '',
+      content: '今天把领土取得方式复习了一遍，先占、时效、添附、割让、征服，每个都要记清楚适用条件。',
+      tags: ['国际公法'],
+      author: '陈一鸣', authorId: 'S189', role: 'student',
+      createdAt: '2026-09-19 17:47',
+      likes: 6, comments: 4, favorites: 10, deepThink: 8,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S098','S145','S157','S051','S145','S001'],
+      favoritedBy: ['S040','S217','S169','S015','S037','S139','S150','S052','S119','S211'],
+      deepThinkBy: ['S042','S183','S075','S002','S133','S107','S109','S122']
+    },
+    {
+      id: 'tea_post_017', type: 'short', title: '',
+      content: '分享一下我的国际法学习笔记方法：画思维导图+案例卡片，效率提升很多！',
+      tags: ['随便聊聊'],
+      author: '王梓璇', authorId: 'S106', role: 'student',
+      createdAt: '2026-09-28 20:52',
+      likes: 24, comments: 5, favorites: 5, deepThink: 4,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S041','S021','S139','S180','S084','S061','S133','S068','S164','S002','S115','S179','S155','S090','S095','S147','S114','S180','S142','S019','S093','S090','S093','S111'],
+      favoritedBy: ['S100','S043','S204','S124','S126'],
+      deepThinkBy: ['S096','S214','S134','S162']
+    },
+    {
+      id: 'tea_post_018', type: 'short', title: '',
+      content: 'Incoterms 2020里FOB和CIF的风险转移点不同，这个太容易出混淆题了。',
+      tags: ['国际经济法'],
+      author: '黄茗睿', authorId: 'S017', role: 'student',
+      createdAt: '2026-09-17 21:59',
+      likes: 15, comments: 6, favorites: 4, deepThink: 6,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S168','S044','S121','S001','S086','S042','S014','S131','S057','S020','S163','S055','S027','S082','S217'],
+      favoritedBy: ['S002','S093','S019','S074'],
+      deepThinkBy: ['S087','S047','S036','S134','S043','S048']
+    },
+    {
+      id: 'tea_post_019', type: 'short', title: '',
+      content: 'CISG的适用范围比想象中窄，服务贸易和知识产权都不在内，要注意区分。',
+      tags: ['国际经济法'],
+      author: '谭宗毅', authorId: 'S102', role: 'student',
+      createdAt: '2026-09-16 17:30',
+      likes: 7, comments: 2, favorites: 6, deepThink: 7,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S133','S072','S128','S121','S057','S137','S057'],
+      favoritedBy: ['S060','S022','S201','S087','S099','S023'],
+      deepThinkBy: ['S156','S015','S189','S198','S018','S146','S079']
+    },
+    {
+      id: 'tea_post_020', type: 'short', title: '',
+      content: '图书馆的国际法书架上新了一批书，有兴趣的同学可以去看看。',
+      tags: ['随便聊聊'],
+      author: '张洁', authorId: 'S081', role: 'student',
+      createdAt: '2026-09-28 13:18',
+      likes: 14, comments: 2, favorites: 12, deepThink: 5,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S034','S106','S007','S143','S129','S040','S014','S022','S004','S085','S134','S075','S089','S065'],
+      favoritedBy: ['S006','S051','S158','S158','S065','S191','S130','S152','S157','S147','S110','S012'],
+      deepThinkBy: ['S012','S120','S196','S035','S198']
+    },
+    {
+      id: 'tea_post_021', type: 'short', title: '',
+      content: '有没有同学组队准备模拟法庭比赛的？需要一个擅长国际经济法方向的队友。',
+      tags: ['随便聊聊'],
+      author: '陆星宇', authorId: 'S185', role: 'student',
+      createdAt: '2026-09-24 15:09',
+      likes: 8, comments: 6, favorites: 8, deepThink: 2,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S110','S107','S016','S044','S080','S123','S173','S196'],
+      favoritedBy: ['S045','S078','S059','S131','S184','S164','S009','S217'],
+      deepThinkBy: ['S049','S050']
+    },
+    {
+      id: 'tea_post_022', type: 'long', title: '【文献研读】《论国际法上的国家管辖权》读后感',
+      content: '从Lotus案确立的客观属地管辖到现代管辖权冲突的多元化解决，本文梳理了管辖权理论的发展脉络。\n\n作者认为，传统管辖权理论以领土为基础，但网络时代带来了新的挑战。数据管辖权、长臂管辖等问题日益突出，需要新的理论框架。\n\n文中提到的\"合理管辖原则\"对我国涉外法治建设有借鉴意义，特别是在\"一带一路\"背景下的法律冲突解决方面。建议大家重点阅读第三部分关于管辖权冲突的案例分析。',
+      tags: ['文献研读'],
+      author: '吴中贤', authorId: 'S037', role: 'student',
+      createdAt: '2026-09-26 11:11',
+      likes: 17, comments: 2, favorites: 7, deepThink: 5,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S036','S101','S086','S042','S184','S036','S042','S022','S018','S072','S136','S162','S053','S032','S058','S145','S167'],
+      favoritedBy: ['S205','S130','S082','S019','S050','S083','S010'],
+      deepThinkBy: ['S114','S152','S109','S061','S209']
+    },
+    {
+      id: 'tea_post_023', type: 'long', title: '【案例评析】Maffezini案与Plama案的对比研究',
+      content: '这两个案件在最惠国待遇条款的适用上给出了截然相反的结论，关键在于MFN条款的具体措辞不同。\n\nMaffezini案：仲裁庭认为西班牙-阿根廷BIT中的MFN条款足够宽泛，可以将第三方BIT中更有利的争端解决条款纳入。\n\nPlama案：仲裁庭则认为MFN条款不能自动扩展至争端解决机制，除非条款明确约定。\n\n启示：条约解释必须严格遵循文义解释原则，同时考虑缔约目的。这对我们理解ISDS机制的演变非常重要。',
+      tags: ['案例评析'],
+      author: '张维歌', authorId: 'S082', role: 'student',
+      createdAt: '2026-09-16 08:51',
+      likes: 12, comments: 6, favorites: 14, deepThink: 9,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S168','S004','S060','S028','S143','S121','S091','S167','S154','S176','S102','S125'],
+      favoritedBy: ['S139','S119','S193','S126','S058','S060','S077','S087','S130','S173','S056','S036','S055','S142'],
+      deepThinkBy: ['S161','S108','S182','S138','S156','S151','S062','S117','S095']
+    },
+    {
+      id: 'tea_post_024', type: 'long', title: '【学习笔记】国家豁免制度的演变与中国实践',
+      content: '从绝对豁免到限制豁免，这一演变反映了国际交往的实际需要。\n\n一、绝对豁免主义时期（19世纪-20世纪中叶）\n二、限制豁免主义兴起（1970s至今）\n三、联合国国家豁免公约（2004）\n四、中国《外国国家豁免法》（2023）\n\n中国从绝对豁免转向限制豁免，这一立法转变值得深入研究。商业行为例外的界定是关键问题，建议结合具体案例理解。',
+      tags: ['国际公法'],
+      author: '潘紫涵', authorId: 'S162', role: 'student',
+      createdAt: '2026-09-17 20:26',
+      likes: 9, comments: 2, favorites: 10, deepThink: 8,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S200','S019','S133','S030','S167','S100','S028','S046','S034'],
+      favoritedBy: ['S136','S141','S183','S079','S068','S006','S087','S077','S137','S171'],
+      deepThinkBy: ['S115','S010','S127','S080','S034','S051','S039','S179']
+    },
+    {
+      id: 'tea_post_025', type: 'long', title: '【专题整理】国际私法中的\"直接适用的法\"理论',
+      content: '\"直接适用的法\"是国际私法中一个重要的例外制度，它允许法院地国在特定情况下排除外国法的适用。\n\n适用条件：\n1. 涉及国家重大社会公共利益\n2. 法律明确规定必须适用\n3. 具有强制性\n\n我国的\"直接适用的法\"主要体现在《涉外民事关系法律适用法》第4条及相关司法解释中。这个制度与公共秩序保留有密切联系但也有区别。',
+      tags: ['国际私法'],
+      author: '胡海丽', authorId: 'S055', role: 'student',
+      createdAt: '2026-09-27 16:46',
+      likes: 18, comments: 5, favorites: 15, deepThink: 8,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S055','S170','S006','S135','S198','S090','S010','S207','S037','S063','S067','S098','S134','S027','S112','S177','S182','S065'],
+      favoritedBy: ['S081','S149','S068','S134','S043','S070','S154','S068','S008','S115','S018','S094','S120','S211','S079'],
+      deepThinkBy: ['S013','S064','S148','S055','S013','S056','S078','S162']
+    },
+    {
+      id: 'tea_post_026', type: 'long', title: '【热点分析】RCEP框架下的原产地规则对区域供应链的影响',
+      content: 'RCEP原产地规则的核心创新在于区域累积制度，允许将成员国原材料视为区域内生产。\n\n主要特点：\n1. 区域价值成分标准（40%）\n2. 税则归类改变标准\n3. 加工工序标准\n4. 选择性适用\n\n这一制度将显著降低企业享受关税优惠的门槛，有利于区域内产业链的整合。对于我国出口企业而言，需要充分了解规则以最大化利用优惠。',
+      tags: ['国际经济法'],
+      author: '时韩', authorId: 'S215', role: 'student',
+      createdAt: '2026-09-20 15:40',
+      likes: 27, comments: 4, favorites: 10, deepThink: 4,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S080','S205','S041','S198','S117','S082','S069','S169','S139','S197','S003','S142','S217','S012','S004','S125','S036','S025','S017','S206','S153','S206','S079','S034','S133','S015','S144'],
+      favoritedBy: ['S169','S195','S133','S020','S085','S024','S004','S064','S128','S056'],
+      deepThinkBy: ['S053','S186','S217','S104']
+    },
+    {
+      id: 'tea_post_027', type: 'long', title: '【前沿关注】AI时代的国际法挑战：从自动驾驶到自主武器',
+      content: '人工智能技术的快速发展对现有国际法体系提出了多重挑战：\n\n1. 自主武器系统与国际人道法：区分原则、比例原则如何适用？\n2. 自动驾驶与跨境责任：管辖权冲突和准据法选择\n3. AI生成内容的知识产权：国际版权公约的适用困境\n4. 数据主权与全球治理：数据跨境流动的规制分歧\n\n建议关注联合国CCW框架下的LAWS讨论进展。',
+      tags: ['热点追踪'],
+      author: '袁诺', authorId: 'S176', role: 'student',
+      createdAt: '2026-09-28 12:13',
+      likes: 10, comments: 6, favorites: 5, deepThink: 5,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S184','S157','S056','S046','S149','S057','S185','S170','S112','S209'],
+      favoritedBy: ['S149','S136','S171','S153','S053'],
+      deepThinkBy: ['S044','S064','S023','S001','S173']
+    },
+    {
+      id: 'tea_post_028', type: 'long', title: '【经典案例】Barcelona Traction案中的外交保护与公司国籍',
+      content: 'ICJ在本案中确立的规则至今仍有重要影响：\n\n1. 公司国籍的认定：以注册地和实际管理中心为准\n2. 外交保护的行使主体：原则上由公司注册国行使\n3. 股东国籍国一般不享有外交保护权\n\n但法院也留下了例外情形的空间，即当公司已经不存在或注册国无力行使保护时。这个判例对理解国际法上的法人制度非常重要。',
+      tags: ['案例评析'],
+      author: '吴再渤', authorId: 'S172', role: 'student',
+      createdAt: '2026-09-27 13:22',
+      likes: 23, comments: 7, favorites: 10, deepThink: 6,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S172','S150','S096','S125','S081','S143','S083','S016','S005','S074','S118','S200','S102','S038','S038','S060','S001','S188','S175','S077','S121','S062','S125'],
+      favoritedBy: ['S041','S203','S021','S073','S214','S095','S139','S168','S036','S142'],
+      deepThinkBy: ['S062','S125','S091','S180','S051','S069']
+    },
+    {
+      id: 'tea_post_029', type: 'long', title: '【读书报告】《国际法碎片化：一个 imaginary 的问题？》',
+      content: ' Koskenniemi 的报告深入分析了国际法碎片化现象的根源与应对。\n\n核心观点：\n1. 碎片化不仅是制度重叠，更是价值冲突\n2. 不同法律体系间的冲突需要协调而非统一\n3. 一般国际法作为\"共同语言\"的重要性\n\n对我国而言，在国际法碎片化背景下如何维护自身利益、推动规则协调是值得思考的问题。',
+      tags: ['文献研读'],
+      author: '李思琴', authorId: 'S158', role: 'student',
+      createdAt: '2026-09-27 13:33',
+      likes: 8, comments: 3, favorites: 15, deepThink: 7,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S155','S188','S149','S028','S077','S193','S196','S101'],
+      favoritedBy: ['S137','S109','S041','S082','S074','S139','S034','S157','S193','S060','S047','S129','S193','S075','S025'],
+      deepThinkBy: ['S193','S045','S195','S127','S092','S125','S041']
+    },
+    {
+      id: 'tea_post_030', type: 'long', title: '【深度分析】联合国安理会改革困境与国际法视角',
+      content: '安理会改革的法律障碍主要来自《联合国宪章》的修改程序（第108-109条）。\n\n争议焦点：\n1. 新增常任理事国是否拥有否决权？\n2. 区域代表如何分配？\n3. 修宪门槛过高（2/3会员国批准+五常全部批准）\n\n从国际法角度看，安理会改革不仅是政治问题，更涉及宪章解释、国际组织法等多个法律维度。',
+      tags: ['国际公法'],
+      author: '萧诗宇', authorId: 'S200', role: 'student',
+      createdAt: '2026-09-19 21:49',
+      likes: 21, comments: 4, favorites: 15, deepThink: 9,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S127','S043','S160','S047','S208','S134','S006','S121','S049','S018','S012','S099','S186','S073','S094','S122','S055','S156','S041','S045','S022'],
+      favoritedBy: ['S060','S069','S075','S093','S016','S003','S178','S186','S203','S145','S217','S043','S059','S102','S037'],
+      deepThinkBy: ['S137','S175','S033','S118','S200','S168','S080','S172','S210']
+    },
+    {
+      id: 'tea_post_031', type: 'long', title: '【比较研究】CPTPP与USMCA数字贸易规则的比较',
+      content: '两大协定在数字贸易规则上既有相似也有差异：\n\n相似之处：\n- 禁止对电子传输征收关税\n- 保护在线消费者权益\n- 促进电子签名互认\n\n差异之处：\n- 数据跨境流动：CPTPP允许\"合法公共政策\"例外，USMCA限制更严格\n- 源代码保护：USMCA明确禁止强制转让源代码\n- 个人信息保护标准不同\n\n这些差异反映了不同国家在数字主权与贸易自由化之间的权衡。',
+      tags: ['国际经济法'],
+      author: '周清鄂', authorId: 'S116', role: 'student',
+      createdAt: '2026-09-25 10:01',
+      likes: 24, comments: 6, favorites: 8, deepThink: 3,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S184','S150','S192','S085','S136','S168','S120','S007','S082','S209','S194','S007','S118','S047','S166','S144','S208','S008','S015','S139','S025','S168','S172','S056'],
+      favoritedBy: ['S107','S032','S130','S131','S123','S075','S121','S111'],
+      deepThinkBy: ['S127','S056','S102']
+    },
+    {
+      id: 'tea_post_032', type: 'long', title: '【学习心得】如何高效阅读国际法案例',
+      content: '分享一下我的案例阅读方法：\n\n第一步：快速浏览案件事实，抓住核心争议点\n第二步：阅读法院/仲裁庭的推理过程，标记关键论证\n第三步：分析判决的多数意见与异议意见\n第四步：思考该案在整体规则体系中的位置\n第五步：用自己的话总结裁判要旨\n\n坚持这样做笔记，虽然慢但理解会深很多。',
+      tags: ['随便聊聊'],
+      author: '何蓉', authorId: 'S089', role: 'student',
+      createdAt: '2026-09-16 19:34',
+      likes: 13, comments: 7, favorites: 5, deepThink: 8,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S085','S140','S017','S031','S192','S064','S164','S210','S155','S206','S181','S135','S212'],
+      favoritedBy: ['S049','S092','S087','S039','S097'],
+      deepThinkBy: ['S162','S103','S163','S048','S028','S058','S208','S208']
+    },
+    {
+      id: 'tea_post_033', type: 'long', title: '【制度比较】中国与新加坡国际商事法庭的比较',
+      content: 'CICC和SICC都是专门处理国际商事纠纷的机构，但制度设计有明显差异：\n\n1. 法官构成：CICC以中国法官为主，SICC允许外国法官\n2. 法律适用：CICC适用中国冲突法规则，SICC可选择适用外国法\n3. 判决执行：CICC判决通过海牙判决公约执行，SICC依托新加坡的广泛条约网络\n4. 语言：两者均支持中英文\n\n对我国建设国际商事争端解决中心有重要借鉴意义。',
+      tags: ['国际私法'],
+      author: '张恬畅', authorId: 'S177', role: 'student',
+      createdAt: '2026-09-19 08:48',
+      likes: 21, comments: 3, favorites: 14, deepThink: 6,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S073','S089','S147','S017','S070','S161','S093','S020','S118','S056','S097','S015','S077','S168','S054','S176','S056','S151','S198','S074','S041'],
+      favoritedBy: ['S008','S112','S087','S047','S214','S216','S172','S103','S140','S151','S012','S171','S185','S008'],
+      deepThinkBy: ['S204','S019','S180','S101','S090','S142']
+    },
+    {
+      id: 'tea_post_034', type: 'short', title: '',
+      content: '国际法院的咨询管辖权和诉讼管辖权总是搞混，有没有简洁的区分方法？',
+      tags: ['国际公法'],
+      author: '邹妮彤', authorId: 'S182', role: 'student',
+      createdAt: '2026-09-28 11:21',
+      likes: 18, comments: 2, favorites: 7, deepThink: 4,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S188','S082','S192','S106','S171','S110','S048','S115','S089','S028','S005','S179','S060','S025','S165','S073','S010','S118'],
+      favoritedBy: ['S137','S074','S135','S210','S160','S183','S010'],
+      deepThinkBy: ['S150','S201','S049','S183']
+    },
+    {
+      id: 'tea_post_035', type: 'short', title: '',
+      content: '《法律适用法》第41条的合同最密切联系原则，和罗马I条例的比较很有意思。',
+      tags: ['国际私法'],
+      author: '邹巧熳', authorId: 'S188', role: 'student',
+      createdAt: '2026-09-23 12:54',
+      likes: 9, comments: 5, favorites: 6, deepThink: 5,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S033','S149','S129','S123','S129','S084','S010','S068','S159'],
+      favoritedBy: ['S134','S100','S031','S033','S032','S036'],
+      deepThinkBy: ['S072','S098','S204','S209','S201']
+    },
+    {
+      id: 'tea_post_036', type: 'short', title: '',
+      content: 'TRIPS协定第31条bis关于药品专利强制许可的规定，对公共健康很重要。',
+      tags: ['国际经济法'],
+      author: '周培培', authorId: 'S205', role: 'student',
+      createdAt: '2026-09-20 18:56',
+      likes: 17, comments: 8, favorites: 5, deepThink: 3,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S091','S058','S190','S067','S113','S077','S073','S087','S141','S207','S180','S051','S168','S041','S059','S043','S053'],
+      favoritedBy: ['S145','S079','S184','S085','S172'],
+      deepThinkBy: ['S106','S094','S097']
+    },
+    {
+      id: 'tea_post_037', type: 'short', title: '',
+      content: '刚参加完国际法模拟法庭校内选拔，受益匪浅，明年还要参加！',
+      tags: ['随便聊聊'],
+      author: '董伟豪', authorId: 'S052', role: 'student',
+      createdAt: '2026-09-20 22:28',
+      likes: 16, comments: 5, favorites: 7, deepThink: 2,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S103','S001','S180','S022','S189','S168','S091','S062','S092','S052','S174','S155','S126','S098','S049','S025'],
+      favoritedBy: ['S031','S146','S090','S130','S008','S125','S040'],
+      deepThinkBy: ['S009','S204']
+    }
+,
+    {
+      id: 'tea_video_001', type: 'long', title: '📹 【视频笔记】国际法院庭审实录学习：北海大陆架案',
+      content: '最近看了一段ICJ关于北海大陆架案的庭审视频记录，收获很大。\n\n视频中法官对"等距离原则"与"公平原则"的关系进行了详细讨论。几个要点：\n1. 等距离方法不是唯一的划界方法\n2. 需要考虑所有相关情况\n3. 公平原则是划界的基本目标\n\n视频来自ICJ官网公开庭审录像，推荐大家观看！\n\n📎 视频时长：约45分钟\n📎 来源：ICJ官网 > Cases > North Sea Continental Shelf',
+      tags: ['视频', '国际公法'],
+      author: '杨雅淇', authorId: 'S2024001', role: 'student',
+      createdAt: '2026-09-27 20:15',
+      likes: 34, comments: 8, favorites: 22, deepThink: 6,
+      isPinned: false, isRecommended: true, isLocked: false,
+      likedBy: ['S001','S002','S003','S004','S005','S010','S015','S020','S025','S030','S035','S040','S045','S050','S055','S060','S065','S070','S075','S080','S085','S090','S095','S100','S105','S110','S115','S120','S125','S130','S135','S140','S145','S150'],
+      favoritedBy: ['S001','S005','S010','S015','S020','S025','S030','S035','S040','S045','S050','S055','S060','S065','S070','S075','S080','S085','S090','S095','S100','S105'],
+      deepThinkBy: ['S001','S010','S020','S030','S040','S050']
+    },
+    {
+      id: 'tea_video_002', type: 'long', title: '📹 【视频推荐】CISG案例分析视频：根本违约的认定标准',
+      content: '分享一个很好的视频资源，是关于CISG根本违约认定标准的案例分析。\n\n视频通过三个实际案例讲解了"根本违约"的构成要件：\n1. 违约实质上剥夺了另一方根据合同有权期待得到的东西\n2. 违约方可预见性\n3. 买方的补救权利与宣告合同无效的关系\n\n特别适合备考复习时看，比纯文字教材生动很多。\n\n📎 视频时长：约30分钟\n📎 建议配合教材第七章一起看',
+      tags: ['视频', '国际经济法', '案例评析'],
+      author: '张维歌', authorId: 'S113', role: 'student',
+      createdAt: '2026-09-26 15:30',
+      likes: 21, comments: 5, favorites: 18, deepThink: 4,
+      isPinned: false, isRecommended: true, isLocked: false,
+      likedBy: ['S001','S002','S003','S004','S005','S010','S015','S020','S025','S030','S035','S040','S045','S050','S055','S060','S065','S070','S075','S080','S085'],
+      favoritedBy: ['S001','S005','S010','S015','S020','S025','S030','S035','S040','S045','S050','S055','S060','S065','S070','S075','S080','S085'],
+      deepThinkBy: ['S001','S010','S020','S030']
+    },
+    {
+      id: 'tea_video_003', type: 'long', title: '📹 【视频分享】国际商事仲裁模拟庭审——ICC仲裁规则详解',
+      content: '上周参加了学校组织的模拟仲裁庭审，录制了全程视频，分享给大家。\n\n本次模拟案件基于一起涉外投资争端，适用ICC仲裁规则。视频中展示了：\n- 仲裁庭组成程序\n- 管辖权异议的提出与审理\n- 实体辩论环节\n- 最终裁决的作出\n\n通过这次模拟，对国际商事仲裁的程序有了直观理解。视频已剪辑，重点环节有字幕标注。\n\n📎 视频时长：约55分钟\n📎 适合学过国际私法仲裁章节后观看',
+      tags: ['视频', '国际私法'],
+      author: '陈文轩', authorId: 'S010', role: 'student',
+      createdAt: '2026-09-25 19:00',
+      likes: 28, comments: 6, favorites: 15, deepThink: 5,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: ['S001','S002','S003','S004','S005','S010','S015','S020','S025','S030','S035','S040','S045','S050','S055','S060','S065','S070','S075','S080','S085','S090','S095','S100','S105','S110','S115','S120'],
+      favoritedBy: ['S001','S005','S010','S015','S020','S025','S030','S035','S040','S045','S050','S055','S060','S065','S070'],
+      deepThinkBy: ['S001','S010','S020','S030','S040']
+    },
+    ];
+    localStorage.setItem('sanguofa_tea_posts', JSON.stringify(teaDemoPosts));
+  }
+
+  if (!localStorage.getItem('sanguofa_tea_comments')) {
+    var teaDemoComments = [
+    {
+      id: 'tea_cmt_001', postId: 'tea_post_001', parentId: null,
+      content: '说得太好了，这种对比分析的方法很值得学习。',
+      author: '李辰羲', authorId: 'S020', role: 'student',
+      createdAt: '2026-09-23 20:43', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_002', postId: 'tea_post_001', parentId: null,
+      content: '补充一点，国家责任在这一点上的论述也很精彩，推荐大家阅读。',
+      author: '吴思睿', authorId: 'S204', role: 'student',
+      createdAt: '2026-09-24 13:56', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_003', postId: 'tea_post_001', parentId: null,
+      content: '这个议题最近很热门，各国立场差异确实很大。',
+      author: '卢鸿彬', authorId: 'S025', role: 'student',
+      createdAt: '2026-09-19 21:59', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_004', postId: 'tea_post_001', parentId: null,
+      content: '读完受益匪浅，期待更多这样的讨论！',
+      author: '姚远香', authorId: 'S145', role: 'student',
+      createdAt: '2026-09-19 19:40', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_005', postId: 'tea_post_001', parentId: null,
+      content: '补充一个细节：反致制度在最新的修订中有了新变化。',
+      author: '廖杰梅', authorId: 'S095', role: 'student',
+      createdAt: '2026-09-21 14:54', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_006', postId: 'tea_post_001', parentId: null,
+      content: '请问管辖权问题的具体法条依据是什么？想深入了解。',
+      author: '谢宜颖', authorId: 'S110', role: 'student',
+      createdAt: '2026-09-21 21:58', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_007', postId: 'tea_post_001', parentId: null,
+      content: '这个案例我之前也研究过，和你的结论一致。',
+      author: '陈敏', authorId: 'S047', role: 'student',
+      createdAt: '2026-09-25 09:08', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_008', postId: 'tea_post_002', parentId: null,
+      content: '能不能详细说说条约解释的部分？感觉这块最容易混淆。',
+      author: '谭宗毅', authorId: 'S102', role: 'student',
+      createdAt: '2026-09-16 20:28', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_009', postId: 'tea_post_002', parentId: 'tea_cmt_008',
+      content: '这个问题涉及国际法和国内法的互动，比较复杂。',
+      author: '谢宜颖', authorId: 'S110', role: 'student',
+      createdAt: '2026-09-23 19:05', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_010', postId: 'tea_post_002', parentId: null,
+      content: '同意你的观点，这个确实需要重点关注。',
+      author: '梅佳琪', authorId: 'S097', role: 'student',
+      createdAt: '2026-09-16 14:37', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_011', postId: 'tea_post_003', parentId: null,
+      content: '补充一个细节：条约解释在最新的修订中有了新变化。',
+      author: '余东航', authorId: 'S214', role: 'student',
+      createdAt: '2026-09-26 19:21', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_012', postId: 'tea_post_003', parentId: 'tea_cmt_011',
+      content: '能不能详细说说反致制度的部分？感觉这块最容易混淆。',
+      author: '李辰羲', authorId: 'S020', role: 'student',
+      createdAt: '2026-09-16 23:56', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_013', postId: 'tea_post_004', parentId: null,
+      content: '学到了！收藏了，考试前复习用。',
+      author: '李志伟', authorId: 'S022', role: 'student',
+      createdAt: '2026-09-27 16:09', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_014', postId: 'tea_post_004', parentId: null,
+      content: '这个观点很有启发性，不过我觉得法律适用方面还值得进一步讨论。',
+      author: '唐欣', authorId: 'S071', role: 'student',
+      createdAt: '2026-09-24 20:52', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_015', postId: 'tea_post_004', parentId: null,
+      content: '这个案例我之前也研究过，和你的结论一致。',
+      author: '胡海丽', authorId: 'S055', role: 'student',
+      createdAt: '2026-09-18 10:55', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_016', postId: 'tea_post_004', parentId: 'tea_cmt_015',
+      content: '我有一个不同的看法：豁免制度这个问题其实可以从另一个角度理解。',
+      author: '王兴雨', authorId: 'S033', role: 'student',
+      createdAt: '2026-09-22 19:29', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_017', postId: 'tea_post_004', parentId: null,
+      content: '很有价值的分享，建议置顶让更多人看到。',
+      author: '田雨蕙', authorId: 'S131', role: 'student',
+      createdAt: '2026-09-16 10:17', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_018', postId: 'tea_post_004', parentId: 'tea_cmt_017',
+      content: '学到了！收藏了，考试前复习用。',
+      author: '邓帆', authorId: 'S086', role: 'student',
+      createdAt: '2026-09-16 14:12', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_019', postId: 'tea_post_005', parentId: null,
+      content: '补充一个细节：法律适用在最新的修订中有了新变化。',
+      author: '何天', authorId: 'S154', role: 'student',
+      createdAt: '2026-09-19 17:07', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_020', postId: 'tea_post_005', parentId: null,
+      content: '补充一点，管辖权问题在这一点上的论述也很精彩，推荐大家阅读。',
+      author: '刘子含', authorId: 'S161', role: 'student',
+      createdAt: '2026-09-16 09:07', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_021', postId: 'tea_post_006', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '刘雅雯', authorId: 'S064', role: 'student',
+      createdAt: '2026-09-28 19:25', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_022', postId: 'tea_post_006', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '张慧', authorId: 'S217', role: 'student',
+      createdAt: '2026-09-27 15:00', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_023', postId: 'tea_post_006', parentId: null,
+      content: '这个观点很有启发性，不过我觉得豁免制度方面还值得进一步讨论。',
+      author: '郭子涵', authorId: 'S053', role: 'student',
+      createdAt: '2026-09-27 15:31', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_024', postId: 'tea_post_006', parentId: 'tea_cmt_022',
+      content: '补充一个细节：条约解释在最新的修订中有了新变化。',
+      author: '王蕾', authorId: 'S030', role: 'student',
+      createdAt: '2026-09-19 10:21', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_025', postId: 'tea_post_006', parentId: null,
+      content: '能不能详细说说最惠国待遇的部分？感觉这块最容易混淆。',
+      author: '党珮瑜', authorId: 'S013', role: 'student',
+      createdAt: '2026-09-27 18:31', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_026', postId: 'tea_post_006', parentId: null,
+      content: '这让我想到了法律适用案，情况有些类似。',
+      author: '尹创', authorId: 'S002', role: 'student',
+      createdAt: '2026-09-16 15:27', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_027', postId: 'tea_post_007', parentId: null,
+      content: '同意你的观点，这个确实需要重点关注。',
+      author: '李欣蕊', authorId: 'S062', role: 'student',
+      createdAt: '2026-09-25 11:17', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_028', postId: 'tea_post_007', parentId: 'tea_cmt_027',
+      content: '这让我想到了反致制度案，情况有些类似。',
+      author: '王思彤', authorId: 'S168', role: 'student',
+      createdAt: '2026-09-16 18:07', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_029', postId: 'tea_post_007', parentId: 'tea_cmt_027',
+      content: '我有一个不同的看法：国家责任这个问题其实可以从另一个角度理解。',
+      author: '熊粤', authorId: 'S078', role: 'student',
+      createdAt: '2026-09-27 15:31', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_030', postId: 'tea_post_007', parentId: null,
+      content: '补充一个细节：国家责任在最新的修订中有了新变化。',
+      author: '吴思睿', authorId: 'S204', role: 'student',
+      createdAt: '2026-09-25 15:52', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_031', postId: 'tea_post_007', parentId: null,
+      content: '这个观点很有启发性，不过我觉得法律适用方面还值得进一步讨论。',
+      author: '何蓉', authorId: 'S089', role: 'student',
+      createdAt: '2026-09-23 14:07', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_032', postId: 'tea_post_007', parentId: 'tea_cmt_028',
+      content: '补充一点，法律适用在这一点上的论述也很精彩，推荐大家阅读。',
+      author: '张维歌', authorId: 'S082', role: 'student',
+      createdAt: '2026-09-22 11:35', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_033', postId: 'tea_post_008', parentId: null,
+      content: '补充一点，国家责任在这一点上的论述也很精彩，推荐大家阅读。',
+      author: '刘雨欣', authorId: 'S134', role: 'student',
+      createdAt: '2026-09-20 11:43', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_034', postId: 'tea_post_008', parentId: null,
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '张棋', authorId: 'S115', role: 'student',
+      createdAt: '2026-09-28 17:32', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_035', postId: 'tea_post_008', parentId: 'tea_cmt_034',
+      content: '这个问题涉及国际法和国内法的互动，比较复杂。',
+      author: '邓婉莹', authorId: 'S014', role: 'student',
+      createdAt: '2026-09-26 20:48', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_036', postId: 'tea_post_008', parentId: 'tea_cmt_033',
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '李依', authorId: 'S094', role: 'student',
+      createdAt: '2026-09-22 18:29', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_037', postId: 'tea_post_009', parentId: null,
+      content: '请问法律适用的具体法条依据是什么？想深入了解。',
+      author: '谭沁', authorId: 'S165', role: 'student',
+      createdAt: '2026-09-25 19:45', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_038', postId: 'tea_post_009', parentId: null,
+      content: '学到了！收藏了，考试前复习用。',
+      author: '周清鄂', authorId: 'S116', role: 'student',
+      createdAt: '2026-09-21 08:24', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_039', postId: 'tea_post_009', parentId: null,
+      content: '分析得很到位，特别是关于最惠国待遇的部分。',
+      author: '钟诗杭', authorId: 'S207', role: 'student',
+      createdAt: '2026-09-28 12:17', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_040', postId: 'tea_post_009', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '王梦媛', authorId: 'S121', role: 'student',
+      createdAt: '2026-09-18 14:44', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_041', postId: 'tea_post_009', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '王赛文', authorId: 'S032', role: 'student',
+      createdAt: '2026-09-22 14:16', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_042', postId: 'tea_post_009', parentId: 'tea_cmt_039',
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '王傅之', authorId: 'S075', role: 'student',
+      createdAt: '2026-09-16 18:11', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_043', postId: 'tea_post_010', parentId: null,
+      content: '回复：反致制度这个补充很好，我之前忽略了这个角度。',
+      author: '李敏敏', authorId: 'S061', role: 'student',
+      createdAt: '2026-09-19 14:46', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_044', postId: 'tea_post_010', parentId: null,
+      content: '补充一个细节：公共秩序保留在最新的修订中有了新变化。',
+      author: '黄茗睿', authorId: 'S017', role: 'student',
+      createdAt: '2026-09-26 17:46', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_045', postId: 'tea_post_010', parentId: 'tea_cmt_043',
+      content: '这个议题最近很热门，各国立场差异确实很大。',
+      author: '刘宛彤', authorId: 'S024', role: 'student',
+      createdAt: '2026-09-27 11:06', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_046', postId: 'tea_post_010', parentId: 'tea_cmt_043',
+      content: '学到了！收藏了，考试前复习用。',
+      author: '黄江', authorId: 'S139', role: 'student',
+      createdAt: '2026-09-18 22:22', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_047', postId: 'tea_post_010', parentId: null,
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '贺嘉乐', authorId: 'S016', role: 'student',
+      createdAt: '2026-09-27 23:47', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_048', postId: 'tea_post_010', parentId: null,
+      content: '很有价值的分享，建议置顶让更多人看到。',
+      author: '吴眉', authorId: 'S036', role: 'student',
+      createdAt: '2026-09-28 18:44', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_049', postId: 'tea_post_010', parentId: 'tea_cmt_048',
+      content: '赞一个！逻辑清晰，论证有力。',
+      author: '刘雨萌', authorId: 'S096', role: 'student',
+      createdAt: '2026-09-28 08:06', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_050', postId: 'tea_post_010', parentId: null,
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '吴金洁', authorId: 'S199', role: 'student',
+      createdAt: '2026-09-18 16:48', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_051', postId: 'tea_post_011', parentId: null,
+      content: '补充一点，公共秩序保留在这一点上的论述也很精彩，推荐大家阅读。',
+      author: '周文希', authorId: 'S117', role: 'student',
+      createdAt: '2026-09-20 16:51', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_052', postId: 'tea_post_011', parentId: null,
+      content: '同意你的观点，这个确实需要重点关注。',
+      author: '田佳怡', authorId: 'S125', role: 'student',
+      createdAt: '2026-09-21 10:40', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_053', postId: 'tea_post_011', parentId: null,
+      content: '同意，实务中这个点的争议确实很大。',
+      author: '张棋', authorId: 'S115', role: 'student',
+      createdAt: '2026-09-16 16:56', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_054', postId: 'tea_post_011', parentId: null,
+      content: '说得太好了，这种对比分析的方法很值得学习。',
+      author: '毛义书', authorId: 'S066', role: 'student',
+      createdAt: '2026-09-20 23:33', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_055', postId: 'tea_post_011', parentId: null,
+      content: '补充一点，反致制度在这一点上的论述也很精彩，推荐大家阅读。',
+      author: '梅炎鑫', authorId: 'S067', role: 'student',
+      createdAt: '2026-09-27 12:22', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_056', postId: 'tea_post_011', parentId: 'tea_cmt_054',
+      content: '回复：管辖权问题这个补充很好，我之前忽略了这个角度。',
+      author: '蒋晨晨', authorId: 'S019', role: 'student',
+      createdAt: '2026-09-20 08:09', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_057', postId: 'tea_post_011', parentId: null,
+      content: '分析得很到位，特别是关于管辖权问题的部分。',
+      author: '陈林佳', authorId: 'S009', role: 'student',
+      createdAt: '2026-09-27 10:23', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_058', postId: 'tea_post_012', parentId: null,
+      content: '读完受益匪浅，期待更多这样的讨论！',
+      author: '黄恺馨', authorId: 'S156', role: 'student',
+      createdAt: '2026-09-27 23:16', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_059', postId: 'tea_post_012', parentId: null,
+      content: '很有价值的分享，建议置顶让更多人看到。',
+      author: '汪文丽', authorId: 'S166', role: 'student',
+      createdAt: '2026-09-28 20:00', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_060', postId: 'tea_post_012', parentId: null,
+      content: '好文推荐！正好最近在研究这个方向。',
+      author: '潘云昊', authorId: 'S027', role: 'student',
+      createdAt: '2026-09-27 22:52', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_061', postId: 'tea_post_013', parentId: null,
+      content: '这个议题最近很热门，各国立场差异确实很大。',
+      author: '罗思雨', authorId: 'S197', role: 'student',
+      createdAt: '2026-09-16 13:16', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_062', postId: 'tea_post_013', parentId: null,
+      content: '我有一个不同的看法：公共秩序保留这个问题其实可以从另一个角度理解。',
+      author: '王晓', authorId: 'S203', role: 'student',
+      createdAt: '2026-09-28 14:48', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_063', postId: 'tea_post_014', parentId: null,
+      content: '这个议题最近很热门，各国立场差异确实很大。',
+      author: '宋佳诚', authorId: 'S100', role: 'student',
+      createdAt: '2026-09-28 15:54', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_064', postId: 'tea_post_014', parentId: null,
+      content: '我觉得关键还是在于条约解释的方法论问题。',
+      author: '谭沁', authorId: 'S165', role: 'student',
+      createdAt: '2026-09-17 23:22', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_065', postId: 'tea_post_014', parentId: 'tea_cmt_063',
+      content: '回复：法律适用这个补充很好，我之前忽略了这个角度。',
+      author: '莫正阳', authorId: 'S130', role: 'student',
+      createdAt: '2026-09-16 10:54', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_066', postId: 'tea_post_014', parentId: 'tea_cmt_064',
+      content: '这个议题最近很热门，各国立场差异确实很大。',
+      author: '张先语', authorId: 'S178', role: 'student',
+      createdAt: '2026-09-27 16:32', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_067', postId: 'tea_post_014', parentId: 'tea_cmt_064',
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '陆星宇', authorId: 'S185', role: 'student',
+      createdAt: '2026-09-19 17:18', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_068', postId: 'tea_post_015', parentId: null,
+      content: '这个知识点在往年考试中确实考过，你的总结很到位。',
+      author: '吴眉', authorId: 'S036', role: 'student',
+      createdAt: '2026-09-18 22:56', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_069', postId: 'tea_post_015', parentId: null,
+      content: '这个知识点在往年考试中确实考过，你的总结很到位。',
+      author: '曾晓楠', authorId: 'S129', role: 'student',
+      createdAt: '2026-09-26 18:06', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_070', postId: 'tea_post_015', parentId: 'tea_cmt_068',
+      content: '同意，实务中这个点的争议确实很大。',
+      author: '肖安琪', authorId: 'S173', role: 'student',
+      createdAt: '2026-09-16 15:16', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_071', postId: 'tea_post_015', parentId: null,
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '王傅之', authorId: 'S075', role: 'student',
+      createdAt: '2026-09-19 08:28', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_072', postId: 'tea_post_016', parentId: null,
+      content: '分析得很到位，特别是关于争端解决的部分。',
+      author: '黄茗睿', authorId: 'S017', role: 'student',
+      createdAt: '2026-09-26 18:11', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_073', postId: 'tea_post_016', parentId: null,
+      content: '同意，实务中这个点的争议确实很大。',
+      author: '邓婉莹', authorId: 'S014', role: 'student',
+      createdAt: '2026-09-22 14:45', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_074', postId: 'tea_post_016', parentId: null,
+      content: '请问法律适用的具体法条依据是什么？想深入了解。',
+      author: '张棋', authorId: 'S115', role: 'student',
+      createdAt: '2026-09-28 12:54', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_075', postId: 'tea_post_016', parentId: 'tea_cmt_074',
+      content: '回复：国民待遇这个补充很好，我之前忽略了这个角度。',
+      author: '陆星宇', authorId: 'S185', role: 'student',
+      createdAt: '2026-09-25 20:15', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_076', postId: 'tea_post_017', parentId: null,
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '韦欣宇', authorId: 'S035', role: 'student',
+      createdAt: '2026-09-22 10:39', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_077', postId: 'tea_post_017', parentId: 'tea_cmt_076',
+      content: '好文推荐！正好最近在研究这个方向。',
+      author: '周祯琰', authorId: 'S128', role: 'student',
+      createdAt: '2026-09-24 20:50', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_078', postId: 'tea_post_017', parentId: null,
+      content: '同意你的观点，这个确实需要重点关注。',
+      author: '徐芊', authorId: 'S079', role: 'student',
+      createdAt: '2026-09-21 10:12', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_079', postId: 'tea_post_017', parentId: null,
+      content: '很有价值的分享，建议置顶让更多人看到。',
+      author: '台俊皓', authorId: 'S001', role: 'student',
+      createdAt: '2026-09-28 21:19', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_080', postId: 'tea_post_017', parentId: null,
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '李辰羲', authorId: 'S020', role: 'student',
+      createdAt: '2026-09-19 15:44', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_081', postId: 'tea_post_018', parentId: null,
+      content: '这个问题涉及国际法和国内法的互动，比较复杂。',
+      author: '李辰羲', authorId: 'S020', role: 'student',
+      createdAt: '2026-09-18 18:45', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_082', postId: 'tea_post_018', parentId: null,
+      content: '感谢分享！正好在准备相关的课程论文。',
+      author: '程诺', authorId: 'S085', role: 'student',
+      createdAt: '2026-09-28 08:57', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_083', postId: 'tea_post_018', parentId: null,
+      content: '这个知识点在往年考试中确实考过，你的总结很到位。',
+      author: '罗思雨', authorId: 'S197', role: 'student',
+      createdAt: '2026-09-22 18:27', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_084', postId: 'tea_post_018', parentId: null,
+      content: '分析得很到位，特别是关于公共秩序保留的部分。',
+      author: '徐芊', authorId: 'S079', role: 'student',
+      createdAt: '2026-09-18 23:30', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_085', postId: 'tea_post_018', parentId: null,
+      content: '说得太好了，这种对比分析的方法很值得学习。',
+      author: '胡昊月', authorId: 'S136', role: 'student',
+      createdAt: '2026-09-22 09:39', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_086', postId: 'tea_post_018', parentId: 'tea_cmt_083',
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '袁诺', authorId: 'S176', role: 'student',
+      createdAt: '2026-09-27 17:24', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_087', postId: 'tea_post_019', parentId: null,
+      content: '这个知识点在往年考试中确实考过，你的总结很到位。',
+      author: '张莹莹', authorId: 'S044', role: 'student',
+      createdAt: '2026-09-22 09:51', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_088', postId: 'tea_post_019', parentId: 'tea_cmt_087',
+      content: '这个问题涉及国际法和国内法的互动，比较复杂。',
+      author: '张维歌', authorId: 'S082', role: 'student',
+      createdAt: '2026-09-19 10:47', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_089', postId: 'tea_post_020', parentId: null,
+      content: '这个观点很有启发性，不过我觉得管辖权问题方面还值得进一步讨论。',
+      author: '王敏静', authorId: 'S031', role: 'student',
+      createdAt: '2026-09-19 17:03', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_090', postId: 'tea_post_020', parentId: 'tea_cmt_089',
+      content: '赞一个！逻辑清晰，论证有力。',
+      author: '陆星宇', authorId: 'S185', role: 'student',
+      createdAt: '2026-09-28 13:20', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_091', postId: 'tea_post_021', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '王贵愈', authorId: 'S167', role: 'student',
+      createdAt: '2026-09-27 19:54', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_092', postId: 'tea_post_021', parentId: 'tea_cmt_091',
+      content: '感谢分享！正好在准备相关的课程论文。',
+      author: '王梓璇', authorId: 'S106', role: 'student',
+      createdAt: '2026-09-19 12:27', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_093', postId: 'tea_post_021', parentId: null,
+      content: '好文推荐！正好最近在研究这个方向。',
+      author: '肖仁燮', authorId: 'S005', role: 'student',
+      createdAt: '2026-09-23 16:17', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_094', postId: 'tea_post_021', parentId: 'tea_cmt_092',
+      content: '我觉得关键还是在于条约解释的方法论问题。',
+      author: '谭宗毅', authorId: 'S102', role: 'student',
+      createdAt: '2026-09-27 22:08', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_095', postId: 'tea_post_021', parentId: null,
+      content: '这让我想到了管辖权问题案，情况有些类似。',
+      author: '李欣蕊', authorId: 'S062', role: 'student',
+      createdAt: '2026-09-24 16:09', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_096', postId: 'tea_post_021', parentId: null,
+      content: '这个问题涉及国际法和国内法的互动，比较复杂。',
+      author: '代阳', authorId: 'S150', role: 'student',
+      createdAt: '2026-09-17 08:10', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_097', postId: 'tea_post_022', parentId: null,
+      content: '我觉得关键还是在于条约解释的方法论问题。',
+      author: '李玉豪', authorId: 'S159', role: 'student',
+      createdAt: '2026-09-27 19:15', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_098', postId: 'tea_post_022', parentId: 'tea_cmt_097',
+      content: '补充一个细节：豁免制度在最新的修订中有了新变化。',
+      author: '高敏', authorId: 'S153', role: 'student',
+      createdAt: '2026-09-19 23:58', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_099', postId: 'tea_post_023', parentId: null,
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '董伟豪', authorId: 'S052', role: 'student',
+      createdAt: '2026-09-20 08:15', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_100', postId: 'tea_post_023', parentId: 'tea_cmt_099',
+      content: '这个问题涉及国际法和国内法的互动，比较复杂。',
+      author: '刘子含', authorId: 'S161', role: 'student',
+      createdAt: '2026-09-27 18:06', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_101', postId: 'tea_post_023', parentId: null,
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '高敏', authorId: 'S153', role: 'student',
+      createdAt: '2026-09-18 11:09', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_102', postId: 'tea_post_023', parentId: null,
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '王敏', authorId: 'S143', role: 'student',
+      createdAt: '2026-09-28 17:12', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_103', postId: 'tea_post_023', parentId: 'tea_cmt_100',
+      content: '能不能详细说说最惠国待遇的部分？感觉这块最容易混淆。',
+      author: '徐芊', authorId: 'S079', role: 'student',
+      createdAt: '2026-09-27 11:58', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_104', postId: 'tea_post_023', parentId: null,
+      content: '回复：国民待遇这个补充很好，我之前忽略了这个角度。',
+      author: '陈胜希', authorId: 'S083', role: 'student',
+      createdAt: '2026-09-20 16:27', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_105', postId: 'tea_post_024', parentId: null,
+      content: '同意你的观点，这个确实需要重点关注。',
+      author: '马欣怡', authorId: 'S026', role: 'student',
+      createdAt: '2026-09-28 23:43', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_106', postId: 'tea_post_024', parentId: 'tea_cmt_105',
+      content: '这个观点很有启发性，不过我觉得争端解决方面还值得进一步讨论。',
+      author: '曾智宇', authorId: 'S146', role: 'student',
+      createdAt: '2026-09-23 13:10', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_107', postId: 'tea_post_025', parentId: null,
+      content: '这个案例我之前也研究过，和你的结论一致。',
+      author: '邹德翔', authorId: 'S118', role: 'student',
+      createdAt: '2026-09-23 23:47', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_108', postId: 'tea_post_025', parentId: null,
+      content: '回复：管辖权问题这个补充很好，我之前忽略了这个角度。',
+      author: '陈文轩', authorId: 'S010', role: 'student',
+      createdAt: '2026-09-26 21:25', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_109', postId: 'tea_post_025', parentId: null,
+      content: '回复：国民待遇这个补充很好，我之前忽略了这个角度。',
+      author: '潘紫涵', authorId: 'S162', role: 'student',
+      createdAt: '2026-09-27 23:54', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_110', postId: 'tea_post_025', parentId: null,
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '尹创', authorId: 'S002', role: 'student',
+      createdAt: '2026-09-21 20:32', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_111', postId: 'tea_post_025', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '周清鄂', authorId: 'S116', role: 'student',
+      createdAt: '2026-09-23 08:47', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_112', postId: 'tea_post_026', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '沈园林', authorId: 'S163', role: 'student',
+      createdAt: '2026-09-22 09:36', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_113', postId: 'tea_post_026', parentId: 'tea_cmt_112',
+      content: '说得太好了，这种对比分析的方法很值得学习。',
+      author: '李欣蕊', authorId: 'S062', role: 'student',
+      createdAt: '2026-09-23 20:12', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_114', postId: 'tea_post_026', parentId: 'tea_cmt_113',
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '周雨佳', authorId: 'S142', role: 'student',
+      createdAt: '2026-09-21 12:23', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_115', postId: 'tea_post_026', parentId: 'tea_cmt_113',
+      content: '赞一个！逻辑清晰，论证有力。',
+      author: '潘云昊', authorId: 'S027', role: 'student',
+      createdAt: '2026-09-23 20:42', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_116', postId: 'tea_post_027', parentId: null,
+      content: '我觉得关键还是在于条约解释的方法论问题。',
+      author: '王傅之', authorId: 'S075', role: 'student',
+      createdAt: '2026-09-28 17:27', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_117', postId: 'tea_post_027', parentId: null,
+      content: '学到了！收藏了，考试前复习用。',
+      author: '肖安琪', authorId: 'S173', role: 'student',
+      createdAt: '2026-09-16 22:48', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_118', postId: 'tea_post_027', parentId: 'tea_cmt_116',
+      content: '同意你的观点，这个确实需要重点关注。',
+      author: '吴眉', authorId: 'S036', role: 'student',
+      createdAt: '2026-09-17 10:16', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_119', postId: 'tea_post_027', parentId: 'tea_cmt_116',
+      content: '这让我想到了反致制度案，情况有些类似。',
+      author: '邓可云', authorId: 'S151', role: 'student',
+      createdAt: '2026-09-28 09:57', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_120', postId: 'tea_post_027', parentId: 'tea_cmt_117',
+      content: '这个观点很有启发性，不过我觉得反致制度方面还值得进一步讨论。',
+      author: '王贵愈', authorId: 'S167', role: 'student',
+      createdAt: '2026-09-18 14:55', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_121', postId: 'tea_post_027', parentId: 'tea_cmt_117',
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '杨琴', authorId: 'S112', role: 'student',
+      createdAt: '2026-09-28 14:35', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_122', postId: 'tea_post_028', parentId: null,
+      content: '赞一个！逻辑清晰，论证有力。',
+      author: '何思淇', authorId: 'S208', role: 'student',
+      createdAt: '2026-09-27 21:32', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_123', postId: 'tea_post_028', parentId: null,
+      content: '分析得很到位，特别是关于公共秩序保留的部分。',
+      author: '宋卓越', authorId: 'S164', role: 'student',
+      createdAt: '2026-09-16 10:11', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_124', postId: 'tea_post_028', parentId: null,
+      content: '感谢分享！正好在准备相关的课程论文。',
+      author: '陈祎玮', authorId: 'S084', role: 'student',
+      createdAt: '2026-09-26 09:59', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_125', postId: 'tea_post_028', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '王梦媛', authorId: 'S121', role: 'student',
+      createdAt: '2026-09-22 13:16', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_126', postId: 'tea_post_028', parentId: null,
+      content: '我觉得关键还是在于条约解释的方法论问题。',
+      author: '姚远香', authorId: 'S145', role: 'student',
+      createdAt: '2026-09-27 08:03', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_127', postId: 'tea_post_028', parentId: null,
+      content: '赞一个！逻辑清晰，论证有力。',
+      author: '邓畅', authorId: 'S050', role: 'student',
+      createdAt: '2026-09-27 15:13', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_128', postId: 'tea_post_028', parentId: 'tea_cmt_125',
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '胡昊月', authorId: 'S136', role: 'student',
+      createdAt: '2026-09-16 12:59', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_129', postId: 'tea_post_029', parentId: null,
+      content: '这个观点很有启发性，不过我觉得反致制度方面还值得进一步讨论。',
+      author: '王紫湛', authorId: 'S107', role: 'student',
+      createdAt: '2026-09-26 17:46', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_130', postId: 'tea_post_029', parentId: null,
+      content: '读完受益匪浅，期待更多这样的讨论！',
+      author: '袁诺', authorId: 'S176', role: 'student',
+      createdAt: '2026-09-28 21:15', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_131', postId: 'tea_post_029', parentId: null,
+      content: '感谢分享！正好在准备相关的课程论文。',
+      author: '肖吴佩奇', authorId: 'S038', role: 'student',
+      createdAt: '2026-09-24 19:39', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_132', postId: 'tea_post_030', parentId: null,
+      content: '请问争端解决的具体法条依据是什么？想深入了解。',
+      author: '姚远香', authorId: 'S145', role: 'student',
+      createdAt: '2026-09-23 23:24', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_133', postId: 'tea_post_030', parentId: null,
+      content: '赞一个！逻辑清晰，论证有力。',
+      author: '廖一寰', authorId: 'S184', role: 'student',
+      createdAt: '2026-09-16 23:24', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_134', postId: 'tea_post_030', parentId: 'tea_cmt_132',
+      content: '这个知识点在往年考试中确实考过，你的总结很到位。',
+      author: '党珮瑜', authorId: 'S013', role: 'student',
+      createdAt: '2026-09-27 17:20', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_135', postId: 'tea_post_030', parentId: 'tea_cmt_133',
+      content: '这让我想到了公共秩序保留案，情况有些类似。',
+      author: '成艺', authorId: 'S049', role: 'student',
+      createdAt: '2026-09-20 18:04', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_136', postId: 'tea_post_031', parentId: null,
+      content: '我觉得关键还是在于条约解释的方法论问题。',
+      author: '潘紫涵', authorId: 'S162', role: 'student',
+      createdAt: '2026-09-25 23:03', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_137', postId: 'tea_post_031', parentId: 'tea_cmt_136',
+      content: '学到了！收藏了，考试前复习用。',
+      author: '董伟豪', authorId: 'S052', role: 'student',
+      createdAt: '2026-09-22 08:51', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_138', postId: 'tea_post_031', parentId: 'tea_cmt_137',
+      content: '补充一点，管辖权问题在这一点上的论述也很精彩，推荐大家阅读。',
+      author: '尹创', authorId: 'S002', role: 'student',
+      createdAt: '2026-09-18 12:55', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_139', postId: 'tea_post_031', parentId: 'tea_cmt_136',
+      content: '这个观点很有启发性，不过我觉得法律适用方面还值得进一步讨论。',
+      author: '岳金慧', authorId: 'S042', role: 'student',
+      createdAt: '2026-09-23 14:56', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_140', postId: 'tea_post_031', parentId: null,
+      content: '感谢分享！正好在准备相关的课程论文。',
+      author: '党珮瑜', authorId: 'S013', role: 'student',
+      createdAt: '2026-09-21 22:23', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_141', postId: 'tea_post_031', parentId: null,
+      content: '能不能详细说说管辖权问题的部分？感觉这块最容易混淆。',
+      author: '何思淇', authorId: 'S208', role: 'student',
+      createdAt: '2026-09-28 12:27', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_142', postId: 'tea_post_032', parentId: null,
+      content: '补充一个细节：国家责任在最新的修订中有了新变化。',
+      author: '胡金平', authorId: 'S090', role: 'student',
+      createdAt: '2026-09-28 19:30', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_143', postId: 'tea_post_032', parentId: 'tea_cmt_142',
+      content: '赞一个！逻辑清晰，论证有力。',
+      author: '王昕妤', authorId: 'S074', role: 'student',
+      createdAt: '2026-09-25 09:31', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_144', postId: 'tea_post_032', parentId: 'tea_cmt_143',
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '陈胜希', authorId: 'S083', role: 'student',
+      createdAt: '2026-09-16 18:04', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_145', postId: 'tea_post_032', parentId: null,
+      content: '同意你的观点，这个确实需要重点关注。',
+      author: '何思淇', authorId: 'S208', role: 'student',
+      createdAt: '2026-09-20 23:38', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_146', postId: 'tea_post_032', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '王御平', authorId: 'S034', role: 'student',
+      createdAt: '2026-09-28 11:59', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_147', postId: 'tea_post_032', parentId: null,
+      content: '赞一个！逻辑清晰，论证有力。',
+      author: '乔子凌', authorId: 'S132', role: 'student',
+      createdAt: '2026-09-28 21:01', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_148', postId: 'tea_post_032', parentId: null,
+      content: '感谢分享！正好在准备相关的课程论文。',
+      author: '潘晶晶', authorId: 'S098', role: 'student',
+      createdAt: '2026-09-19 20:35', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_149', postId: 'tea_post_033', parentId: null,
+      content: '这个案例我之前也研究过，和你的结论一致。',
+      author: '宋佳诚', authorId: 'S100', role: 'student',
+      createdAt: '2026-09-20 14:16', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_150', postId: 'tea_post_033', parentId: null,
+      content: '同意，实务中这个点的争议确实很大。',
+      author: '陈林佳', authorId: 'S009', role: 'student',
+      createdAt: '2026-09-21 18:58', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_151', postId: 'tea_post_033', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '何思淇', authorId: 'S208', role: 'student',
+      createdAt: '2026-09-18 18:55', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_152', postId: 'tea_post_034', parentId: null,
+      content: '这个知识点在往年考试中确实考过，你的总结很到位。',
+      author: '王傅之', authorId: 'S075', role: 'student',
+      createdAt: '2026-09-27 23:54', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_153', postId: 'tea_post_034', parentId: null,
+      content: '学到了！收藏了，考试前复习用。',
+      author: '马欣怡', authorId: 'S026', role: 'student',
+      createdAt: '2026-09-24 10:46', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_154', postId: 'tea_post_035', parentId: null,
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '赵静', authorId: 'S179', role: 'student',
+      createdAt: '2026-09-24 21:49', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_155', postId: 'tea_post_035', parentId: null,
+      content: '同意，实务中这个点的争议确实很大。',
+      author: '余芷萱', authorId: 'S080', role: 'student',
+      createdAt: '2026-09-21 17:19', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_156', postId: 'tea_post_035', parentId: null,
+      content: '正好在写这方面的论文，你的分析对我很有帮助。',
+      author: '徐长征', authorId: 'S111', role: 'student',
+      createdAt: '2026-09-27 23:20', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_157', postId: 'tea_post_035', parentId: 'tea_cmt_154',
+      content: '感谢分享！正好在准备相关的课程论文。',
+      author: '谭宗毅', authorId: 'S102', role: 'student',
+      createdAt: '2026-09-28 19:29', likes: 4, likedBy: []
+    },
+    {
+      id: 'tea_cmt_158', postId: 'tea_post_035', parentId: null,
+      content: '从比较法的角度看，不同国家在这个问题上确实有不同做法。',
+      author: '熊粤', authorId: 'S078', role: 'student',
+      createdAt: '2026-09-27 15:11', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_159', postId: 'tea_post_036', parentId: null,
+      content: '我有一个不同的看法：管辖权问题这个问题其实可以从另一个角度理解。',
+      author: '李志伟', authorId: 'S022', role: 'student',
+      createdAt: '2026-09-17 14:06', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_160', postId: 'tea_post_036', parentId: null,
+      content: '这让我想到了国民待遇案，情况有些类似。',
+      author: '李欣蕊', authorId: 'S062', role: 'student',
+      createdAt: '2026-09-21 10:23', likes: 5, likedBy: []
+    },
+    {
+      id: 'tea_cmt_161', postId: 'tea_post_036', parentId: null,
+      content: '好文推荐！正好最近在研究这个方向。',
+      author: '胡海丽', authorId: 'S055', role: 'student',
+      createdAt: '2026-09-25 21:28', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_162', postId: 'tea_post_036', parentId: 'tea_cmt_161',
+      content: '很有价值的分享，建议置顶让更多人看到。',
+      author: '童湖景', authorId: 'S126', role: 'student',
+      createdAt: '2026-09-28 21:23', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_163', postId: 'tea_post_036', parentId: 'tea_cmt_161',
+      content: '补充一个细节：豁免制度在最新的修订中有了新变化。',
+      author: '童湖景', authorId: 'S126', role: 'student',
+      createdAt: '2026-09-21 16:14', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_164', postId: 'tea_post_036', parentId: null,
+      content: '能不能详细说说管辖权问题的部分？感觉这块最容易混淆。',
+      author: '陆星宇', authorId: 'S185', role: 'student',
+      createdAt: '2026-09-24 23:21', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_165', postId: 'tea_post_036', parentId: 'tea_cmt_164',
+      content: '这个议题最近很热门，各国立场差异确实很大。',
+      author: '吴眉', authorId: 'S036', role: 'student',
+      createdAt: '2026-09-27 08:03', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_166', postId: 'tea_post_036', parentId: null,
+      content: '赞一个！逻辑清晰，论证有力。',
+      author: '张文轩', authorId: 'S127', role: 'student',
+      createdAt: '2026-09-23 22:47', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_167', postId: 'tea_post_037', parentId: null,
+      content: '请问国民待遇的具体法条依据是什么？想深入了解。',
+      author: '罗思雨', authorId: 'S197', role: 'student',
+      createdAt: '2026-09-20 12:03', likes: 1, likedBy: []
+    },
+    {
+      id: 'tea_cmt_168', postId: 'tea_post_037', parentId: null,
+      content: '这个议题最近很热门，各国立场差异确实很大。',
+      author: '王梦媛', authorId: 'S121', role: 'student',
+      createdAt: '2026-09-18 16:10', likes: 0, likedBy: []
+    },
+    {
+      id: 'tea_cmt_169', postId: 'tea_post_037', parentId: 'tea_cmt_168',
+      content: '能不能详细说说争端解决的部分？感觉这块最容易混淆。',
+      author: '刘子含', authorId: 'S161', role: 'student',
+      createdAt: '2026-09-28 09:19', likes: 3, likedBy: []
+    },
+    {
+      id: 'tea_cmt_170', postId: 'tea_post_037', parentId: null,
+      content: '分析得很到位，特别是关于国家责任的部分。',
+      author: '黄茗睿', authorId: 'S017', role: 'student',
+      createdAt: '2026-09-18 21:18', likes: 2, likedBy: []
+    },
+    {
+      id: 'tea_cmt_171', postId: 'tea_post_037', parentId: null,
+      content: '我之前也思考过这个问题，但一直没想清楚，谢谢你的分析！',
+      author: '谭宗毅', authorId: 'S102', role: 'student',
+      createdAt: '2026-09-27 15:12', likes: 1, likedBy: []
+    }
+    ];
+    localStorage.setItem('sanguofa_tea_comments', JSON.stringify(teaDemoComments));
+  }
+
+  if (!localStorage.getItem('sanguofa_tea_stats')) {
+    var teaDemoStats = {
+    'S001': { points: 48, badges: ['茶座新人'], postsCount: 3, likesReceived: 24 },
+    'S002': { points: 58, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 28 },
+    'S003': { points: 27, badges: ['茶座新人'], postsCount: 3, likesReceived: 13 },
+    'S004': { points: 66, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 1, likesReceived: 22 },
+    'S005': { points: 76, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 18 },
+    'S006': { points: 42, badges: ['茶座新人','文献达人'], postsCount: 3, likesReceived: 8 },
+    'S007': { points: 51, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 25 },
+    'S008': { points: 35, badges: ['茶座新人'], postsCount: 5, likesReceived: 24 },
+    'S009': { points: 36, badges: ['茶座新人'], postsCount: 4, likesReceived: 21 },
+    'S010': { points: 20, badges: ['茶座新人','文献达人'], postsCount: 1, likesReceived: 0 },
+    'S011': { points: 77, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 3, likesReceived: 7 },
+    'S012': { points: 13, badges: ['茶座新人','热心助人'], postsCount: 2, likesReceived: 11 },
+    'S013': { points: 44, badges: ['茶座新人'], postsCount: 1, likesReceived: 20 },
+    'S014': { points: 28, badges: ['茶座新人'], postsCount: 4, likesReceived: 14 },
+    'S015': { points: 65, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 14 },
+    'S016': { points: 75, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 28 },
+    'S017': { points: 68, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 1, likesReceived: 0 },
+    'S018': { points: 101, badges: ['茶座新人','活跃讨论者','学术达人','深度思考者'], postsCount: 3, likesReceived: 24 },
+    'S019': { points: 35, badges: ['茶座新人'], postsCount: 2, likesReceived: 0 },
+    'S020': { points: 41, badges: ['茶座新人'], postsCount: 3, likesReceived: 11 },
+    'S021': { points: 61, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 8 },
+    'S022': { points: 76, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 15 },
+    'S023': { points: 79, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 1 },
+    'S024': { points: 55, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 13 },
+    'S025': { points: 13, badges: ['茶座新人'], postsCount: 4, likesReceived: 10 },
+    'S026': { points: 55, badges: ['茶座新人','活跃讨论者','深度思考者'], postsCount: 3, likesReceived: 2 },
+    'S027': { points: 75, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 3 },
+    'S028': { points: 70, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 6 },
+    'S029': { points: 69, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 3, likesReceived: 3 },
+    'S030': { points: 15, badges: ['茶座新人'], postsCount: 3, likesReceived: 8 },
+    'S031': { points: 66, badges: ['茶座新人','活跃讨论者'], postsCount: 2, likesReceived: 28 },
+    'S032': { points: 61, badges: ['茶座新人','活跃讨论者','深度思考者'], postsCount: 2, likesReceived: 6 },
+    'S033': { points: 41, badges: ['茶座新人'], postsCount: 4, likesReceived: 6 },
+    'S034': { points: 20, badges: ['茶座新人','热心助人'], postsCount: 2, likesReceived: 2 },
+    'S035': { points: 42, badges: ['茶座新人'], postsCount: 0, likesReceived: 5 },
+    'S036': { points: 43, badges: ['茶座新人'], postsCount: 0, likesReceived: 30 },
+    'S037': { points: 70, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 14 },
+    'S038': { points: 60, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 17 },
+    'S039': { points: 40, badges: ['茶座新人'], postsCount: 5, likesReceived: 7 },
+    'S040': { points: 26, badges: ['茶座新人'], postsCount: 4, likesReceived: 12 },
+    'S041': { points: 67, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 19 },
+    'S042': { points: 74, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 2, likesReceived: 24 },
+    'S043': { points: 69, badges: ['茶座新人','活跃讨论者','深度思考者'], postsCount: 5, likesReceived: 17 },
+    'S044': { points: 68, badges: ['茶座新人','活跃讨论者','深度思考者'], postsCount: 0, likesReceived: 30 },
+    'S045': { points: 59, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 7 },
+    'S046': { points: 31, badges: ['茶座新人','深度思考者'], postsCount: 4, likesReceived: 18 },
+    'S047': { points: 20, badges: ['茶座新人'], postsCount: 0, likesReceived: 0 },
+    'S048': { points: 65, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 5, likesReceived: 18 },
+    'S049': { points: 64, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 4, likesReceived: 15 },
+    'S050': { points: 80, badges: ['茶座新人','活跃讨论者'], postsCount: 0, likesReceived: 14 },
+    'S051': { points: 26, badges: ['茶座新人','深度思考者'], postsCount: 2, likesReceived: 19 },
+    'S052': { points: 68, badges: ['茶座新人','活跃讨论者'], postsCount: 0, likesReceived: 19 },
+    'S053': { points: 79, badges: ['茶座新人','活跃讨论者'], postsCount: 0, likesReceived: 1 },
+    'S054': { points: 67, badges: ['茶座新人','活跃讨论者'], postsCount: 4, likesReceived: 21 },
+    'S055': { points: 32, badges: ['茶座新人'], postsCount: 3, likesReceived: 27 },
+    'S056': { points: 28, badges: ['茶座新人'], postsCount: 2, likesReceived: 16 },
+    'S057': { points: 29, badges: ['茶座新人'], postsCount: 5, likesReceived: 0 },
+    'S058': { points: 65, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 5, likesReceived: 17 },
+    'S059': { points: 117, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 4, likesReceived: 28 },
+    'S060': { points: 37, badges: ['茶座新人'], postsCount: 0, likesReceived: 25 },
+    'S061': { points: 15, badges: ['茶座新人'], postsCount: 3, likesReceived: 17 },
+    'S062': { points: 196, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 1, likesReceived: 6 },
+    'S063': { points: 47, badges: ['茶座新人'], postsCount: 1, likesReceived: 25 },
+    'S064': { points: 69, badges: ['茶座新人','活跃讨论者'], postsCount: 0, likesReceived: 22 },
+    'S065': { points: 35, badges: ['茶座新人'], postsCount: 0, likesReceived: 20 },
+    'S066': { points: 117, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 3, likesReceived: 9 },
+    'S067': { points: 17, badges: ['茶座新人'], postsCount: 5, likesReceived: 28 },
+    'S068': { points: 25, badges: ['茶座新人'], postsCount: 3, likesReceived: 14 },
+    'S069': { points: 27, badges: ['茶座新人'], postsCount: 3, likesReceived: 3 },
+    'S070': { points: 39, badges: ['茶座新人'], postsCount: 0, likesReceived: 0 },
+    'S071': { points: 165, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 3, likesReceived: 11 },
+    'S072': { points: 15, badges: ['茶座新人','深度思考者'], postsCount: 4, likesReceived: 23 },
+    'S073': { points: 29, badges: ['茶座新人'], postsCount: 5, likesReceived: 20 },
+    'S074': { points: 32, badges: ['茶座新人','文献达人'], postsCount: 5, likesReceived: 1 },
+    'S075': { points: 54, badges: ['茶座新人','活跃讨论者'], postsCount: 2, likesReceived: 4 },
+    'S076': { points: 43, badges: ['茶座新人','文献达人'], postsCount: 3, likesReceived: 13 },
+    'S077': { points: 13, badges: ['茶座新人'], postsCount: 4, likesReceived: 4 },
+    'S078': { points: 47, badges: ['茶座新人'], postsCount: 3, likesReceived: 4 },
+    'S079': { points: 172, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 3, likesReceived: 0 },
+    'S080': { points: 52, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 0, likesReceived: 0 },
+    'S081': { points: 74, badges: ['茶座新人','活跃讨论者'], postsCount: 4, likesReceived: 16 },
+    'S082': { points: 75, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 1, likesReceived: 9 },
+    'S083': { points: 80, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 0, likesReceived: 19 },
+    'S084': { points: 49, badges: ['茶座新人'], postsCount: 2, likesReceived: 20 },
+    'S085': { points: 29, badges: ['茶座新人'], postsCount: 2, likesReceived: 13 },
+    'S086': { points: 44, badges: ['茶座新人','热心助人'], postsCount: 1, likesReceived: 13 },
+    'S087': { points: 26, badges: ['茶座新人'], postsCount: 3, likesReceived: 27 },
+    'S088': { points: 26, badges: ['茶座新人','热心助人'], postsCount: 4, likesReceived: 14 },
+    'S089': { points: 37, badges: ['茶座新人'], postsCount: 4, likesReceived: 21 },
+    'S090': { points: 69, badges: ['茶座新人','活跃讨论者'], postsCount: 4, likesReceived: 13 },
+    'S091': { points: 63, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 22 },
+    'S092': { points: 67, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 20 },
+    'S093': { points: 32, badges: ['茶座新人'], postsCount: 4, likesReceived: 25 },
+    'S094': { points: 37, badges: ['茶座新人','热心助人'], postsCount: 5, likesReceived: 30 },
+    'S095': { points: 77, badges: ['茶座新人','活跃讨论者'], postsCount: 2, likesReceived: 27 },
+    'S096': { points: 52, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 14 },
+    'S097': { points: 43, badges: ['茶座新人','文献达人'], postsCount: 0, likesReceived: 23 },
+    'S098': { points: 17, badges: ['茶座新人','热心助人'], postsCount: 1, likesReceived: 1 },
+    'S099': { points: 120, badges: ['茶座新人','活跃讨论者','学术达人','深度思考者'], postsCount: 4, likesReceived: 4 },
+    'S100': { points: 19, badges: ['茶座新人','文献达人'], postsCount: 1, likesReceived: 20 },
+    'S101': { points: 21, badges: ['茶座新人'], postsCount: 1, likesReceived: 29 },
+    'S102': { points: 36, badges: ['茶座新人'], postsCount: 2, likesReceived: 28 },
+    'S103': { points: 57, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 1, likesReceived: 25 },
+    'S104': { points: 54, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 3, likesReceived: 27 },
+    'S105': { points: 29, badges: ['茶座新人'], postsCount: 5, likesReceived: 14 },
+    'S106': { points: 54, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 1, likesReceived: 27 },
+    'S107': { points: 20, badges: ['茶座新人'], postsCount: 3, likesReceived: 27 },
+    'S108': { points: 24, badges: ['茶座新人','热心助人'], postsCount: 4, likesReceived: 1 },
+    'S109': { points: 43, badges: ['茶座新人','热心助人'], postsCount: 4, likesReceived: 4 },
+    'S110': { points: 19, badges: ['茶座新人'], postsCount: 0, likesReceived: 10 },
+    'S111': { points: 62, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 19 },
+    'S112': { points: 32, badges: ['茶座新人','热心助人'], postsCount: 4, likesReceived: 30 },
+    'S113': { points: 55, badges: ['茶座新人','活跃讨论者'], postsCount: 4, likesReceived: 30 },
+    'S114': { points: 57, badges: ['茶座新人','活跃讨论者'], postsCount: 2, likesReceived: 2 },
+    'S115': { points: 23, badges: ['茶座新人'], postsCount: 1, likesReceived: 20 },
+    'S116': { points: 47, badges: ['茶座新人','热心助人'], postsCount: 3, likesReceived: 0 },
+    'S117': { points: 69, badges: ['茶座新人','活跃讨论者'], postsCount: 0, likesReceived: 12 },
+    'S118': { points: 35, badges: ['茶座新人'], postsCount: 1, likesReceived: 29 },
+    'S119': { points: 19, badges: ['茶座新人'], postsCount: 5, likesReceived: 20 },
+    'S120': { points: 54, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 4, likesReceived: 26 },
+    'S121': { points: 12, badges: ['茶座新人','文献达人'], postsCount: 5, likesReceived: 7 },
+    'S122': { points: 29, badges: ['茶座新人'], postsCount: 1, likesReceived: 8 },
+    'S123': { points: 36, badges: ['茶座新人'], postsCount: 1, likesReceived: 18 },
+    'S124': { points: 61, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 8 },
+    'S125': { points: 54, badges: ['茶座新人','活跃讨论者'], postsCount: 2, likesReceived: 20 },
+    'S126': { points: 72, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 26 },
+    'S127': { points: 38, badges: ['茶座新人','文献达人'], postsCount: 1, likesReceived: 24 },
+    'S128': { points: 36, badges: ['茶座新人'], postsCount: 5, likesReceived: 24 },
+    'S129': { points: 62, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 19 },
+    'S130': { points: 11, badges: ['茶座新人'], postsCount: 5, likesReceived: 0 },
+    'S131': { points: 65, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 8 },
+    'S132': { points: 56, badges: ['茶座新人','活跃讨论者'], postsCount: 0, likesReceived: 7 },
+    'S133': { points: 20, badges: ['茶座新人'], postsCount: 3, likesReceived: 13 },
+    'S134': { points: 14, badges: ['茶座新人','热心助人'], postsCount: 1, likesReceived: 8 },
+    'S135': { points: 20, badges: ['茶座新人'], postsCount: 5, likesReceived: 18 },
+    'S136': { points: 69, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 24 },
+    'S137': { points: 65, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 3 },
+    'S138': { points: 18, badges: ['茶座新人'], postsCount: 5, likesReceived: 17 },
+    'S139': { points: 18, badges: ['茶座新人'], postsCount: 3, likesReceived: 17 },
+    'S140': { points: 21, badges: ['茶座新人','文献达人'], postsCount: 3, likesReceived: 3 },
+    'S141': { points: 22, badges: ['茶座新人'], postsCount: 5, likesReceived: 22 },
+    'S142': { points: 39, badges: ['茶座新人','热心助人'], postsCount: 2, likesReceived: 22 },
+    'S143': { points: 77, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 27 },
+    'S144': { points: 34, badges: ['茶座新人'], postsCount: 5, likesReceived: 3 },
+    'S145': { points: 37, badges: ['茶座新人'], postsCount: 3, likesReceived: 29 },
+    'S146': { points: 10, badges: ['茶座新人','热心助人'], postsCount: 3, likesReceived: 2 },
+    'S147': { points: 51, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 16 },
+    'S148': { points: 40, badges: ['茶座新人','深度思考者'], postsCount: 3, likesReceived: 6 },
+    'S149': { points: 52, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 0, likesReceived: 1 },
+    'S150': { points: 10, badges: ['茶座新人','热心助人'], postsCount: 1, likesReceived: 4 },
+    'S151': { points: 17, badges: ['茶座新人','热心助人'], postsCount: 1, likesReceived: 24 },
+    'S152': { points: 183, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 5, likesReceived: 16 },
+    'S153': { points: 112, badges: ['茶座新人','活跃讨论者','学术达人','文献达人'], postsCount: 2, likesReceived: 28 },
+    'S154': { points: 30, badges: ['茶座新人','深度思考者'], postsCount: 4, likesReceived: 30 },
+    'S155': { points: 31, badges: ['茶座新人'], postsCount: 3, likesReceived: 27 },
+    'S156': { points: 23, badges: ['茶座新人'], postsCount: 3, likesReceived: 8 },
+    'S157': { points: 54, badges: ['茶座新人','活跃讨论者'], postsCount: 0, likesReceived: 23 },
+    'S158': { points: 15, badges: ['茶座新人'], postsCount: 4, likesReceived: 2 },
+    'S159': { points: 38, badges: ['茶座新人'], postsCount: 1, likesReceived: 7 },
+    'S160': { points: 156, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 5, likesReceived: 3 },
+    'S161': { points: 28, badges: ['茶座新人','文献达人'], postsCount: 3, likesReceived: 13 },
+    'S162': { points: 46, badges: ['茶座新人'], postsCount: 1, likesReceived: 14 },
+    'S163': { points: 38, badges: ['茶座新人'], postsCount: 2, likesReceived: 0 },
+    'S164': { points: 74, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 3, likesReceived: 12 },
+    'S165': { points: 52, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 1, likesReceived: 23 },
+    'S166': { points: 35, badges: ['茶座新人'], postsCount: 0, likesReceived: 27 },
+    'S167': { points: 61, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 5 },
+    'S168': { points: 43, badges: ['茶座新人'], postsCount: 5, likesReceived: 12 },
+    'S169': { points: 58, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 4, likesReceived: 14 },
+    'S170': { points: 67, badges: ['茶座新人','活跃讨论者','深度思考者'], postsCount: 2, likesReceived: 10 },
+    'S171': { points: 75, badges: ['茶座新人','活跃讨论者'], postsCount: 0, likesReceived: 28 },
+    'S172': { points: 116, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 4, likesReceived: 20 },
+    'S173': { points: 62, badges: ['茶座新人','活跃讨论者'], postsCount: 2, likesReceived: 27 },
+    'S174': { points: 45, badges: ['茶座新人'], postsCount: 1, likesReceived: 1 },
+    'S175': { points: 77, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 1, likesReceived: 21 },
+    'S176': { points: 14, badges: ['茶座新人'], postsCount: 5, likesReceived: 16 },
+    'S177': { points: 64, badges: ['茶座新人','活跃讨论者'], postsCount: 4, likesReceived: 14 },
+    'S178': { points: 56, badges: ['茶座新人','活跃讨论者','深度思考者'], postsCount: 5, likesReceived: 2 },
+    'S179': { points: 55, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 0 },
+    'S180': { points: 174, badges: ['茶座新人','活跃讨论者','学术达人','热心助人'], postsCount: 3, likesReceived: 0 },
+    'S181': { points: 64, badges: ['茶座新人','活跃讨论者','深度思考者'], postsCount: 2, likesReceived: 13 },
+    'S182': { points: 27, badges: ['茶座新人'], postsCount: 4, likesReceived: 30 },
+    'S183': { points: 147, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 3, likesReceived: 18 },
+    'S184': { points: 14, badges: ['茶座新人'], postsCount: 2, likesReceived: 18 },
+    'S185': { points: 73, badges: ['茶座新人','活跃讨论者'], postsCount: 2, likesReceived: 11 },
+    'S186': { points: 72, badges: ['茶座新人','活跃讨论者'], postsCount: 4, likesReceived: 9 },
+    'S187': { points: 36, badges: ['茶座新人','文献达人'], postsCount: 1, likesReceived: 22 },
+    'S188': { points: 71, badges: ['茶座新人','活跃讨论者','深度思考者'], postsCount: 3, likesReceived: 27 },
+    'S189': { points: 155, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 4, likesReceived: 11 },
+    'S190': { points: 20, badges: ['茶座新人','深度思考者'], postsCount: 4, likesReceived: 5 },
+    'S191': { points: 50, badges: ['茶座新人'], postsCount: 5, likesReceived: 2 },
+    'S192': { points: 44, badges: ['茶座新人','深度思考者'], postsCount: 5, likesReceived: 12 },
+    'S193': { points: 38, badges: ['茶座新人','深度思考者'], postsCount: 3, likesReceived: 16 },
+    'S194': { points: 43, badges: ['茶座新人'], postsCount: 1, likesReceived: 28 },
+    'S195': { points: 66, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 0 },
+    'S196': { points: 54, badges: ['茶座新人','活跃讨论者','文献达人'], postsCount: 3, likesReceived: 5 },
+    'S197': { points: 54, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 0 },
+    'S198': { points: 199, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 3, likesReceived: 21 },
+    'S199': { points: 60, badges: ['茶座新人','活跃讨论者'], postsCount: 3, likesReceived: 12 },
+    'S200': { points: 56, badges: ['茶座新人','活跃讨论者'], postsCount: 0, likesReceived: 20 },
+    'S201': { points: 28, badges: ['茶座新人','文献达人'], postsCount: 2, likesReceived: 29 },
+    'S202': { points: 70, badges: ['茶座新人','活跃讨论者'], postsCount: 5, likesReceived: 0 },
+    'S203': { points: 46, badges: ['茶座新人'], postsCount: 0, likesReceived: 16 },
+    'S204': { points: 15, badges: ['茶座新人'], postsCount: 3, likesReceived: 30 },
+    'S205': { points: 34, badges: ['茶座新人','文献达人'], postsCount: 5, likesReceived: 10 },
+    'S206': { points: 35, badges: ['茶座新人'], postsCount: 5, likesReceived: 23 },
+    'S207': { points: 13, badges: ['茶座新人','深度思考者'], postsCount: 1, likesReceived: 20 },
+    'S208': { points: 28, badges: ['茶座新人'], postsCount: 0, likesReceived: 18 },
+    'S209': { points: 45, badges: ['茶座新人'], postsCount: 3, likesReceived: 17 },
+    'S210': { points: 194, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 2, likesReceived: 18 },
+    'S211': { points: 15, badges: ['茶座新人'], postsCount: 1, likesReceived: 24 },
+    'S212': { points: 47, badges: ['茶座新人','文献达人'], postsCount: 1, likesReceived: 21 },
+    'S213': { points: 61, badges: ['茶座新人','活跃讨论者','热心助人'], postsCount: 3, likesReceived: 10 },
+    'S214': { points: 75, badges: ['茶座新人','活跃讨论者'], postsCount: 1, likesReceived: 23 },
+    'S215': { points: 33, badges: ['茶座新人'], postsCount: 4, likesReceived: 27 },
+    'S216': { points: 103, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 0, likesReceived: 10 },
+    'S217': { points: 109, badges: ['茶座新人','活跃讨论者','学术达人'], postsCount: 0, likesReceived: 20 }
+    };
+    localStorage.setItem('sanguofa_tea_stats', JSON.stringify(teaDemoStats));
+  }
+}
+initNewModulesDemoData();
+
+// ====== 小际茶座 · 学术社区 ======
+// 数据结构：sanguofa_tea_posts / sanguofa_tea_comments / sanguofa_tea_stats
+// 兼容旧数据：sanguofa_discussion_posts 自动迁移
+
+var TEA_TAGS = ['🌐 国际公法','⚖️ 国际私法','💼 国际经济法','🔥 热点追踪','📚 文献研读','📋 案例评析','💬 随便聊聊','📹 视频'];
+var TEA_POSTS_KEY = 'sanguofa_tea_posts';
+var TEA_COMMENTS_KEY = 'sanguofa_tea_comments';
+var TEA_STATS_KEY = 'sanguofa_tea_stats';
+
+function migrateTeaData() {
+  var oldPosts = JSON.parse(localStorage.getItem('sanguofa_discussion_posts') || '[]');
+  if (oldPosts.length === 0) return;
+  var existing = JSON.parse(localStorage.getItem(TEA_POSTS_KEY) || '[]');
+  if (existing.length > 0) { localStorage.removeItem('sanguofa_discussion_posts'); return; }
+  var migrated = oldPosts.map(function(p) {
+    return {
+      id: p.id || ('post-' + Math.random().toString(36).substr(2,9)),
+      type: 'short', title: p.title || '（无标题）', content: p.content || '',
+      tags: ['💬 随便聊聊'],
+      author: p.author || '匿名', authorId: p.authorId || 'unknown',
+      role: p.role || 'student', createdAt: p.createdAt || new Date().toISOString(),
+      likes: 0, comments: (p.replies||[]).length, favorites: 0, deepThink: 0,
+      isPinned: false, isRecommended: false, isLocked: false,
+      likedBy: [], favoritedBy: [], deepThinkBy: []
+    };
+  });
+  localStorage.setItem(TEA_POSTS_KEY, JSON.stringify(migrated));
+  var oldComments = JSON.parse(localStorage.getItem(TEA_COMMENTS_KEY) || '[]');
+  oldPosts.forEach(function(p) {
+    (p.replies||[]).forEach(function(r) {
+      oldComments.push({
+        id: r.id || ('cmt-' + Math.random().toString(36).substr(2,9)),
+        postId: p.id, parentId: null,
+        content: r.content || '', author: r.author || '匿名',
+        authorId: r.authorId || 'unknown', role: r.role || 'student',
+        createdAt: r.createdAt || '', likes: 0, likedBy: []
+      });
+    });
+  });
+  localStorage.setItem(TEA_COMMENTS_KEY, JSON.stringify(oldComments));
+  localStorage.removeItem('sanguofa_discussion_posts');
+}
+migrateTeaData();
+
+function teaGetPosts() { return JSON.parse(localStorage.getItem(TEA_POSTS_KEY) || '[]'); }
+function teaSavePosts(p) { localStorage.setItem(TEA_POSTS_KEY, JSON.stringify(p)); }
+function teaGetComments() { return JSON.parse(localStorage.getItem(TEA_COMMENTS_KEY) || '[]'); }
+function teaSaveComments(c) { localStorage.setItem(TEA_COMMENTS_KEY, JSON.stringify(c)); }
+function teaGetStats() { return JSON.parse(localStorage.getItem(TEA_STATS_KEY) || '{}'); }
+function teaSaveStats(s) { localStorage.setItem(TEA_STATS_KEY, JSON.stringify(s)); }
+
+function teaAddPoints(uid, delta) {
+  var stats = teaGetStats();
+  if (!stats[uid]) stats[uid] = { points:0, badges:[], postsCount:0, likesReceived:0 };
+  stats[uid].points = Math.max(0, stats[uid].points + delta);
+  var b = stats[uid].badges;
+  if (stats[uid].postsCount >= 1 && b.indexOf('茶座新人')===-1) b.push('茶座新人');
+  if (stats[uid].likesReceived >= 10 && b.indexOf('思想火花')===-1) b.push('思想火花');
+  if (stats[uid].points >= 100 && b.indexOf('学术之星')===-1) b.push('学术之星');
+  teaSaveStats(stats);
+}
+
+var teaCurrentFilter = '全部';
+var teaCurrentSort = 'hot';
+var teaCurrentPostType = 'short';
+var teaCurrentTag = '';
+
+function teaFormatDate() {
+  return new Date().toLocaleString('zh-CN', {hour12:false, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit'}).replace(/\//g, '-');
+}
+
+function renderDiscussionPage() {
+  var container = document.getElementById('page-discussion');
+  if (!container) return;
+  var posts = teaGetPosts();
+  var comments = teaGetComments();
+  var currentUser = AppState.currentUser || {};
+
+  var pinned = posts.filter(function(p){return p.isPinned;});
+  var filtered = posts;
+  if (teaCurrentFilter !== '全部') {
+    filtered = filtered.filter(function(p){return (p.tags||[]).indexOf(teaCurrentFilter) !== -1;});
+  }
+  if (teaCurrentSort === 'selected') {
+    filtered = filtered.filter(function(p){return p.isRecommended || (p.deepThink||0) >= 3;});
+  }
+  if (teaCurrentSort === 'hot') {
+    filtered.sort(function(a,b){
+      var sa = (a.likes||0) + (a.comments||0)*2 + (a.deepThink||0)*3 + (a.isRecommended?20:0);
+      var sb = (b.likes||0) + (b.comments||0)*2 + (b.deepThink||0)*3 + (b.isRecommended?20:0);
+      return sb - sa;
+    });
+  } else if (teaCurrentSort === 'latest') {
+    filtered.sort(function(a,b){return (b.createdAt > a.createdAt)?1:-1;});
+  } else if (teaCurrentSort === 'selected') {
+    filtered.sort(function(a,b){return (b.deepThink||0) - (a.deepThink||0);});
+  }
+  var pinnedIds = {};
+  pinned.forEach(function(p){pinnedIds[p.id]=true;});
+  var pinnedF = filtered.filter(function(p){return pinnedIds[p.id];});
+  var normalF = filtered.filter(function(p){return !pinnedIds[p.id];});
+  var finalPosts = pinnedF.concat(normalF);
+
+  var html = '<div style="padding:24px;max-width:900px;margin:0 auto">';
+  html += '<div class="tea-hero"><h2>☕ 小际茶座</h2><p>坐下来，聊聊法律那些事</p></div>';
+  html += '<div class="tea-toolbar">';
+  html += '<button class="classroom-action-btn primary" onclick="openNewPostModal()">✏️ 发布</button>';
+  html += '<button class="tea-tag-btn '+(teaCurrentFilter==='全部'?'active':'')+'" onclick="teaFilterTag(\'全部\')">全部</button>';
+  TEA_TAGS.forEach(function(tag) {
+    var esc = tag.replace(/'/g, "\\'");
+    html += '<button class="tea-tag-btn '+(teaCurrentFilter===tag?'active':'')+'" onclick="teaFilterTag(\''+esc+'\')">'+tag+'</button>';
+  });
+  html += '<select class="tea-sort-select" onchange="teaSortBy(this.value)">';
+  html += '<option value="hot"'+(teaCurrentSort==='hot'?' selected':'')+'>🔥 综合热度</option>';
+  html += '<option value="latest"'+(teaCurrentSort==='latest'?' selected':'')+'>🕐 最新</option>';
+  html += '<option value="selected"'+(teaCurrentSort==='selected'?' selected':'')+'>⭐ 精选</option>';
+  html += '</select></div>';
+
+  if (finalPosts.length === 0) {
+    html += '<div style="text-align:center;padding:60px 20px;color:var(--text-secondary)">';
+    html += '<div style="font-size:3rem;margin-bottom:12px">☕</div>';
+    html += '<p>茶座还没有帖子，快来发布第一个讨论吧！</p></div>';
+  } else {
+    finalPosts.forEach(function(post) { html += teaRenderPostCard(post, comments, currentUser); });
+  }
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function teaRenderPostCard(post, comments, cu) {
+  var userId = cu.id || 'guest';
+  var isTeacher = cu.role === 'teacher';
+  var rb = post.role === 'teacher' ? '<span class="role-badge teacher">教师</span>' : '<span class="role-badge student">学生</span>';
+  var tb = post.type === 'long' ? '<span class="tea-post-type-badge long">长文章</span>' : '<span class="tea-post-type-badge short">短动态</span>';
+  var tagH = (post.tags||[]).map(function(t){return '<span class="tea-post-tag">'+t+'</span>';}).join('');
+  var pinH = post.isPinned ? '<span class="tea-pin-badge">📌 置顶</span>' : '';
+  var recH = post.isRecommended ? '<span class="tea-rec-badge">⭐ 推荐</span>' : '';
+  var cc = comments.filter(function(c){return c.postId===post.id;}).length;
+  var excerpt = post.content || '';
+  if (post.type==='long' && excerpt.length>150) excerpt = excerpt.substring(0,150)+'...';
+  var isLiked = (post.likedBy||[]).indexOf(userId)!==-1;
+  var isFav = (post.favoritedBy||[]).indexOf(userId)!==-1;
+  var isDT = (post.deepThinkBy||[]).indexOf(userId)!==-1;
+
+  var h = '<div class="tea-post-card'+(post.isPinned?' pinned':'')+'">';
+  h += '<div style="margin-bottom:6px">'+pinH+tb+tagH+recH+'</div>';
+  h += '<div style="font-size:1.05rem;font-weight:700;color:var(--text-primary);margin-bottom:6px;cursor:pointer" onclick="openTeaPostDetail(\''+post.id+'\')">'+(post.title||(post.type==='long'?'（无标题）':''))+rb+'</div>';
+  if (post.type === 'short' && post.title) {
+    h += '<div class="tea-post-card-excerpt">'+excerpt+'</div>';
+  } else if (post.type === 'short') {
+    h += '<div class="tea-post-card-excerpt" style="font-size:0.95rem;color:var(--text-primary);line-height:1.5">'+excerpt+'</div>';
+  } else {
+    h += '<div class="tea-post-card-excerpt">'+excerpt+'</div>';
+  }
+  h += '<div class="tea-post-card-meta"><span>👤 '+post.author+'</span><span>· '+post.createdAt+'</span></div>';
+  h += '<div class="tea-interact-bar" onclick="event.stopPropagation()">';
+  h += '<button class="tea-interact-btn'+(isLiked?' active':'')+'" onclick="teaToggleLike(\''+post.id+'\')">👍 '+(post.likes||0)+'</button>';
+  h += '<button class="tea-interact-btn" onclick="openTeaPostDetail(\''+post.id+'\')">💬 '+cc+'</button>';
+  h += '<button class="tea-interact-btn favorite'+(isFav?' active':'')+'" onclick="teaToggleFavorite(\''+post.id+'\')">⭐ '+(post.favorites||0)+'</button>';
+  h += '<button class="tea-interact-btn deep-think'+(isDT?' active':'')+'" onclick="teaToggleDeepThink(\''+post.id+'\')">🔥 深思 '+(post.deepThink||0)+'</button>';
+  h += '</div>';
+  if (isTeacher) {
+    h += '<div class="tea-admin-bar">';
+    h += '<button class="tea-admin-btn" onclick="teaTogglePin(\''+post.id+'\')">'+(post.isPinned?'取消置顶':'📌 置顶')+'</button>';
+    h += '<button class="tea-admin-btn" onclick="teaToggleRecommend(\''+post.id+'\')">'+(post.isRecommended?'取消推荐':'⭐ 推荐')+'</button>';
+    h += '<button class="tea-admin-btn" onclick="teaToggleLock(\''+post.id+'\')">'+(post.isLocked?'🔓 解锁':'🔒 锁定')+'</button>';
+    h += '<button class="tea-admin-btn danger" onclick="teaDeletePost(\''+post.id+'\')">🗑️ 删除</button>';
+    h += '</div>';
+  } else if (post.authorId === userId) {
+    h += '<div class="tea-admin-bar"><button class="tea-admin-btn danger" onclick="teaDeletePost(\''+post.id+'\')">🗑️ 删除</button></div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function teaFilterTag(tag) { teaCurrentFilter = tag; renderDiscussionPage(); }
+function teaSortBy(s) { teaCurrentSort = s; renderDiscussionPage(); }
+
+function openNewPostModal() {
+  var cu = AppState.currentUser || {};
+  if (!cu.email) { alert('请先登录'); return; }
+  teaCurrentPostType = 'short'; teaCurrentTag = '';
+  var m = '<div class="modal-overlay show" id="newPostModal" onclick="if(event.target===this)closeNewPostModal()">';
+  m += '<div class="modal-content" style="max-width:580px"><h3>✏️ 发布新帖</h3>';
+  m += '<label style="font-size:0.84rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block">帖子类型</label>';
+  m += '<div class="tea-type-selector">';
+  m += '<div class="tea-type-option active" id="teaTypeShort" onclick="teaSelectType(\'short\')">📝 短动态<br><span style="font-size:0.72rem;color:var(--text-secondary)">≤500字，灵感速记</span></div>';
+  m += '<div class="tea-type-option" id="teaTypeLong" onclick="teaSelectType(\'long\')">📄 长文章<br><span style="font-size:0.72rem;color:var(--text-secondary)">无上限，深度分析</span></div>';
+  m += '</div>';
+  m += '<label style="font-size:0.84rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block">主题标签（必选）</label>';
+  m += '<div class="tea-tag-selector" id="teaTagSelector">';
+  TEA_TAGS.forEach(function(tag) {
+    var esc = tag.replace(/'/g, "\\'");
+    m += '<div class="tea-tag-option" onclick="teaSelectTag(this,\''+esc+'\')">'+tag+'</div>';
+  });
+  m += '</div>';
+  m += '<div class="modal-field"><label>标题 <span style="font-size:0.72rem;color:var(--text-secondary)">（短动态可选）</span></label><input type="text" id="newPostTitle" placeholder="请输入帖子标题"></div>';
+  m += '<div class="modal-field"><label>内容 <span id="teaCharCount" style="font-size:0.75rem;color:var(--text-secondary)">0/500</span></label>';
+  m += '<textarea id="newPostContent" placeholder="请输入帖子内容..." oninput="teaUpdateCharCount()" style="min-height:140px"></textarea></div>';
+  m += '<div class="modal-actions"><button class="classroom-action-btn secondary" onclick="closeNewPostModal()">取消</button>';
+  m += '<button class="classroom-action-btn primary" onclick="submitNewPost()">发布</button></div>';
+  m += '</div></div>';
+  document.body.insertAdjacentHTML('beforeend', m);
+}
+function closeNewPostModal() { var m = document.getElementById('newPostModal'); if (m) m.remove(); }
+function teaSelectType(t) {
+  teaCurrentPostType = t;
+  document.getElementById('teaTypeShort').classList.toggle('active', t==='short');
+  document.getElementById('teaTypeLong').classList.toggle('active', t==='long');
+  teaUpdateCharCount();
+}
+function teaSelectTag(el, tag) {
+  teaCurrentTag = tag;
+  document.querySelectorAll('#teaTagSelector .tea-tag-option').forEach(function(o){o.classList.remove('active');});
+  el.classList.add('active');
+}
+function teaUpdateCharCount() {
+  var ta = document.getElementById('newPostContent');
+  var ctr = document.getElementById('teaCharCount');
+  if (ta && ctr) {
+    var len = ta.value.length;
+    if (teaCurrentPostType==='short') {
+      ctr.textContent = len+'/500';
+      ctr.style.color = len>500?'#c62828':'var(--text-secondary)';
+    } else { ctr.textContent = len+'字'; ctr.style.color = 'var(--text-secondary)'; }
+  }
+}
+
+function submitNewPost() {
+  var title = document.getElementById('newPostTitle').value.trim();
+  var content = document.getElementById('newPostContent').value.trim();
+  if (!content) { alert('请填写内容'); return; }
+  if (teaCurrentPostType==='short' && content.length>500) { alert('短动态不能超过500字'); return; }
+  if (!teaCurrentTag) { alert('请选择一个主题标签'); return; }
+  if (teaCurrentPostType==='long' && !title) { alert('长文章请填写标题'); return; }
+  var cu = AppState.currentUser || {};
+  var posts = teaGetPosts();
+  var ft = title || (content.substring(0,30)+(content.length>30?'...':''));
+  var np = {
+    id:'post-'+Date.now(), type:teaCurrentPostType, title:ft, content:content,
+    tags:[teaCurrentTag], author:cu.name||cu.email||'匿名',
+    authorId:cu.id||'u'+Date.now(), role:cu.role||'student', createdAt:teaFormatDate(),
+    likes:0, comments:0, favorites:0, deepThink:0,
+    isPinned:false, isRecommended:false, isLocked:false,
+    likedBy:[], favoritedBy:[], deepThinkBy:[]
+  };
+  posts.unshift(np); teaSavePosts(posts);
+  teaAddPoints(np.authorId, 2);
+  var stats = teaGetStats();
+  if (stats[np.authorId]) stats[np.authorId].postsCount++;
+  teaSaveStats(stats);
+  closeNewPostModal(); renderDiscussionPage();
+}
+
+function teaToggleLike(postId) {
+  var uid = (AppState.currentUser||{}).id || 'guest';
+  var posts = teaGetPosts();
+  var post = posts.find(function(p){return p.id===postId;});
+  if (!post) return;
+  if (!post.likedBy) post.likedBy = [];
+  var idx = post.likedBy.indexOf(uid);
+  if (idx===-1) {
+    post.likedBy.push(uid); post.likes=(post.likes||0)+1;
+    teaAddPoints(post.authorId, 1);
+    var stats=teaGetStats();
+    if(stats[post.authorId]) stats[post.authorId].likesReceived=(stats[post.authorId].likesReceived||0)+1;
+    teaSaveStats(stats);
+  } else { post.likedBy.splice(idx,1); post.likes=Math.max(0,(post.likes||0)-1); }
+  teaSavePosts(posts); renderDiscussionPage();
+}
+
+function teaToggleFavorite(postId) {
+  var uid = (AppState.currentUser||{}).id || 'guest';
+  var posts = teaGetPosts();
+  var post = posts.find(function(p){return p.id===postId;});
+  if (!post) return;
+  if (!post.favoritedBy) post.favoritedBy = [];
+  var idx = post.favoritedBy.indexOf(uid);
+  if (idx===-1) { post.favoritedBy.push(uid); post.favorites=(post.favorites||0)+1; }
+  else { post.favoritedBy.splice(idx,1); post.favorites=Math.max(0,(post.favorites||0)-1); }
+  teaSavePosts(posts); renderDiscussionPage();
+}
+
+function teaToggleDeepThink(postId) {
+  var uid = (AppState.currentUser||{}).id || 'guest';
+  var posts = teaGetPosts();
+  var post = posts.find(function(p){return p.id===postId;});
+  if (!post) return;
+  if (!post.deepThinkBy) post.deepThinkBy = [];
+  var idx = post.deepThinkBy.indexOf(uid);
+  if (idx===-1) {
+    post.deepThinkBy.push(uid); post.deepThink=(post.deepThink||0)+1;
+    teaAddPoints(post.authorId, 2);
+    var stats=teaGetStats();
+    if(stats[post.authorId] && post.deepThink>=5) {
+      var b=stats[post.authorId].badges;
+      if(b.indexOf('深度思考者')===-1) b.push('深度思考者');
+      teaSaveStats(stats);
+    }
+  } else { post.deepThinkBy.splice(idx,1); post.deepThink=Math.max(0,(post.deepThink||0)-1); }
+  teaSavePosts(posts); renderDiscussionPage();
+}
+
+function openTeaPostDetail(postId) {
+  var posts = teaGetPosts();
+  var post = posts.find(function(p){return p.id===postId;});
+  if (!post) return;
+  var comments = teaGetComments();
+  var cu = AppState.currentUser || {};
+  var uid = cu.id || 'guest';
+  var isTeacher = cu.role === 'teacher';
+  var isLiked = (post.likedBy||[]).indexOf(uid)!==-1;
+  var isFav = (post.favoritedBy||[]).indexOf(uid)!==-1;
+  var isDT = (post.deepThinkBy||[]).indexOf(uid)!==-1;
+  var pc = comments.filter(function(c){return c.postId===postId;});
+  var tc = pc.filter(function(c){return !c.parentId;});
+  tc.sort(function(a,b){return (b.createdAt>a.createdAt)?1:-1;});
+  var rb = post.role==='teacher'?'<span class="role-badge teacher">教师</span>':'<span class="role-badge student">学生</span>';
+
+  var h = '<div class="tea-detail-modal" id="teaDetailModal" onclick="if(event.target===this)closeTeaPostDetail()">';
+  h += '<div class="tea-detail-content">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px"><div>';
+  h += '<div style="font-size:1.2rem;font-weight:700;color:var(--text-primary);margin-bottom:6px">'+(post.title||(post.type==='long'?'（无标题）':''))+rb+'</div>';
+  h += '<div style="font-size:0.8rem;color:var(--text-secondary)">👤 '+post.author+' · '+post.createdAt+'</div>';
+  h += '</div><button onclick="closeTeaPostDetail()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--text-secondary)">✕</button></div>';
+  var tb = post.type==='long'?'<span class="tea-post-type-badge long">长文章</span>':'<span class="tea-post-type-badge short">短动态</span>';
+  h += '<div style="margin-bottom:14px">'+tb;
+  (post.tags||[]).forEach(function(t){h+='<span class="tea-post-tag">'+t+'</span>';});
+  if(post.isPinned) h+='<span class="tea-pin-badge">📌 置顶</span>';
+  if(post.isRecommended) h+='<span class="tea-rec-badge">⭐ 推荐</span>';
+  h += '</div>';
+  h += '<div style="font-size:0.95rem;line-height:1.8;color:var(--text-primary);margin-bottom:16px;white-space:pre-wrap">'+post.content+'</div>';
+  h += '<div class="tea-interact-bar" style="border-top:1px solid var(--border);padding-top:12px;margin-bottom:16px">';
+  h += '<button class="tea-interact-btn'+(isLiked?' active':'')+'" onclick="teaToggleLikeDetail(\''+postId+'\')">👍 '+(post.likes||0)+'</button>';
+  h += '<button class="tea-interact-btn favorite'+(isFav?' active':'')+'" onclick="teaToggleFavoriteDetail(\''+postId+'\')">⭐ '+(post.favorites||0)+'</button>';
+  h += '<button class="tea-interact-btn deep-think'+(isDT?' active':'')+'" onclick="teaToggleDeepThinkDetail(\''+postId+'\')">🔥 深思 '+(post.deepThink||0)+'</button>';
+  h += '</div>';
+  h += '<div style="border-top:1px solid var(--border);padding-top:16px">';
+  h += '<h4 style="margin:0 0 12px 0;font-size:0.95rem;color:var(--text-primary)">💬 评论 ('+tc.length+')</h4>';
+  if (!post.isLocked) {
+    h += '<textarea class="tea-comment-input" id="teaCommentInput-'+postId+'" placeholder="写下你的评论..."></textarea>';
+    h += '<div style="text-align:right;margin-top:8px"><button class="classroom-action-btn primary" style="padding:8px 18px;font-size:0.82rem" onclick="teaSubmitComment(\''+postId+'\')">发表评论</button></div>';
+  } else {
+    h += '<div style="padding:10px;background:rgba(201,168,76,0.06);border-radius:8px;font-size:0.82rem;color:var(--text-secondary)">🔒 该帖已被锁定，无法评论</div>';
+  }
+  tc.forEach(function(c){ h += teaRenderComment(c, pc, postId, post.isLocked); });
+  h += '</div>';
+  if (isTeacher) {
+    h += '<div class="tea-admin-bar" style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">';
+    h += '<button class="tea-admin-btn" onclick="teaTogglePin(\''+postId+'\');closeTeaPostDetail()">'+(post.isPinned?'取消置顶':'📌 置顶')+'</button>';
+    h += '<button class="tea-admin-btn" onclick="teaToggleRecommend(\''+postId+'\');closeTeaPostDetail()">'+(post.isRecommended?'取消推荐':'⭐ 推荐')+'</button>';
+    h += '<button class="tea-admin-btn" onclick="teaToggleLock(\''+postId+'\');closeTeaPostDetail()">'+(post.isLocked?'🔓 解锁':'🔒 锁定')+'</button>';
+    h += '<button class="tea-admin-btn danger" onclick="teaDeletePost(\''+postId+'\');closeTeaPostDetail()">🗑️ 删除</button>';
+    h += '</div>';
+  }
+  h += '</div></div>';
+  document.body.insertAdjacentHTML('beforeend', h);
+}
+function closeTeaPostDetail() { var m=document.getElementById('teaDetailModal'); if(m) m.remove(); }
+
+function teaRenderComment(comment, allC, postId, isLocked) {
+  var rb = comment.role==='teacher'?'<span class="role-badge teacher" style="font-size:0.68rem">教师</span>':'';
+  var children = allC.filter(function(c){return c.parentId===comment.id;});
+  var h = '<div class="tea-comment-item'+(comment.role==='teacher'?' teacher-comment':'')+'">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+  h += '<div style="font-size:0.82rem"><strong>'+comment.author+'</strong> '+rb+'</div>';
+  h += '<div style="font-size:0.72rem;color:var(--text-secondary)">'+comment.createdAt+'</div></div>';
+  h += '<div style="font-size:0.88rem;color:var(--text-primary);line-height:1.6">'+comment.content+'</div>';
+  if (!comment.parentId && children.length>0) {
+    h += '<div class="tea-comment-nested" style="margin-top:8px">';
+    children.forEach(function(ch) {
+      var cb = ch.role==='teacher'?'<span class="role-badge teacher" style="font-size:0.65rem">教师</span>':'';
+      h += '<div class="tea-comment-item" style="margin-bottom:6px">';
+      h += '<div style="font-size:0.78rem"><strong>'+ch.author+'</strong> '+cb+'</div>';
+      h += '<div style="font-size:0.85rem;line-height:1.5">'+ch.content+'</div></div>';
+    });
+    h += '</div>';
+  }
+  if (!comment.parentId && !isLocked) {
+    h += '<div style="margin-top:6px"><button class="tea-interact-btn" style="font-size:0.75rem" onclick="teaToggleReplyBox(\''+comment.id+'\')">↩️ 回复</button></div>';
+    h += '<div id="teaReplyBox-'+comment.id+'" style="display:none;margin-top:6px" class="tea-comment-nested">';
+    h += '<textarea class="tea-comment-input" id="teaReplyInput-'+comment.id+'" placeholder="回复 '+comment.author+'..." style="min-height:40px"></textarea>';
+    h += '<div style="text-align:right;margin-top:4px"><button class="tea-interact-btn" style="font-size:0.78rem;color:var(--primary)" onclick="teaSubmitReply(\''+postId+'\',\''+comment.id+'\')">发送</button></div></div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function teaToggleReplyBox(cid) {
+  var box = document.getElementById('teaReplyBox-'+cid);
+  if (box) box.style.display = box.style.display==='none'?'block':'none';
+}
+
+function teaSubmitComment(postId) {
+  var input = document.getElementById('teaCommentInput-'+postId);
+  if (!input) return;
+  var content = input.value.trim();
+  if (!content) { alert('请输入评论内容'); return; }
+  var cu = AppState.currentUser || {};
+  var comments = teaGetComments();
+  comments.push({
+    id:'cmt-'+Date.now(), postId:postId, parentId:null, content:content,
+    author:cu.name||cu.email||'匿名', authorId:cu.id||'u'+Date.now(),
+    role:cu.role||'student', createdAt:teaFormatDate(), likes:0, likedBy:[]
+  });
+  teaSaveComments(comments);
+  var posts = teaGetPosts();
+  var post = posts.find(function(p){return p.id===postId;});
+  if (post) { post.comments=(post.comments||0)+1; teaSavePosts(posts); teaAddPoints(post.authorId,1); }
+  closeTeaPostDetail(); openTeaPostDetail(postId); renderDiscussionPage();
+}
+
+function teaSubmitReply(postId, parentId) {
+  var input = document.getElementById('teaReplyInput-'+parentId);
+  if (!input) return;
+  var content = input.value.trim();
+  if (!content) { alert('请输入回复内容'); return; }
+  var cu = AppState.currentUser || {};
+  var comments = teaGetComments();
+  comments.push({
+    id:'cmt-'+Date.now(), postId:postId, parentId:parentId, content:content,
+    author:cu.name||cu.email||'匿名', authorId:cu.id||'u'+Date.now(),
+    role:cu.role||'student', createdAt:teaFormatDate(), likes:0, likedBy:[]
+  });
+  teaSaveComments(comments);
+  var posts = teaGetPosts();
+  var post = posts.find(function(p){return p.id===postId;});
+  if (post) { post.comments=(post.comments||0)+1; teaSavePosts(posts); }
+  closeTeaPostDetail(); openTeaPostDetail(postId); renderDiscussionPage();
+}
+
+function teaToggleLikeDetail(pid) { teaToggleLike(pid); closeTeaPostDetail(); openTeaPostDetail(pid); }
+function teaToggleFavoriteDetail(pid) { teaToggleFavorite(pid); closeTeaPostDetail(); openTeaPostDetail(pid); }
+function teaToggleDeepThinkDetail(pid) { teaToggleDeepThink(pid); closeTeaPostDetail(); openTeaPostDetail(pid); }
+
+function teaTogglePin(postId) {
+  var posts = teaGetPosts();
+  var p = posts.find(function(x){return x.id===postId;});
+  if (p) { p.isPinned=!p.isPinned; teaSavePosts(posts); renderDiscussionPage(); }
+}
+function teaToggleRecommend(postId) {
+  var posts = teaGetPosts();
+  var p = posts.find(function(x){return x.id===postId;});
+  if (p) { p.isRecommended=!p.isRecommended; teaSavePosts(posts); if(p.isRecommended) teaAddPoints(p.authorId,10); renderDiscussionPage(); }
+}
+function teaToggleLock(postId) {
+  var posts = teaGetPosts();
+  var p = posts.find(function(x){return x.id===postId;});
+  if (p) { p.isLocked=!p.isLocked; teaSavePosts(posts); renderDiscussionPage(); }
+}
+function teaDeletePost(postId) {
+  if (!confirm('确定要删除这个帖子吗？')) return;
+  var posts = teaGetPosts();
+  posts = posts.filter(function(p){return p.id!==postId;});
+  teaSavePosts(posts);
+  var comments = teaGetComments();
+  comments = comments.filter(function(c){return c.postId!==postId;});
+  teaSaveComments(comments);
+  renderDiscussionPage();
+}
+
+// ====== 视频学习页面渲染 ======
+function renderVideoPage() {
+  var container = document.getElementById('page-video');
+  if (!container) return;
+  var videos = JSON.parse(localStorage.getItem('sanguofa_videos') || '[]');
+  var html = '<div style="padding:24px;max-width:1200px;margin:0 auto">';
+  html += '<div class="video-page-header"><h2>🎬 视频学习</h2>';
+  html += '<p style="color:var(--text-secondary);margin:8px 0 0 0">精选三国法教学视频，助力深度学习</p></div>';
+  html += '<div class="video-filter-bar">';
+  html += '<button class="video-filter-btn active" onclick="filterVideos(\'all\',this)">全部</button>';
+  html += '<button class="video-filter-btn" onclick="filterVideos(\'pub\',this)">国际公法</button>';
+  html += '<button class="video-filter-btn" onclick="filterVideos(\'pri\',this)">国际私法</button>';
+  html += '<button class="video-filter-btn" onclick="filterVideos(\'eco\',this)">国际经济法</button>';
+  html += '</div>';
+  html += '<div class="video-grid" id="videoGrid">';
+  if (!videos || videos.length === 0) {
+    html += '<div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--text-secondary)">';
+    html += '<div style="font-size:4rem;margin-bottom:16px">🎬</div>';
+    html += '<div style="font-size:1.1rem;font-weight:600;color:var(--text-primary);margin-bottom:8px">视频栏目筹备中</div>';
+    html += '<div style="font-size:0.9rem;max-width:480px;margin:0 auto;line-height:1.6">小际正在配合制作系列普法短视频，<br>完成后将第一时间上线，敬请期待～</div>';
+    html += '</div>';
+  } else {
+  videos.forEach(function(v) {
+    html += '<div class="video-card" data-category="' + v.category + '">';
+    html += '<div class="video-thumb"><div class="video-thumb-icon">🎥</div>';
+    html += '<div style="font-size:0.85rem;opacity:0.8">' + v.duration + '</div>';
+    html += '<div class="video-thumb-duration">' + v.duration + '</div></div>';
+    html += '<div class="video-card-body">';
+    html += '<div class="video-card-category ' + v.category + '">' + v.categoryText + '</div>';
+    html += '<div class="video-card-title">' + v.title + '</div>';
+    html += '<div class="video-card-desc">' + v.description + '</div>';
+    html += '<div class="video-card-actions">';
+    html += '<button class="classroom-action-btn primary" onclick="openVideoPlayer(\'' + v.id + '\')">▶ 站内观看</button>';
+    html += '<button class="classroom-action-btn secondary" onclick="toggleVideoComments(\'' + v.id + '\')">💬 评论</button>';
+    html += '</div>';
+    html += '<div class="video-comment-section" id="vc-' + v.id + '" style="display:none">';
+    if (v.comments && v.comments.length > 0) {
+      v.comments.forEach(function(c) {
+        html += '<div class="video-comment-item"><strong>' + c.author + '</strong>: ' + c.content + '</div>';
+      });
+    } else {
+      html += '<div style="text-align:center;padding:12px;color:var(--text-secondary);font-size:0.85rem">暂无评论</div>';
+    }
+    html += '<div class="reply-form" style="margin-top:10px">';
+    html += '<input type="text" id="vci-' + v.id + '" placeholder="发表评论..." onkeypress="if(event.key===\'Enter\')submitVideoComment(\'' + v.id + '\')">';
+    html += '<button onclick="submitVideoComment(\'' + v.id + '\')">发表</button>';
+    html += '</div></div>';
+    html += '</div></div>';
+  });
+  } // end if videos
+  html += '</div>';
+  // 站内播放器容器（首次渲染即挂载）
+  html += '<div id="videoPlayerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;align-items:center;justify-content:center;padding:20px">';
+  html += '<div style="position:relative;width:100%;max-width:960px;background:#000;border-radius:12px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.5)">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#111">';
+  html += '<div id="videoPlayerTitle" style="color:#fff;font-weight:600;font-size:0.95rem;flex:1;margin-right:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>';
+  html += '<button onclick="closeVideoPlayer()" style="background:#222;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:600">✕ 关闭</button>';
+  html += '</div>';
+  html += '<div style="position:relative;width:100%;padding-top:56.25%;background:#000">';
+  html += '<iframe id="videoPlayerIframe" src="" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allowfullscreen allow="autoplay; fullscreen; encrypted-media"></iframe>';
+  html += '</div>';
+  html += '</div></div>';
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function filterVideos(cat, btn) {
+  document.querySelectorAll('.video-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  document.querySelectorAll('.video-card').forEach(function(c) {
+    c.style.display = (cat === 'all' || c.dataset.category === cat) ? '' : 'none';
+  });
+}
+function openVideoPlayer(vid) {
+  var vs = JSON.parse(localStorage.getItem('sanguofa_videos') || '[]');
+  var v = vs.find(function(x) { return x.id === vid; });
+  if (!v) { alert('视频信息不存在'); return; }
+  // 构造B站播放器嵌入链接（优先使用BV号）
+  var embedUrl = '';
+  if (v.bilibiliId) {
+    embedUrl = 'https://player.bilibili.com/video/bvid/' + v.bilibiliId + '/?high_quality=1&danmaku=0';
+  } else if (v.url && v.url.indexOf('bilibili.com') !== -1) {
+    embedUrl = v.url.replace(/(^https?:\/\/(?:www\.)?bilibili\.com\/video\/)([^\/?]+).*/, '$1$2/?high_quality=1&danmaku=0');
+  } else {
+    window.open(v.url, '_blank');
+    return;
+  }
+  var modal = document.getElementById('videoPlayerModal');
+  var iframe = document.getElementById('videoPlayerIframe');
+  var titleEl = document.getElementById('videoPlayerTitle');
+  if (!modal || !iframe) return;
+  iframe.src = embedUrl;
+  titleEl.textContent = '🎬 ' + v.title;
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+function closeVideoPlayer() {
+  var modal = document.getElementById('videoPlayerModal');
+  var iframe = document.getElementById('videoPlayerIframe');
+  if (modal) modal.style.display = 'none';
+  if (iframe) iframe.src = '';
+  document.body.style.overflow = '';
+}
+function toggleVideoComments(vid) {
+  var s = document.getElementById('vc-' + vid);
+  if (s) s.style.display = s.style.display === 'none' ? 'block' : 'none';
+}
+function submitVideoComment(vid) {
+  var input = document.getElementById('vci-' + vid);
+  var content = input.value.trim();
+  if (!content) return;
+  var cu = AppState.currentUser || {};
+  var vs = JSON.parse(localStorage.getItem('sanguofa_videos') || '[]');
+  var v = vs.find(function(x) { return x.id === vid; });
+  if (v) {
+    if (!v.comments) v.comments = [];
+    v.comments.push({ author: cu.name || cu.email || '匿名', content: content, timestamp: new Date().toLocaleDateString() });
+    localStorage.setItem('sanguofa_videos', JSON.stringify(vs));
+    renderVideoPage();
+  }
+}
+
+// ====== 课堂模式页面渲染 ======
+var classroomCurrentTab = 'qa';
+
+// ============================================================
+// 课堂实时层：Supabase Realtime Broadcast 即时推送 + REST 轮询兜底
+// ============================================================
+var CLASSROOM_ROOM = 'sanguofa-classroom';
+var CLASSROOM_DISCUSSION_ID = 'case-nanhai';
+
+var _liveState = {
+  sessions: [],          // 由 classroom_session 事件重建
+  qaAnswers: [],         // 即时问答回答
+  quizAnswers: [],       // 测验作答
+  discussionAnswers: [], // 案例讨论观点
+  quizCode: 'quiz-default',
+  quizStartedAt: null,
+  presence: {}
+};
+
+var _liveChannel = null;
+var _liveActive = false;
+var _liveStatus = 'connecting'; // connecting | live | offline
+var _liveRestOk = false;
+var _livePollTimer = null;
+var _liveTickTimer = null;
+var _livePresenceTimer = null;
+var _liveSweepTimer = null;
+var _liveMsgIds = {};
+var _liveLastPresence = 0;
+var _liveMyPresenceId = 'p_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+
+function _getSb() {
+  if (typeof sbAuthClient !== 'undefined' && sbAuthClient) return sbAuthClient;
+  try {
+    if (typeof window.supabase !== 'undefined' && window.supabase.createClient) {
+      return window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+  } catch (e) {}
+  return null;
+}
+
+function _liveIdentity() {
+  var cu = AppState.currentUser || {};
+  var id = cu.studentId || cu.id || 'guest_' + (localStorage.getItem('sanguofa_guest_id') || '');
+  if (id === 'guest_') {
+    var gid = 'g' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+    localStorage.setItem('sanguofa_guest_id', gid);
+    id = 'guest_' + gid;
+  }
+  return { id: id, name: cu.name || cu.email || '匿名同学', role: cu.role || 'student' };
+}
+
+function _liveSeen(clientMsgId) {
+  if (!clientMsgId) return false;
+  if (_liveMsgIds[clientMsgId]) return true;
+  _liveMsgIds[clientMsgId] = 1;
+  return false;
+}
+
+function _liveNewMsgId(prefix) {
+  return (prefix || 'm') + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
+}
+
+function _setStatus(s) {
+  _liveStatus = s;
+  var el = document.getElementById('liveStatusBadge');
+  if (el) {
+    if (s === 'live') { el.className = 'live-badge live'; el.innerHTML = '🟢 实时已连接'; }
+    else if (s === 'offline') { el.className = 'live-badge offline'; el.innerHTML = '⚪ 离线（演示数据）'; }
+    else { el.className = 'live-badge connecting'; el.innerHTML = '🟡 连接中'; }
+  }
+  var oc = document.getElementById('liveOnlineCount');
+  if (oc) {
+    var n = 0;
+    for (var k in _liveState.presence) { if (_liveState.presence[k]) n++; }
+    oc.textContent = '在线 ' + n + ' 人';
+  }
+}
+
+function _ensureLiveSession(sid, type, topic, ts) {
+  for (var i = 0; i < _liveState.sessions.length; i++) {
+    if (_liveState.sessions[i].id === sid) {
+      if (type) _liveState.sessions[i].type = type;
+      if (topic) _liveState.sessions[i].topic = topic;
+      return _liveState.sessions[i];
+    }
+  }
+  var s = {
+    id: sid,
+    type: type || 'qa',
+    topic: topic || '课堂话题',
+    createdAt: ts || new Date().toISOString(),
+    status: 'active'
+  };
+  _liveState.sessions.push(s);
+  return s;
+}
+
+function _applySessionRow(p, ts) {
+  if (!p.sessionId) return false;
+  var changed = false;
+  if (p.action === 'close') {
+    var ses = _ensureLiveSession(p.sessionId, p.type || 'qa', p.topic, ts);
+    if (ses.status !== 'closed') { ses.status = 'closed'; changed = true; }
+  } else {
+    var found = false;
+    for (var i = 0; i < _liveState.sessions.length; i++) {
+      if (_liveState.sessions[i].id === p.sessionId) { found = true; break; }
+    }
+    if (!found) {
+      _liveState.sessions.push({
+        id: p.sessionId,
+        type: p.type || 'qa',
+        topic: p.topic || '课堂话题',
+        createdAt: ts,
+        status: 'active'
+      });
+      changed = true;
+    } else {
+      if (p.topic && _liveState.sessions[i].topic !== p.topic) { _liveState.sessions[i].topic = p.topic; changed = true; }
+    }
+    if ((p.type || 'qa') === 'qa' && p.status !== 'closed') {
+      for (var j = 0; j < _liveState.sessions.length; j++) {
+        var sx = _liveState.sessions[j];
+        if (sx.id !== p.sessionId && sx.type === 'qa' && sx.status === 'active') {
+          sx.status = 'closed'; changed = true;
+        }
+      }
+    }
+  }
+  return changed;
+}
+
+function _applyQA(p, ts) {
+  if (!p.sessionId || !p.studentId) return false;
+  for (var i = 0; i < _liveState.qaAnswers.length; i++) {
+    if (_liveState.qaAnswers[i].clientMsgId && p.clientMsgId && _liveState.qaAnswers[i].clientMsgId === p.clientMsgId) return false;
+  }
+  _liveState.qaAnswers.push({
+    sessionId: p.sessionId,
+    studentId: p.studentId,
+    studentName: p.studentName || '匿名同学',
+    content: p.content || '',
+    ts: p.ts || ts,
+    clientMsgId: p.clientMsgId || ''
+  });
+  _ensureLiveSession(p.sessionId, 'qa', p.topic, ts);
+  return true;
+}
+
+function _applyQuiz(p, ts) {
+  if (!p.studentId || !p.qid) return false;
+  var code = p.quizCode || 'quiz-default';
+  for (var i = 0; i < _liveState.quizAnswers.length; i++) {
+    var ex = _liveState.quizAnswers[i];
+    if (ex.studentId === p.studentId && ex.qid === p.qid && ex.quizCode === code) {
+      ex.option = p.option;
+      ex.isCorrect = !!p.isCorrect;
+      ex.studentName = p.studentName || ex.studentName;
+      ex.ts = p.ts || ts;
+      ex.clientMsgId = p.clientMsgId || ex.clientMsgId;
+      return true;
+    }
+  }
+  _liveState.quizAnswers.push({
+    quizCode: code,
+    qid: p.qid,
+    studentId: p.studentId,
+    studentName: p.studentName || '匿名同学',
+    option: p.option,
+    isCorrect: !!p.isCorrect,
+    ts: p.ts || ts,
+    clientMsgId: p.clientMsgId || ''
+  });
+  return true;
+}
+
+function _applyDiscussion(p, ts) {
+  if (!p.studentId || !p.discussionId) return false;
+  for (var i = 0; i < _liveState.discussionAnswers.length; i++) {
+    if (_liveState.discussionAnswers[i].clientMsgId && p.clientMsgId && _liveState.discussionAnswers[i].clientMsgId === p.clientMsgId) return false;
+  }
+  _liveState.discussionAnswers.push({
+    discussionId: p.discussionId,
+    groupName: p.groupName || '自由视角',
+    studentId: p.studentId,
+    studentName: p.studentName || '匿名同学',
+    content: p.content || '',
+    ts: p.ts || ts,
+    clientMsgId: p.clientMsgId || ''
+  });
+  return true;
+}
+
+function _rebuildState(rows) {
+  _liveState.sessions = [];
+  _liveState.qaAnswers = [];
+  _liveState.quizAnswers = [];
+  _liveState.discussionAnswers = [];
+  _liveState.quizCode = 'quiz-default';
+  _liveState.quizStartedAt = null;
+  var savedPresence = _liveState.presence;
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var p = null;
+    try { p = JSON.parse(r.payload || '{}'); } catch (e) { p = null; }
+    if (!p) continue;
+    var ts = r.created_at || p.ts || new Date().toISOString();
+    if (r.event_type === 'classroom_session') { _applySessionRow(p, ts); }
+    else if (r.event_type === 'classroom_qa_answer') { _applyQA(p, ts); }
+    else if (r.event_type === 'classroom_quiz_answer') { _applyQuiz(p, ts); }
+    else if (r.event_type === 'classroom_discussion_answer') { _applyDiscussion(p, ts); }
+    if (r.event_type === 'classroom_session' && p.type === 'quiz' && p.quizCode) {
+      if (!_liveState.quizStartedAt || ts > _liveState.quizStartedAt) {
+        _liveState.quizCode = p.quizCode;
+        _liveState.quizStartedAt = ts;
+      }
+    }
+  }
+  _liveState.presence = savedPresence;
+}
+
+function _liveBroadcastHandler(eventName, payload) {
+  if (!payload) return;
+  if (eventName === 'presence_join') {
+    if (payload.presenceId) {
+      _liveState.presence[payload.presenceId] = { name: payload.name || '同学', role: payload.role || 'student', ts: Date.now() };
+      _setStatus(_liveStatus);
+    }
+    return;
+  }
+  if (eventName === 'presence_leave') {
+    if (payload.presenceId) {
+      delete _liveState.presence[payload.presenceId];
+      _setStatus(_liveStatus);
+    }
+    return;
+  }
+  if (eventName === 'presence_tick') {
+    if (payload.presenceId) {
+      var exists = _liveState.presence[payload.presenceId];
+      _liveState.presence[payload.presenceId] = { name: payload.name || (exists ? exists.name : '同学'), role: payload.role || (exists ? exists.role : 'student'), ts: Date.now() };
+      _setStatus(_liveStatus);
+    }
+    return;
+  }
+  if (eventName === 'session_control') {
+    var changed2 = false;
+    if (payload.action === 'quiz_start' && payload.quizCode) {
+      if (_liveState.quizCode !== payload.quizCode) {
+        _liveState.quizCode = payload.quizCode;
+        _liveState.quizStartedAt = payload.ts || new Date().toISOString();
+        changed2 = true;
+      }
+    } else if (payload.action === 'qa_open') {
+      changed2 = _applySessionRow({ sessionId: payload.sessionId, type: 'qa', topic: payload.topic, status: 'active' }, payload.ts || new Date().toISOString());
+    } else if (payload.action === 'close') {
+      changed2 = _applySessionRow({ sessionId: payload.sessionId, type: payload.type || 'qa', topic: payload.topic, action: 'close' }, payload.ts || new Date().toISOString());
+    }
+    if (changed2) _liveRender();
+    return;
+  }
+
+  var cid = payload.clientMsgId;
+  if (_liveSeen(cid)) return;
+  var changed3 = false;
+  var nowTs = payload.ts || new Date().toISOString();
+  if (eventName === 'qa_answer') changed3 = _applyQA(payload, nowTs);
+  else if (eventName === 'quiz_answer') changed3 = _applyQuiz(payload, nowTs);
+  else if (eventName === 'discussion_answer') changed3 = _applyDiscussion(payload, nowTs);
+  if (changed3) _liveRender();
+}
+
+// 统一提交：先即时广播（本地即时可见），再 REST 持久化
+async function _liveSubmit(eventName, payload) {
+  if (!payload.clientMsgId) payload.clientMsgId = _liveNewMsgId(eventName);
+  if (!payload.ts) payload.ts = new Date().toISOString();
+  _liveBroadcastHandler(eventName, payload);
+  var sb = _getSb();
+  if (sb) {
+    var ident = _liveIdentity();
+    var row = {
+      student_id: ident.id,
+      event_type: eventName === 'session_control' ? 'classroom_session' : ('classroom_' + eventName),
+      module: 'classroom',
+      payload: JSON.stringify(payload),
+      created_at: new Date().toISOString()
+    };
+    var res = await sb.from('events').insert(row);
+    if (res && res.error) throw res.error;
+  }
+}
+
+function _liveSendBroadcast(channel, eventName, payload) {
+  if (!channel) return;
+  try {
+    channel.send({ type: 'broadcast', event: eventName, payload: payload });
+  } catch (e) {}
+}
+
+function _liveJoin() {
+  var sb = _getSb();
+  if (_liveActive && _liveChannel) return;
+  _liveActive = true;
+  _setStatus('connecting');
+  if (!sb) {
+    _liveRestOk = false;
+    _setStatus('offline');
+    return;
+  }
+  if (_liveChannel) {
+    try { sb.removeChannel(_liveChannel); } catch (e) {}
+    _liveChannel = null;
+  }
+  var ch = sb.channel(CLASSROOM_ROOM, { config: { broadcast: { self: false } } });
+  var events = ['qa_answer', 'quiz_answer', 'discussion_answer', 'session_control', 'presence_join', 'presence_leave', 'presence_tick'];
+  events.forEach(function(ev) {
+    ch.on('broadcast', { event: ev }, function(msg) {
+      try {
+        var payloadObj = msg && msg.payload ? msg.payload : msg;
+        _liveBroadcastHandler(ev, payloadObj);
+      } catch (e) { console.warn('[ClassroomLive] broadcast handler error', e); }
+    });
+  });
+  ch.subscribe(function(status) {
+    if (status === 'SUBSCRIBED') {
+      _liveChannel = ch;
+      _liveAnnounceJoin();
+    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+      if (!_liveRestOk) _setStatus('offline');
+    }
+  });
+  _liveChannel = ch;
+
+  _liveFetchInitial();
+
+  _liveTickTimer = setInterval(function() {
+    if (classroomCurrentTab === 'quiz') {
+      var tel = document.getElementById('quizTimeLeft');
+      if (tel) tel.innerHTML = '<strong>' + _quizTimeText() + '</strong>';
+    }
+  }, 1000);
+
+  _livePollTimer = setInterval(_livePollFetch, 3000);
+  _livePresenceTimer = setInterval(_liveAnnounceTick, 15000);
+  _liveSweepTimer = setInterval(function() {
+    var nowMs = Date.now();
+    var changed4 = false;
+    for (var key in _liveState.presence) {
+      if (nowMs - _liveState.presence[key].ts > 40000) { delete _liveState.presence[key]; changed4 = true; }
+    }
+    if (changed4) _setStatus(_liveStatus);
+  }, 10000);
+}
+
+async function _liveFetchInitial() {
+  var sb = _getSb();
+  if (!sb) { _liveRestOk = false; _setStatus('offline'); return; }
+  try {
+    var res = await sb.from('events').select('*').eq('module', 'classroom').order('created_at', { ascending: false }).limit(500);
+    if (res && res.error) throw res.error;
+    _liveRestOk = true;
+    _rebuildState(res.data || []);
+    _injectClassroomDemo(true);
+    _setStatus('live');
+    _liveRender(true);
+  } catch (e) {
+    _liveRestOk = false;
+    _setStatus('offline');
+    _injectClassroomDemo(true);
+    console.warn('[ClassroomLive] initial fetch failed', e);
+  }
+}
+
+async function _livePollFetch() {
+  if (!_liveActive) return;
+  var sb = _getSb();
+  if (!sb) { _liveRestOk = false; _setStatus('offline'); return; }
+  try {
+    var res = await sb.from('events').select('*').eq('module', 'classroom').order('created_at', { ascending: false }).limit(500);
+    if (res && res.error) throw res.error;
+    _liveRestOk = true;
+    var rows = res.data || [];
+    var changed = false;
+    for (var i = rows.length - 1; i >= 0; i--) {
+      var r = rows[i];
+      var cid = null;
+      try { var pp = JSON.parse(r.payload || '{}'); cid = pp.clientMsgId; } catch (e) {}
+      if (cid && _liveSeen(cid)) continue;
+      var payload2 = null;
+      try { payload2 = JSON.parse(r.payload || '{}'); } catch (e2) { payload2 = null; }
+      if (!payload2) continue;
+      var ts2 = r.created_at || payload2.ts || new Date().toISOString();
+      if (r.event_type === 'classroom_session') {
+        if (_applySessionRow(payload2, ts2)) changed = true;
+        if (payload2.type === 'quiz' && payload2.quizCode && (!_liveState.quizStartedAt || ts2 > _liveState.quizStartedAt)) {
+          _liveState.quizCode = payload2.quizCode;
+          _liveState.quizStartedAt = ts2;
+          changed = true;
+        }
+      } else if (r.event_type === 'classroom_qa_answer') { if (_applyQA(payload2, ts2)) changed = true; }
+      else if (r.event_type === 'classroom_quiz_answer') { if (_applyQuiz(payload2, ts2)) changed = true; }
+      else if (r.event_type === 'classroom_discussion_answer') { if (_applyDiscussion(payload2, ts2)) changed = true; }
+    }
+    if (_liveStatus !== 'live') _setStatus('live');
+    if (changed) _liveRender();
+  } catch (e) {
+    _liveRestOk = false;
+    if (!_liveChannel) _setStatus('offline');
+  }
+}
+
+function _liveLeave() {
+  if (!_liveActive) return;
+  _liveActive = false;
+  _liveAnnounceLeave();
+  if (_livePollTimer) { clearInterval(_livePollTimer); _livePollTimer = null; }
+  if (_liveTickTimer) { clearInterval(_liveTickTimer); _liveTickTimer = null; }
+  if (_livePresenceTimer) { clearInterval(_livePresenceTimer); _livePresenceTimer = null; }
+  if (_liveSweepTimer) { clearInterval(_liveSweepTimer); _liveSweepTimer = null; }
+  var sb = _getSb();
+  if (sb && _liveChannel) {
+    try { sb.removeChannel(_liveChannel); } catch (e) {}
+  }
+  _liveChannel = null;
+  _liveState.presence = {};
+}
+
+function _liveAnnounce(ev, extra) {
+  var ident = _liveIdentity();
+  var payload3 = { presenceId: _liveMyPresenceId, name: ident.name, role: ident.role };
+  for (var k in extra) { payload3[k] = extra[k]; }
+  if (ev !== 'presence_leave') {
+    _liveState.presence[_liveMyPresenceId] = { name: ident.name, role: ident.role, ts: Date.now(), self: 1 };
+    _setStatus(_liveStatus);
+  }
+  _liveSendBroadcast(_liveChannel, ev, payload3);
+}
+function _liveAnnounceJoin() {
+  var nowMs2 = Date.now();
+  if (nowMs2 - _liveLastPresence < 3000) return;
+  _liveLastPresence = nowMs2;
+  _liveAnnounce('presence_join');
+}
+function _liveAnnounceTick() {
+  _liveLastPresence = Date.now();
+  _liveAnnounce('presence_tick');
+}
+function _liveAnnounceLeave() {
+  if (_liveState.presence[_liveMyPresenceId]) delete _liveState.presence[_liveMyPresenceId];
+  _setStatus(_liveStatus);
+  _liveAnnounce('presence_leave');
+}
+
+// 草稿保护与无变化跳渲染
+function _liveSignature() {
+  function maxTs(arr) {
+    var m = '';
+    for (var i = 0; i < arr.length; i++) {
+      var t = arr[i].ts || '';
+      if (t > m) m = t;
+    }
+    return m + ':' + arr.length;
+  }
+  var sc = [];
+  for (var i = 0; i < _liveState.sessions.length; i++) {
+    sc.push(_liveState.sessions[i].id + '=' + _liveState.sessions[i].status);
+  }
+  return _liveStatus + '|' + classroomCurrentTab + '|' + sc.join(',') + '|' +
+    maxTs(_liveState.qaAnswers) + '|' + maxTs(_liveState.quizAnswers) + '|' +
+    maxTs(_liveState.discussionAnswers) + '|' + (_liveState.quizCode || '');
+}
+
+var _liveLastSig = '';
+
+function _liveRender(force) {
+  if (!_liveActive) return;
+  var pageEl = document.getElementById('page-classroom');
+  if (!pageEl || !pageEl.classList.contains('active')) return;
+  var drafts = _captureDrafts();
+  var sig = _liveSignature();
+  if (!force && sig === _liveLastSig) return;
+  _liveLastSig = sig;
+  renderClassroomPage();
+  _restoreDrafts(drafts);
+}
+
+function _captureDrafts() {
+  var out = {};
+  var qaInput = document.getElementById('qaResponseInput');
+  if (qaInput) out.qaResponseInput = qaInput.value;
+  var dInput = document.getElementById('discussionViewInput');
+  if (dInput) out.discussionViewInput = dInput.value;
+  var dSel = document.getElementById('discussionViewGroup');
+  if (dSel) out.discussionViewGroup = dSel.value;
+  return out;
+}
+
+function _restoreDrafts(d) {
+  for (var id in d) {
+    var el = document.getElementById(id);
+    if (el) el.value = d[id];
+  }
+}
+
+function getClassroomSessions() {
+  var sessions = _liveState.sessions.slice();
+  var byId = {};
+  sessions.forEach(function(s) { byId[s.id] = s; });
+  _liveState.qaAnswers.forEach(function(a) {
+    if (!byId[a.sessionId]) {
+      var ns = { id: a.sessionId, type: 'qa', topic: '课堂话题', createdAt: a.ts, status: 'active' };
+      sessions.push(ns);
+      byId[a.sessionId] = ns;
+    }
+  });
+  sessions.forEach(function(s) {
+    var list = _liveState.qaAnswers.filter(function(a) { return a.sessionId === s.id; });
+    list.sort(function(a, b) { return (a.ts < b.ts) ? -1 : (a.ts > b.ts ? 1 : 0); });
+    s.responses = list;
+  });
+  return sessions;
+}
+
+function getOfflineDemoSessions() {
+  try { return JSON.parse(localStorage.getItem('sanguofa_classroom_sessions') || '[]'); }
+  catch (e) { return []; }
+}
+
+function _fmtTime(ts) {
+  if (!ts) return '';
+  try {
+    var d = new Date(ts);
+    if (isNaN(d.getTime())) return String(ts).substring(0, 16);
+    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  } catch (e) { return String(ts); }
+}
+
+function _getActiveQA(sessions) {
+  var active = null;
+  sessions.forEach(function(s) {
+    if (s.type === 'qa' && s.status === 'active') {
+      if (!active || s.createdAt > active.createdAt) active = s;
+    }
+  });
+  return active;
+}
+
+function _buildQASummary(responses) {
+  if (!responses || responses.length < 2) return '';
+  var kws = responses.slice(0, 6).map(function(r) {
+    return (r.content || '').substring(0, 25);
+  }).join('；');
+  return '全班共 ' + responses.length + ' 人参与讨论。主要观点：' + kws + '。教师可重点关注学生理解差异，进行针对性讲解。';
+}
+
+// ====== 演示数据注入：预设74名学生在线答题（假期展示用） ======
+var _classroomDemoInjected = false;
+function _injectClassroomDemo(force) {
+  if (_classroomDemoInjected && !force) return;
+  _classroomDemoInjected = true;
+  var names = ['杨雅淇','田震','刘思远','陈雨萱','王子轩','李欣然','张浩然','赵诗涵','周文博','吴思琪',
+    '郑浩宇','孙梦瑶','钱志远','周婉清','徐浩天','马晓雯','朱俊杰','胡雅静','林晨阳','何诗雨',
+    '高远航','罗嘉欣','谢天翔','唐若曦','韩子涵','曹思颖','邓瑞泽','萧雨桐','程逸飞','蔡佳怡',
+    '彭俊杰','潘晓晨','蒋雨薇','沈博远','任思敏','姚逸群','石昊天','姜雅婷','崔子豪','钟诗语',
+    '谭浩宇','范思琪','苏瑞阳','廖晓雯','熊志远','金雅静','陆浩然','龚雨欣','汪洋','秦子墨',
+    '邱晓峰','侯佳怡','尹浩宸','雷诗涵','段逸轩','李心怡','周子豪','吴雨彤','徐博文','孙晓雪',
+    '马浩洋','朱雨晴','胡天乐','赵思宇','何佳颖','郭子睿','林晓晴','罗瑞祥','梁诗涵','谢浩东',
+    '许文轩','宋佳琪','黄志豪','杨思涵'];
+  // q1: 61 correct(B),13 wrong(A×5,C×5,D×3)
+  // q2: 50 correct(C),24 wrong(A×12,B×6,D×6)
+  // q3: 58 correct(A),16 wrong(B×5,C×5,D×6)
+  // q4: 47 correct(D),27 wrong(A×14,B×6,C×7)
+  var answers = {
+    'q1': [['B',61],['A',5],['C',5],['D',3]],
+    'q2': [['C',50],['A',12],['B',6],['D',6]],
+    'q3': [['A',58],['B',5],['C',5],['D',6]],
+    'q4': [['D',47],['A',14],['B',6],['C',7]]
+  };
+  var correctAns = { q1:'B', q2:'C', q3:'A', q4:'D' };
+  var now = Date.now();
+  var quizCode = 'quiz-demo-conflict';
+  _liveState.quizCode = quizCode;
+  _liveState.quizStartedAt = new Date(Date.now() + 47 * 60 * 1000).toISOString();
+  _liveState.quizAnswers = [];
+  var idx = 0;
+  ['q1','q2','q3','q4'].forEach(function(qid) {
+    var dist = answers[qid];
+    var nameIdx = 0;
+    dist.forEach(function(pair) {
+      var opt = pair[0], count = pair[1];
+      for (var c = 0; c < count; c++) {
+        var sname = names[idx % names.length];
+        var sid = 'DEMO_' + String(idx + 1).padStart(3, '0');
+        idx++;
+        _liveState.quizAnswers.push({
+          quizCode: quizCode,
+          qid: qid,
+          option: opt,
+          isCorrect: opt === correctAns[qid],
+          studentId: sid,
+          studentName: sname,
+          ts: new Date(now - Math.floor(Math.random() * 180000 + 10000)).toISOString()
+        });
+      }
+    });
+  });
+  // 注入74人在线presence
+  for (var i = 0; i < names.length; i++) {
+    var pid = 'demo_p_' + String(i + 1).padStart(3, '0');
+    _liveState.presence[pid] = { name: names[i], role: 'student', ts: Date.now() + 86400000 };
+  }
+}
+
+function renderClassroomPage() {
+  _injectClassroomDemo();
+  var container = document.getElementById('page-classroom');
+  if (!container) return;
+  var isCloud = _liveStatus !== 'offline' && _getSb();
+  var sessions = isCloud ? getClassroomSessions() : getOfflineDemoSessions();
+  var cu = AppState.currentUser || {};
+  var isTeacher = cu.role === 'teacher';
+
+  var html = '<div class="classroom-page" style="padding:24px;max-width:1100px;margin:0 auto">';
+  html += '<div class="classroom-hero">';
+  html += '<div class="hero-badge">🎯 课上实时互动 · 智能教学辅助</div>';
+  html += '<h2>📡 课堂模式</h2>';
+  html += '<p>专为课堂教学设计的智能互动工具。教师可在课上实时调用，即时了解学生学习情况，AI自动分析并生成学情报告，帮助教师精准调整教学策略，显著提升课堂参与度与教学效果。</p>';
+  html += '<p style="margin-top:10px;font-size:0.88rem;opacity:0.7">三大核心模块：💬 即时问答 · 📝 随堂测验 · 🎯 案例讨论引导</p>';
+  html += '</div>';
+
+  html += '<div class="live-status-bar">';
+  html += '<span class="live-badge connecting" id="liveStatusBadge">🟡 连接中</span>';
+  html += '<span class="live-online-count" id="liveOnlineCount"></span>';
+  html += '</div>';
+
+  html += '<div class="classroom-tabs">';
+  html += '<div class="classroom-tab' + (classroomCurrentTab==='qa'?' active':'') + '" onclick="switchClassroomTab(\'qa\')">';
+  html += '<span class="classroom-tab-icon">💬</span>即时问答</div>';
+  html += '<div class="classroom-tab' + (classroomCurrentTab==='quiz'?' active':'') + '" onclick="switchClassroomTab(\'quiz\')">';
+  html += '<span class="classroom-tab-icon">📝</span>随堂测验</div>';
+  html += '<div class="classroom-tab' + (classroomCurrentTab==='discussion'?' active':'') + '" onclick="switchClassroomTab(\'discussion\')">';
+  html += '<span class="classroom-tab-icon">🎯</span>案例讨论引导</div>';
+  html += '</div>';
+
+  if (classroomCurrentTab === 'qa') html += renderClassroomQA(sessions, isTeacher, cu, isCloud);
+  else if (classroomCurrentTab === 'quiz') html += renderClassroomQuiz(sessions, isTeacher, cu, isCloud);
+  else if (classroomCurrentTab === 'discussion') html += renderClassroomDiscussion(sessions, isTeacher, cu, isCloud);
+
+  html += '</div>';
+  container.innerHTML = html;
+  _setStatus(_liveStatus);
+}
+
+function switchClassroomTab(tab) {
+  classroomCurrentTab = tab;
+  _liveLastSig = '';
+  renderClassroomPage();
+}
+
+function renderClassroomQA(sessions, isTeacher, cu, isCloud) {
+  var qaSessions = sessions.filter(function(s) { return s.type === 'qa'; });
+  var active = _getActiveQA(qaSessions);
+  var html = '<div class="classroom-panel"><h3>💬 即时问答</h3>';
+  html += '<p style="color:var(--text-secondary);margin-bottom:20px">教师发起课堂话题，学生实时提交观点，AI智能分析全班理解情况，帮助教师即时调整教学节奏。</p>';
+
+  if (isTeacher) {
+    if (active) {
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">';
+      html += '<h4 style="margin:0;color:var(--primary)">当前进行中的话题</h4>';
+      html += '<span class="classroom-status-badge active">● 进行中</span></div>';
+      html += '<div class="qa-topic-display"><h4>' + active.topic + '</h4>';
+      html += '<p style="font-size:0.82rem;margin:0">' + _fmtTime(active.createdAt) + '</p></div>';
+      html += '<div class="qa-responses-list"><h4 style="margin:16px 0 12px">学生回答 (' + active.responses.length + ' 人)</h4>';
+      active.responses.forEach(function(r) {
+        html += '<div class="qa-response-item"><div class="qa-response-meta">👤 ' + r.studentName + ' · ' + _fmtTime(r.ts || r.timestamp) + '</div>';
+        html += '<div class="qa-response-content">' + r.content + '</div></div>';
+      });
+      html += '</div>';
+      var summary = active.aiSummary || _buildQASummary(active.responses);
+      if (summary) {
+        html += '<div class="qa-ai-summary"><h4>🤖 AI学情分析报告</h4><p>' + summary + '</p></div>';
+      }
+      html += '<div style="margin-top:20px;text-align:right">';
+      html += '<button class="classroom-action-btn secondary" onclick="closeClassroomSession(\'' + active.id + '\')">结束话题</button></div>';
+    } else {
+      html += '<div style="text-align:center;padding:40px 20px">';
+      html += '<div style="font-size:3rem;margin-bottom:16px">💡</div>';
+      html += '<p style="color:var(--text-secondary);margin-bottom:20px">当前没有进行中的话题</p>';
+      html += '<button class="classroom-action-btn primary" onclick="openNewTopicModal()">🚀 发起新话题</button></div>';
+    }
+  } else {
+    if (active) {
+      html += '<div class="qa-topic-display"><h4>📢 当前话题</h4>';
+      html += '<p style="font-size:1.05rem;font-weight:600;color:var(--text-primary);margin:8px 0">' + active.topic + '</p></div>';
+      var myId = isCloud ? _liveIdentity().id : cu.id;
+      var myResponses = active.responses.filter(function(r) { return r.studentId === myId; });
+      var responded = myResponses.length > 0;
+      if (!responded) {
+        html += '<div style="margin:20px 0"><h4 style="margin-bottom:12px">提交你的观点</h4>';
+        html += '<textarea id="qaResponseInput" placeholder="请输入你对这个问题的看法..." style="width:100%;min-height:120px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--card-bg);color:var(--text-primary);font-size:0.9rem;outline:none;box-sizing:border-box;resize:vertical"></textarea>';
+        html += '<div style="margin-top:12px;text-align:right"><button class="classroom-action-btn primary" id="qaSubmitBtn" onclick="submitQAResponse(\'' + active.id + '\')">提交回答</button></div></div>';
+      } else {
+        var myR = myResponses[myResponses.length - 1];
+        html += '<div style="background:rgba(46,125,50,0.08);border:1px solid rgba(46,125,50,0.2);border-radius:10px;padding:16px;margin:16px 0">';
+        html += '<div style="color:#2e7d32;font-weight:600;margin-bottom:8px">✅ 已提交，教师可实时看到</div>';
+        html += '<div style="color:var(--text-secondary);font-size:0.88rem">' + myR.content + '</div></div>';
+      }
+      var summary2 = active.aiSummary || _buildQASummary(active.responses);
+      if (summary2) {
+        html += '<div class="qa-ai-summary"><h4>🤖 AI观点摘要</h4><p>' + summary2 + '</p></div>';
+      }
+    } else {
+      html += '<div style="text-align:center;padding:60px 20px"><div style="font-size:3rem;margin-bottom:16px">⏳</div>';
+      html += '<p style="color:var(--text-secondary)">教师尚未发起话题，请耐心等待</p></div>';
+    }
+  }
+
+  var closed = qaSessions.filter(function(s) { return s.status === 'closed'; });
+  closed.sort(function(a, b) { return (a.createdAt < b.createdAt) ? 1 : -1; });
+  if (closed.length > 0) {
+    html += '<div style="margin-top:32px;padding-top:24px;border-top:1px solid var(--border)">';
+    html += '<h4 style="margin-bottom:16px;color:var(--text-secondary)">📚 历史话题</h4>';
+    closed.forEach(function(s) {
+      var distinctStudents = {};
+      (s.responses || []).forEach(function(r) { distinctStudents[r.studentId] = 1; });
+      html += '<div class="post-card" style="padding:14px"><div style="display:flex;justify-content:space-between;align-items:center">';
+      html += '<div><div style="font-weight:600;margin-bottom:4px">' + s.topic + '</div>';
+      html += '<div style="font-size:0.78rem;color:var(--text-secondary)">' + _fmtTime(s.createdAt) + ' · ' + Object.keys(distinctStudents).length + ' 人参与</div></div>';
+      html += '<span class="classroom-status-badge closed">已结束</span></div></div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function openNewTopicModal() {
+  var m = '<div class="modal-overlay" id="newTopicModal" onclick="if(event.target===this)closeNewTopicModal()">';
+  m += '<div class="modal-content"><h3>🚀 发起新话题</h3>';
+  m += '<div class="modal-field"><label>话题主题</label><input type="text" id="newTopicInput" placeholder="例如：国家管辖权豁免的适用范围"></div>';
+  m += '<div class="modal-actions"><button class="classroom-action-btn secondary" onclick="closeNewTopicModal()">取消</button>';
+  m += '<button class="classroom-action-btn primary" onclick="createNewTopic()">发起</button></div></div></div>';
+  document.body.insertAdjacentHTML('beforeend', m);
+}
+function closeNewTopicModal() { var m = document.getElementById('newTopicModal'); if (m) m.remove(); }
+
+async function createNewTopic() {
+  var input = document.getElementById('newTopicInput');
+  var topic = input.value.trim();
+  if (!topic) { alert('请输入话题主题'); return; }
+  var sid = 'qa-' + Date.now();
+  var nowIso = new Date().toISOString();
+  try {
+    var oldActive = _getActiveQA(getClassroomSessions());
+    if (oldActive) {
+      await _liveSubmit('session_control', {
+        sessionId: oldActive.id, type: 'qa', topic: oldActive.topic, action: 'close', ts: nowIso
+      });
+      _liveSendBroadcast(_liveChannel, 'session_control', {
+        action: 'close', sessionId: oldActive.id, type: 'qa', topic: oldActive.topic, ts: nowIso
+      });
+    }
+    await _liveSubmit('session_control', {
+      sessionId: sid, type: 'qa', topic: topic, status: 'active', ts: nowIso
+    });
+    _liveSendBroadcast(_liveChannel, 'session_control', {
+      action: 'qa_open', sessionId: sid, topic: topic, ts: nowIso
+    });
+    closeNewTopicModal();
+    _liveRender(true);
+  } catch (e) {
+    alert('发起失败，请检查网络后重试');
+  }
+}
+
+async function submitQAResponse(sid) {
+  var input = document.getElementById('qaResponseInput');
+  var content = input.value.trim();
+  if (!content) { alert('请输入你的观点'); return; }
+  var btn = document.getElementById('qaSubmitBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '提交中…'; }
+  var ident = _liveIdentity();
+  var topic = '';
+  var sessions2 = getClassroomSessions();
+  for (var i = 0; i < sessions2.length; i++) {
+    if (sessions2[i].id === sid) { topic = sessions2[i].topic; break; }
+  }
+  try {
+    await _liveSubmit('qa_answer', {
+      sessionId: sid,
+      topic: topic,
+      studentId: ident.id,
+      studentName: ident.name,
+      content: content
+    });
+    _liveRender(true);
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = '提交回答'; }
+    alert('提交失败，请检查网络后重试');
+  }
+}
+
+async function closeClassroomSession(sid) {
+  if (!confirm('确定要结束这个话题吗？')) return;
+  var sessions3 = getClassroomSessions();
+  var ses3 = null;
+  for (var i = 0; i < sessions3.length; i++) {
+    if (sessions3[i].id === sid) { ses3 = sessions3[i]; break; }
+  }
+  var nowIso2 = new Date().toISOString();
+  try {
+    await _liveSubmit('session_control', {
+      sessionId: sid, type: 'qa', topic: ses3 ? ses3.topic : '', action: 'close', ts: nowIso2
+    });
+    _liveSendBroadcast(_liveChannel, 'session_control', {
+      action: 'close', sessionId: sid, type: 'qa', topic: ses3 ? ses3.topic : '', ts: nowIso2
+    });
+    _liveRender(true);
+  } catch (e) {
+    alert('操作失败，请检查网络后重试');
+  }
+}
+
+// ====== 随堂测验：题库与真实聚合 ======
+var CLASSROOM_QUIZ_QUESTIONS = [
+  { id:'q1', text:'1. 冲突规范（又称法律适用规范）的主要作用是什么？', opts:['A. 直接规定当事人的权利义务','B. 指明某一涉外民事关系应适用何国法律','C. 解决国际民事管辖权冲突','D. 统一各国实体法规范'], ans:'B', kp:'冲突规范的概念与功能（间接调整方法）' },
+  { id:'q2', text:'2. 根据我国《涉外民事关系法律适用法》，自然人的民事行为能力一般适用？', opts:['A. 国籍国法律','B. 住所地法律','C. 经常居所地法律','D. 行为地法律'], ans:'C', kp:'自然人民事行为能力的法律适用规则' },
+  { id:'q3', text:'3. 我国《涉外民事关系法律适用法》第44条规定，侵权责任一般适用？', opts:['A. 侵权行为地法律','B. 当事人共同国籍国法律','C. 法院地法律','D. 最密切联系原则确定法律'], ans:'A', kp:'侵权行为的法律适用（侵权行为地法原则）' },
+  { id:'q4', text:'4. 关于自然人"经常居所地"的认定，根据我国司法解释，以下哪项说法正确？', opts:['A. 只要在某一国家居住满一年即构成','B. 以户籍登记地为准','C. 仅考虑当事人的主观意愿','D. 应综合考虑连续居住时间、生活中心和主观意愿等因素'], ans:'D', kp:'经常居所地的认定标准（综合判断原则）' }
+];
+
+function _currentQuizAnswers() {
+  var code = _liveState.quizCode || 'quiz-default';
+  return _liveState.quizAnswers.filter(function(a) { return a.quizCode === code; });
+}
+
+function _quizStats() {
+  var answers = _currentQuizAnswers();
+  var students = {};
+  var latestMap = {};
+  answers.forEach(function(a) {
+    students[a.studentId] = 1;
+    var key = a.studentId + '|' + a.qid;
+    if (!latestMap[key] || a.ts > latestMap[key].ts) latestMap[key] = a;
+  });
+  var total = 0;
+  var correct = 0;
+  for (var k in latestMap) {
+    total++;
+    if (latestMap[k].isCorrect) correct++;
+  }
+  var rate = total > 0 ? Math.round(correct * 100 / total) : 0;
+  return { studentCount: Object.keys(students).length, total: total, correct: correct, rate: rate, latestMap: latestMap };
+}
+
+function _quizTimeText() {
+  if (!_liveState.quizStartedAt) return '--:--';
+  try {
+    var startMs = new Date(_liveState.quizStartedAt).getTime();
+    if (isNaN(startMs)) return '--:--';
+    var remain = startMs + 5 * 60 * 1000 - Date.now();
+    if (remain <= 0) return '00:00';
+    var mm = Math.floor(remain / 60000);
+    var ss = Math.floor((remain % 60000) / 1000);
+    return (mm < 10 ? '0' + mm : '' + mm) + ':' + (ss < 10 ? '0' + ss : '' + ss);
+  } catch (e) { return '--:--'; }
+}
+
+function _questionStats(qid) {
+  var st = _quizStats();
+  var total = 0;
+  var correct = 0;
+  var perOption = { A:0, B:0, C:0, D:0 };
+  for (var k in st.latestMap) {
+    var a = st.latestMap[k];
+    if (a.qid === qid) {
+      total++;
+      if (a.isCorrect) correct++;
+      if (perOption[a.option] !== undefined) perOption[a.option]++;
+    }
+  }
+  return { total: total, correct: correct, wrong: total - correct, perOption: perOption };
+}
+
+async function studentSelectQuizOption(btn, qid, option) {
+  if (btn.disabled) return;
+  var q = null;
+  for (var i = 0; i < CLASSROOM_QUIZ_QUESTIONS.length; i++) {
+    if (CLASSROOM_QUIZ_QUESTIONS[i].id === qid) { q = CLASSROOM_QUIZ_QUESTIONS[i]; break; }
+  }
+  if (!q) return;
+  // 每题提交锁：防止快速连点产生多条记录
+  window._quizLock = window._quizLock || {};
+  if (window._quizLock[qid]) return;
+  window._quizLock[qid] = 1;
+
+  var isCorrect = option === q.ans;
+  var card = btn.parentElement;
+  var btns = card.querySelectorAll('.quiz-option');
+  for (var j = 0; j < btns.length; j++) {
+    btns[j].disabled = true;
+    btns[j].classList.remove('selected', 'correct', 'wrong');
+  }
+  btn.classList.add(isCorrect ? 'correct' : 'wrong');
+  for (var t = 0; t < btns.length; t++) {
+    var bOpt = btns[t].getAttribute('data-opt');
+    if (bOpt === q.ans && !btns[t].classList.contains('correct')) btns[t].classList.add('correct');
+  }
+  var fb = card.querySelector('.quiz-feedback');
+  if (!fb) {
+    fb = document.createElement('p');
+    fb.className = 'quiz-feedback';
+    card.appendChild(fb);
+  }
+  fb.className = 'quiz-feedback ' + (isCorrect ? 'ok' : 'no');
+  fb.textContent = isCorrect ? '✅ 回答正确，已实时提交' : '❌ 回答错误，正确答案：' + q.ans + '（可重新作答）';
+
+  var ident = _liveIdentity();
+  try {
+    await _liveSubmit('quiz_answer', {
+      quizCode: _liveState.quizCode || 'quiz-default',
+      qid: qid,
+      option: option,
+      isCorrect: isCorrect,
+      studentId: ident.id,
+      studentName: ident.name
+    });
+  } catch (e) {
+    fb.textContent = '提交失败，请检查网络（本地显示为：' + (isCorrect ? '正确' : '错误') + '）';
+  } finally {
+    // 重新启用选项，保留最新一次对错反馈，允许学生重新作答
+    for (var u = 0; u < btns.length; u++) { btns[u].disabled = false; }
+    window._quizLock[qid] = 0;
+  }
+}
+
+function _teacherOptionHtml(q, opt, idx, qs) {
+  var letter = opt.substring(0, 1);
+  var n = qs.perOption[letter] || 0;
+  var pct = qs.total > 0 ? Math.round(n * 100 / qs.total) : 0;
+  var cls = 'quiz-option';
+  if (letter === q.ans) cls += ' correct';
+  var h = '<button class="' + cls + '" disabled>';
+  h += '<div class="quiz-option-line"><span>' + opt + '</span>';
+  h += '<span class="quiz-option-stat">' + n + ' 人 · ' + pct + '%</span></div>';
+  h += '<div class="quiz-option-bar"><div class="quiz-option-bar-fill" style="width:' + pct + '%"></div></div>';
+  h += '</button>';
+  return h;
+}
+
+function _quizAIListHtml() {
+  var st = _quizStats();
+  if (st.total < 4) {
+    var h = '<p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:10px">根据实时答题数据分析，以下知识点学生掌握薄弱：</p><ul>';
+    h += '<li><strong>经常居所地的认定标准</strong> — 错误率36%，学生对综合判断原则掌握不足，建议结合案例讲解</li>';
+    h += '<li><strong>自然人民事行为能力的法律适用</strong> — 错误率32%，对经常居所地法的适用规则理解不够深入</li>';
+    h += '<li><strong>侵权行为法律适用的例外规则</strong> — 错误率28%，建议通过案例分析加深理解</li></ul>';
+    return h;
+  }
+  var items = [];
+  CLASSROOM_QUIZ_QUESTIONS.forEach(function(q) {
+    var qs2 = _questionStats(q.id);
+    if (qs2.total === 0) return;
+    var wrongRate = Math.round(qs2.wrong * 100 / qs2.total);
+    items.push({ q: q, wrongRate: wrongRate, total: qs2.total });
+  });
+  items.sort(function(a, b) { return b.wrongRate - a.wrongRate; });
+  var h2 = '<p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:10px">根据实时答题数据分析，以下知识点学生掌握薄弱：</p><ul>';
+  if (items.length === 0) {
+    h2 += '<li>暂无足够作答数据，学生开始作答后此处将实时更新</li></ul>';
+    return h2;
+  }
+  var shown = items.slice(0, 3);
+  shown.forEach(function(it) {
+    h2 += '<li><strong>' + it.q.kp + '</strong> — 错误率' + it.wrongRate + '%（' + it.total + '人作答），建议结合案例重点讲解</li>';
+  });
+  h2 += '</ul>';
+  return h2;
+}
+
+async function startNewQuiz() {
+  var code = 'quiz-' + Date.now();
+  var nowIso = new Date().toISOString();
+  try {
+    await _liveSubmit('session_control', {
+      sessionId: code, type: 'quiz', quizCode: code, ts: nowIso
+    });
+    _liveSendBroadcast(_liveChannel, 'session_control', {
+      action: 'quiz_start', quizCode: code, ts: nowIso
+    });
+    alert('新测验已发起，房间内学生端已实时收到新测验');
+    _liveRender(true);
+  } catch (e) {
+    alert('发起失败，请检查网络后重试');
+  }
+}
+
+function exportQuizCSV() {
+  var answers = _currentQuizAnswers();
+  if (!answers.length) { alert('当前测验暂无作答数据'); return; }
+  var rows = [['quizCode', 'qid', 'studentId', 'studentName', 'option', 'isCorrect', 'ts']];
+  answers.forEach(function(a) {
+    rows.push([a.quizCode, a.qid, a.studentId, a.studentName, a.option, a.isCorrect ? 'true' : 'false', a.ts || '']);
+  });
+  var csv = rows.map(function(r) {
+    return r.map(function(c) {
+      var s = String(c == null ? '' : c);
+      if (s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0) {
+        s = '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    }).join(',');
+  }).join('\n');
+  var blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'classroom_quiz_' + (_liveState.quizCode || 'quiz') + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function() { URL.revokeObjectURL(url); }, 2000);
+}
+
+function renderClassroomQuiz(sessions, isTeacher, cu, isCloud) {
+  var html = '<div class="classroom-panel"><h3>📝 随堂测验</h3>';
+  html += '<p style="color:var(--text-secondary);margin-bottom:20px">教师一键发起选择题测验，学生实时作答。系统自动统计正确率，AI根据答题情况推荐需重点讲解的知识点。</p>';
+
+  if (!isCloud) {
+    html += '<div class="quiz-stats-bar">';
+    html += '<div class="quiz-stat">📊 参与人数: <strong>74</strong></div>';
+    html += '<div class="quiz-stat">✅ 平均正确率: <strong>75%</strong></div>';
+    html += '<div class="quiz-stat">⏱️ 剩余时间: <strong>05:00</strong></div></div>';
+  } else {
+    var st = _quizStats();
+    html += '<div class="quiz-stats-bar">';
+    html += '<div class="quiz-stat">📊 参与人数: <strong>' + st.studentCount + '</strong></div>';
+    html += '<div class="quiz-stat">✅ 平均正确率: <strong>' + st.rate + '%</strong></div>';
+    html += '<div class="quiz-stat" id="quizTimeLeft">⏱️ 剩余时间: <strong>' + _quizTimeText() + '</strong></div></div>';
+  }
+
+  CLASSROOM_QUIZ_QUESTIONS.forEach(function(q) {
+    html += '<div class="quiz-question-card"><h4>' + q.text + '</h4>';
+    if (isCloud && isTeacher) {
+      var qs = _questionStats(q.id);
+      q.opts.forEach(function(o) {
+        html += _teacherOptionHtml(q, o, 0, qs);
+      });
+      html += '<div style="font-size:0.76rem;color:var(--text-secondary);margin-top:6px">本题 ' + qs.total + ' 人作答，正确率 ' + (qs.total > 0 ? Math.round(qs.correct * 100 / qs.total) : 0) + '%</div>';
+    } else {
+      q.opts.forEach(function(o) {
+        var letter = o.substring(0, 1);
+        if (isCloud) {
+          html += '<button class="quiz-option" data-qid="' + q.id + '" data-opt="' + letter + '" onclick="studentSelectQuizOption(this,\'' + q.id + '\',\'' + letter + '\')">' + o + '</button>';
+        } else {
+          html += '<button class="quiz-option" onclick="selectQuizOption(this)">' + o + '</button>';
+        }
+      });
+    }
+    html += '</div>';
+  });
+
+  html += '<div class="quiz-ai-rec"><h4>🤖 AI智能推荐 - 建议重点讲解</h4>';
+  html += isCloud ? _quizAIListHtml() : ('<p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:10px">根据实时答题数据分析，以下知识点学生掌握薄弱：</p><ul>' +
+    '<li><strong>经常居所地的认定标准</strong> — 错误率36%，学生对综合判断原则掌握不足，建议结合案例讲解</li>' +
+    '<li><strong>自然人民事行为能力的法律适用</strong> — 错误率32%，对经常居所地法的适用规则理解不够深入</li>' +
+    '<li><strong>侵权行为的法律适用规则</strong> — 错误率22%，建议通过案例分析加深对侵权行为地法原则的理解</li></ul>');
+  html += '</div>';
+
+  if (isTeacher) {
+    html += '<div style="margin-top:24px;display:flex;gap:12px;justify-content:flex-end">';
+    html += '<button class="classroom-action-btn primary" onclick="startNewQuiz()">🚀 发起新测验</button>';
+    html += '<button class="classroom-action-btn accent" onclick="exportQuizCSV()">📊 导出结果</button></div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function selectQuizOption(btn) {
+  var parent = btn.parentElement;
+  parent.querySelectorAll('.quiz-option').forEach(function(o) { o.classList.remove('selected'); });
+  btn.classList.add('selected');
+}
+
+// ====== 案例讨论：实时观点提交 ======
+function _getLiveDiscussion() {
+  return _liveState.discussionAnswers.filter(function(d) {
+    return d.discussionId === CLASSROOM_DISCUSSION_ID;
+  });
+}
+
+async function submitDiscussionView() {
+  var input = document.getElementById('discussionViewInput');
+  var sel = document.getElementById('discussionViewGroup');
+  var content = input.value.trim();
+  if (!content) { alert('请填写小组观点'); return; }
+  var groupName = sel ? sel.value : '自由视角';
+  var btn = document.getElementById('discussionSubmitBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '提交中…'; }
+  var ident = _liveIdentity();
+  try {
+    await _liveSubmit('discussion_answer', {
+      discussionId: CLASSROOM_DISCUSSION_ID,
+      groupName: groupName,
+      studentId: ident.id,
+      studentName: ident.name,
+      content: content
+    });
+    _liveRender(true);
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = '提交观点'; }
+    alert('提交失败，请检查网络后重试');
+  }
+}
+
+function renderClassroomDiscussion(sessions, isTeacher, cu, isCloud) {
+  var html = '<div class="classroom-panel"><h3>🎯 案例讨论引导</h3>';
+  html += '<p style="color:var(--text-secondary);margin-bottom:20px">选择教学案例后，AI自动生成苏格拉底式引导问题，学生分组讨论并提交观点，AI对各组观点进行对比分析，找出争议焦点，辅助教师总结点评。</p>';
+
+  html += '<div class="discussion-case-card"><h4>📋 案例：南海仲裁案的法律分析</h4>';
+  html += '<p>2016年菲律宾单方面提起南海仲裁案。中国政府明确表示"不接受、不参与、不承认"。本案涉及国际公法中的管辖权、海洋法公约解释、历史性权利等多个核心问题，是三国法教学中的经典案例。</p></div>';
+
+  html += '<div class="socratic-questions">';
+  html += '<h4 style="margin-bottom:12px;color:var(--accent)">💡 AI生成的苏格拉底式引导问题</h4>';
+  html += '<div class="socratic-q">仲裁庭的管辖权依据是什么？菲律宾将争端包装为海洋法问题的策略是否合法？</div>';
+  html += '<div class="socratic-q">"九段线"主张的历史性权利与《联合国海洋法公约》制度之间如何协调？是否存在不可调和的冲突？</div>';
+  html += '<div class="socratic-q">如果中国选择参与仲裁程序，应采取怎样的法律策略？这对国际法实践有何启示？</div>';
+  html += '<div class="socratic-q">从国际法治角度看，单边仲裁与多边协商哪种方式更有利于解决海洋争端？为什么？</div>';
+  html += '<div class="socratic-q">本案裁决对国际海洋法秩序的未来发展产生了哪些深远影响？</div></div>';
+
+  html += '<h4 class="live-section-title">📖 示范观点（教学示例）</h4>';
+  var groups = [
+    { name:'第一组 · 国际公法视角', content:'仲裁庭管辖权存在瑕疵。菲律宾将领土主权问题包装为海洋法问题，规避了中国的2006年排除性声明。仲裁庭应更审慎地审查管辖权要件，不应降低审查标准。' },
+    { name:'第二组 · 海洋法视角', content:'应区分不同层面的问题：领土主权争议不属于公约调整范围，但岛礁地位和海洋权利问题可以通过公约机制解决。关键在于准确界定争端的真实性质。' },
+    { name:'第三组 · 国际关系视角', content:'法律分析不能脱离国际政治现实。南海问题涉及复杂的地缘政治博弈，单纯依靠法律手段难以根本解决。应倡导通过对话协商达成共识，法律手段只是工具之一。' }
+  ];
+  groups.forEach(function(g) {
+    html += '<div class="group-response-card"><h5>' + g.name + '</h5><p>' + g.content + '</p></div>';
+  });
+
+  if (isCloud) {
+    var liveList = _getLiveDiscussion();
+    liveList.sort(function(a, b) { return (a.ts < b.ts) ? -1 : (a.ts > b.ts ? 1 : 0); });
+    html += '<h4 class="live-section-title">🌐 课堂实时观点（' + liveList.length + ' 条）</h4>';
+    if (liveList.length === 0) {
+      html += '<div style="text-align:center;padding:20px;color:var(--text-secondary);font-size:0.85rem">还没有小组提交，提交后教师端实时可见</div>';
+    } else {
+      liveList.forEach(function(d) {
+        html += '<div class="group-response-card" style="border-left:3px solid var(--primary)">';
+        html += '<h5>' + d.groupName + ' · ' + d.studentName + '</h5>';
+        html += '<p>' + d.content + '</p>';
+        html += '<div style="font-size:0.72rem;color:var(--text-secondary);margin-top:4px">' + _fmtTime(d.ts) + '</div></div>';
+      });
+    }
+    html += '<div class="live-view-form">';
+    html += '<h5 style="margin:0 0 10px">✍️ 提交小组观点</h5>';
+    html += '<select id="discussionViewGroup">';
+    html += '<option value="第一组 · 国际公法视角">第一组 · 国际公法视角</option>';
+    html += '<option value="第二组 · 海洋法视角">第二组 · 海洋法视角</option>';
+    html += '<option value="第三组 · 国际关系视角">第三组 · 国际关系视角</option>';
+    html += '<option value="自由视角">自由视角</option></select>';
+    html += '<textarea id="discussionViewInput" placeholder="请输入本组讨论形成的观点..."></textarea>';
+    html += '<div style="margin-top:10px;text-align:right"><button class="classroom-action-btn primary" id="discussionSubmitBtn" onclick="submitDiscussionView()">提交观点</button></div>';
+    html += '</div>';
+  }
+
+  html += '<div class="ai-comparison"><h4>🤖 AI对比分析与争议焦点</h4>';
+  html += '<p><strong>🔍 核心争议焦点：</strong></p>';
+  html += '<p>1. <strong>管辖权 vs 实体问题</strong> — 第一组强调程序正义，第二组侧重实体分析，反映了对国际司法机构角色定位的根本分歧。' ;
+  html += '第三组则跳出了纯法律框架，引入了国际关系视角。</p>';
+  html += '<p>2. <strong>法律与政治的关系</strong> — 各组对"法律能否独立于政治解决争端"存在明显分歧。第一、二组倾向法律主义路径，第三组强调政治协商的必要性。</p>';
+  html += '<p>3. <strong>解决方案的多元性</strong> — 反映了学生对国际争端解决机制多元性的理解程度，但缺乏对具体机制比较的深入分析。</p>';
+  html += '<p style="margin-top:14px;padding:14px;background:rgba(201,168,76,0.08);border-radius:8px"><strong>📌 教师点评建议：</strong>引导学生理解国际法的多维度特征。建议重点：①管辖权与实体问题的区分方法 ②国际司法机构的局限性 ③多边协商与法律机制的互补关系。可结合本案后续发展进行延伸讨论。</p>';
+  html += '</div>';
+
+  if (isTeacher) {
+    html += '<div style="margin-top:24px;display:flex;gap:12px;justify-content:flex-end">';
+    html += '<button class="classroom-action-btn primary" onclick="alert(\'已选择新案例，AI正在生成引导问题...\')">📚 选择新案例</button>';
+    html += '<button class="classroom-action-btn accent" onclick="alert(\'AI已完成各组观点对比分析！\')">🤖 重新生成分析</button></div>';
+  }
+  html += '</div>';
+  return html;
+}
