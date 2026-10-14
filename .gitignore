@@ -1,0 +1,7 @@
+# 服务端 AI 密钥（本地配置，切勿提交）
+ai-proxy.local.json
+
+# 依赖与缓存
+node_modules/
+*.log
+.DS_Store

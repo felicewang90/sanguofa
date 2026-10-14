@@ -1,0 +1,12 @@
+{
+  "name": "sanguofa-legal-tutor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "三国法教学智能体 · 小际（静态站 + 豆包服务端代理）",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "_说明": "复制本文件，改名为 ai-proxy.local.json，把 apiKey 换成你的火山引擎 API Key。该文件已在 .gitignore 中，不会被推送到 GitHub；但会随着部署上传到云端沙箱，供服务端代理使用。也可完全不用此文件，改设环境变量 ARK_API_KEY / ARK_ENDPOINT。",
+  "apiKey": "",
+  "endpoint": "doubao-seed-2-0-lite-260428"
+}

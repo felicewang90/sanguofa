@@ -4097,13 +4097,51 @@ const FIXED_CASES = [
 ];
 
 
+// ===== 服务端 AI 代理 =====
+// 目的：密钥不再出现在浏览器里。学生端零配置，打开即可用 AI 增强。
+// 代理地址优先级：localStorage(ai_proxy_url) > <meta name="ai-proxy"> > 同域 /api/ai
+// 三者都不可用（例如部署在纯静态托管上）时，回落到"自带密钥直连"。
+const AIProxy = {
+  _status: null,   // null=未探测，true=可用，false=不可用
+  _url: null,
+
+  url() {
+    if (this._url) return this._url;
+    let u = '/api/ai';
+    try {
+      const meta = document.querySelector('meta[name="ai-proxy"]');
+      u = localStorage.getItem('ai_proxy_url') || (meta && meta.getAttribute('content')) || '/api/ai';
+    } catch (e) {}
+    this._url = String(u || '').trim() || '/api/ai';
+    return this._url;
+  },
+
+  // 探活：只问服务端有没有配密钥，不产生模型调用
+  async probe() {
+    try {
+      const r = await fetch(this.url() + '?ping=1', { method: 'GET', cache: 'no-store' });
+      this._status = (r.status === 200);
+      try { await r.text(); } catch (e) {}
+    } catch (e) {
+      this._status = false;
+    }
+    AIProxy.onStatus && AIProxy.onStatus(this._status);
+    return this._status;
+  },
+
+  onStatus: null
+};
+
 // === 豆包AI增强模块 ===
 const DoubaoConfig = {
   getApiKey() { return localStorage.getItem('doubao_api_key') || ''; },
   getEndpoint() { return localStorage.getItem('doubao_endpoint_id') || ''; },
   isConfigured() { return !!(this.getApiKey() && this.getEndpoint()); },
-  // isEnabled = 已保存配置 且 未被手动断开
-  isEnabled() { return this.isConfigured() && localStorage.getItem('doubao_disabled') !== '1'; },
+  // isEnabled = （已保存配置 或 服务端代理可用）且 未被手动断开
+  isEnabled() {
+    if (localStorage.getItem('doubao_disabled') === '1') return false;
+    return this.isConfigured() || AIProxy._status === true;
+  },
   save(apiKey, endpoint) {
     localStorage.setItem('doubao_api_key', apiKey);
     localStorage.setItem('doubao_endpoint_id', endpoint);
@@ -4146,15 +4184,64 @@ function _doubaoFriendlyError(status, errText, endpoint) {
   return 'API错误(' + status + '): ' + t.substring(0, 120);
 }
 
-// 统一请求：默认带 thinking:{type:'disabled'} 强制关闭深度思考（简单教学问答不需要，首字延迟大幅降低）；
-// 若模型不支持该参数（返回400）自动去掉重试一次。返回 { ok, response, status, error }
+// ===== 统一入口：自动选择传输方式 =====
+//   1) 浏览器存有自己的 Key（教师演示 / 备用入口）→ 直连火山方舟，保持原有行为
+//   2) 否则走服务端代理，密钥不下发浏览器（学生默认路径）
+// 返回 { ok, response, status, error, viaProxy }
 async function _doubaoFetch(payloadBase, opts) {
   opts = opts || {};
   const timeoutMs = opts.timeoutMs || 60000;
   const apiKey = DoubaoConfig.getApiKey();
   const endpoint = DoubaoConfig.getEndpoint();
-  if (!apiKey || !endpoint) return { ok: false, status: 0, error: '未配置API Key或模型ID' };
 
+  if (apiKey && endpoint) {
+    return _doubaoDirectFetch(payloadBase, opts, timeoutMs, apiKey, endpoint);
+  }
+
+  if (AIProxy._status === null) await AIProxy.probe();
+  if (AIProxy._status === true) return _doubaoProxyFetch(payloadBase, opts, timeoutMs);
+
+  return { ok: false, status: 0, error: '未配置 API Key，且当前站点未提供服务端 AI 服务' };
+}
+
+// 经服务端代理转发：请求体中不含任何密钥
+async function _doubaoProxyFetch(payloadBase, opts, timeoutMs) {
+  const controller = new AbortController();
+  if (opts.onController) { try { opts.onController(controller); } catch (e) {} }
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const resp = await fetch(AIProxy.url(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payloadBase),
+      signal: controller.signal
+    });
+
+    if (!resp.ok) {
+      let errText = '';
+      try { errText = await resp.text(); } catch (e) {}
+      let msg = '服务端 AI 请求失败 (' + resp.status + ')';
+      try {
+        const j = JSON.parse(errText);
+        if (j && j.error) msg = String(j.error);
+      } catch (e) {}
+      clearTimeout(timer);
+      return { ok: false, status: resp.status, error: msg };
+    }
+
+    clearTimeout(timer);
+    return { ok: true, response: resp, viaProxy: true };
+  } catch (e) {
+    clearTimeout(timer);
+    if (e.name === 'AbortError') return { ok: false, status: 0, error: '请求超时（网络较慢）' };
+    return { ok: false, status: 0, error: '网络异常: ' + e.message };
+  }
+}
+
+// 直连火山方舟：默认带 thinking:{type:'disabled'} 强制关闭深度思考（简单教学问答不需要，首字延迟大幅降低）；
+// 若模型不支持该参数（返回400）自动去掉重试一次。返回 { ok, response, status, error }
+async function _doubaoDirectFetch(payloadBase, opts, timeoutMs, apiKey, endpoint) {
   const controller = new AbortController();
   if (opts.onController) { try { opts.onController(controller); } catch(e) {} }
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -4198,12 +4285,36 @@ async function _doubaoFetch(payloadBase, opts) {
   }
 }
 
+// 顶部提示条：告诉当前使用者 AI 走的是哪条路
+function updateAiTransportStatus() {
+  const box = document.getElementById('aiTransportStatus');
+  if (!box) return;
+  const configured = DoubaoConfig.isConfigured();
+  const disabled = localStorage.getItem('doubao_disabled') === '1';
+  const proxyOk = AIProxy._status === true;
+
+  if (disabled) {
+    box.style.background = '#fffbe6'; box.style.borderColor = '#ffe58f'; box.style.color = '#8a6d1a';
+    box.innerHTML = '⏸ 已手动断开 AI 增强，当前为纯知识库检索。点下方「重新连接」恢复。';
+  } else if (configured) {
+    box.style.background = '#f6f8fb'; box.style.borderColor = '#e3e8ef'; box.style.color = '#4a5568';
+    box.innerHTML = '🔑 当前使用<strong>你填写的 API Key</strong> 直连火山方舟。清空下方两栏并保存，即可改用本站自带 AI（无需密钥）。';
+  } else if (proxyOk) {
+    box.style.background = '#f0f9f0'; box.style.borderColor = '#b7e3b7'; box.style.color = '#2f7a2f';
+    box.innerHTML = '✅ 已启用<strong>本站 AI 服务</strong>（服务端转发，密钥不经过浏览器），无需任何配置。你也可以填写自己的 Key 以切换。';
+  } else {
+    box.style.background = '#fff7f7'; box.style.borderColor = '#ffccc7'; box.style.color = '#a8403a';
+    box.innerHTML = '⚪ 本站 AI 服务暂不可用，当前为<strong>纯知识库检索</strong>（本地秒回）。可填写下方 API Key 启用 AI 增强。';
+  }
+}
+
 function showDoubaoSettings() {
   const modal = document.getElementById('doubaoSettingsModal');
   modal.style.display = 'flex';
   document.getElementById('doubaoApiKeyInput').value = DoubaoConfig.getApiKey();
   document.getElementById('doubaoEndpointInput').value = DoubaoConfig.getEndpoint();
   document.getElementById('doubaoTestResult').style.display = 'none';
+  updateAiTransportStatus();
   updateDoubaoToggleBtn();
 }
 
@@ -4211,10 +4322,12 @@ function showDoubaoSettings() {
 function updateDoubaoToggleBtn() {
   const btn = document.getElementById('doubaoToggleBtn');
   if (!btn) return;
-  if (!DoubaoConfig.isConfigured()) { btn.style.display = 'none'; return; }
+  if (!DoubaoConfig.isConfigured() && AIProxy._status !== true) { btn.style.display = 'none'; return; }
   btn.style.display = 'inline-block';
   if (DoubaoConfig.isEnabled()) {
-    btn.textContent = '⏸ 断开AI增强（Key已保存，可一键恢复）';
+    btn.textContent = DoubaoConfig.isConfigured()
+      ? '⏸ 断开AI增强（Key已保存，可一键恢复）'
+      : '⏸ 断开AI增强（本站AI服务，可一键恢复）';
     btn.style.cssText = 'padding:8px 16px;border:1px solid #ff7875;background:white;color:#ff4d4f;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;transition:all 0.2s;margin-right:auto';
     btn.onmouseover = function() { this.style.background = '#fff1f0'; };
     btn.onmouseout = function() { this.style.background = 'white'; };
@@ -4246,7 +4359,10 @@ function disconnectDoubao() {
   if (resultDiv) {
     resultDiv.style.display = 'block';
     resultDiv.style.color = '#b08d3a';
-    resultDiv.textContent = '⏸ 已断开AI增强，切换为纯知识库检索（本地秒回）。Key和接入点ID已保存在本浏览器，点「重新连接」即可恢复，无需重填。';
+    resultDiv.textContent = '⏸ 已断开AI增强，切换为纯知识库检索（本地秒回）。' +
+      (DoubaoConfig.isConfigured()
+        ? 'Key和接入点ID已保存在本浏览器，点「重新连接」即可恢复，无需重填。'
+        : '点「重新连接」即可恢复本站AI服务。');
   }
   _doubaoChatNotice('⚡ 已切换为纯知识库检索模式，回答本地即时生成', '#b08d3a', '#faf7ee');
 }
@@ -4282,8 +4398,19 @@ function useFastModel() {
 function saveDoubaoSettings() {
   const apiKey = document.getElementById('doubaoApiKeyInput').value.trim();
   const endpoint = document.getElementById('doubaoEndpointInput').value.trim();
+
+  // 两栏都留空并保存 = 交还给服务端 AI（密钥不落浏览器）
+  if (!apiKey && !endpoint) {
+    DoubaoConfig.clear();
+    updateDoubaoStatusIcon();
+    updateDoubaoToggleBtn();
+    closeDoubaoSettings();
+    _doubaoChatNotice('☁️ 已切换为本站 AI 服务，无需配置密钥', '#2f7a2f', '#f0f9f0');
+    return;
+  }
+
   if (!apiKey || !endpoint) {
-    alert('请填写API Key和模型ID/接入点ID');
+    alert('请填写API Key和模型ID/接入点ID（两项都留空则使用本站自带AI）');
     return;
   }
   DoubaoConfig.save(apiKey, endpoint);
@@ -4304,7 +4431,14 @@ function saveDoubaoSettings() {
 function updateDoubaoStatusIcon() {
   const icon = document.getElementById('doubaoStatusIcon');
   if (icon) {
-    icon.textContent = DoubaoConfig.isEnabled() ? '🤖' : '⚪';
+    const on = DoubaoConfig.isEnabled();
+    const viaProxy = on && !DoubaoConfig.isConfigured();
+    if (icon.parentElement) {
+      icon.parentElement.title = on
+        ? (viaProxy ? 'AI增强已启用：经本站服务端转发，密钥不经过浏览器' : 'AI增强已启用：使用你填写的 API Key 直连火山方舟')
+        : 'AI增强未启用：当前为纯知识库检索';
+    }
+    icon.textContent = on ? '🤖' : '⚪';
     icon.parentElement.style.borderColor = DoubaoConfig.isEnabled() ? 'rgba(82,196,26,0.5)' : 'rgba(201,168,76,0.3)';
     icon.parentElement.style.color = DoubaoConfig.isEnabled() ? '#52c41a' : 'var(--accent)';
   }
@@ -4316,18 +4450,31 @@ async function testDoubaoConnection() {
   const resultDiv = document.getElementById('doubaoTestResult');
   const btn = document.getElementById('testDoubaoBtn');
   
-  if (!apiKey || !endpoint) {
+  // 两个输入框都空 → 走服务端代理（学生默认路径），不需要填任何密钥
+  const viaProxy = !apiKey && !endpoint;
+
+  if (!viaProxy && (!apiKey || !endpoint)) {
     resultDiv.style.display = 'block';
     resultDiv.style.color = '#ff4d4f';
-    resultDiv.textContent = '❌ 请先填写API Key和Endpoint ID';
+    resultDiv.textContent = '❌ 请先填写API Key和Endpoint ID（两项都留空则使用本站自带的AI服务）';
     return;
   }
-  
+
+  if (viaProxy) {
+    await AIProxy.probe();
+    if (AIProxy._status !== true) {
+      resultDiv.style.display = 'block';
+      resultDiv.style.color = '#ff4d4f';
+      resultDiv.textContent = '❌ 本站 AI 服务暂不可用，请填写自己的 API Key';
+      return;
+    }
+  }
+
   btn.disabled = true;
   btn.textContent = '测试中...';
   resultDiv.style.display = 'block';
   resultDiv.style.color = '#666';
-  resultDiv.textContent = '正在连接豆包API...';
+  resultDiv.textContent = viaProxy ? '正在连接本站 AI 服务...' : '正在连接豆包API...';
   
   const r = await _doubaoFetch({
     messages: [{ role: 'user', content: '请回复"连接成功"' }],
@@ -4337,7 +4484,8 @@ async function testDoubaoConnection() {
   if (r.ok) {
     const data = await r.response.json();
     resultDiv.style.color = '#52c41a';
-    resultDiv.textContent = '✅ 连接成功！模型: ' + (data.model || endpoint) + '（已关闭深度思考，响应更快）';
+    resultDiv.textContent = '✅ 连接成功！模型: ' + (data.model || endpoint) +
+      (viaProxy ? '（经本站服务端转发，密钥不经过浏览器）' : '（已关闭深度思考，响应更快）');
   } else {
     resultDiv.style.color = '#ff4d4f';
     resultDiv.textContent = '❌ ' + r.error;
@@ -4348,9 +4496,8 @@ async function testDoubaoConnection() {
 }
 
 async function callDoubaoAPI(userQuestion, kbContext) {
-  const apiKey = DoubaoConfig.getApiKey();
-  const endpoint = DoubaoConfig.getEndpoint();
-  if (!apiKey || !endpoint) return null;
+  // 未启用（既无自带 Key、服务端代理也不可用）→ 交给调用方回落纯知识库检索
+  if (!(typeof DoubaoConfig !== 'undefined' && DoubaoConfig.isEnabled())) return null;
   
   const tutorMode = typeof AppState !== 'undefined' && AppState.tutorMode;
   const qaMode = (typeof AppState !== 'undefined' && AppState.qaMode) || 'intro';
@@ -4418,15 +4565,17 @@ ${kbContext}
   return null;
 }
 
-// 初始化AI增强状态图标
-setTimeout(() => updateDoubaoStatusIcon(), 1000);
+// 初始化AI增强状态：先探测服务端 AI 是否可用，再刷新图标（探测很快，不阻塞首屏）
+setTimeout(async () => {
+  try { await AIProxy.probe(); } catch (e) {}
+  updateDoubaoStatusIcon();
+}, 900);
 
 // 豆包API流式调用：边生成边返回，首字延迟大幅降低
 // onDelta(partialText) 每收到新内容回调；返回完整文本，失败返回 null
 async function callDoubaoAPIStream(userQuestion, kbContext, onDelta) {
-  const apiKey = DoubaoConfig.getApiKey();
-  const endpoint = DoubaoConfig.getEndpoint();
-  if (!apiKey || !endpoint) return null;
+  // 同上：不可用则由调用方回落
+  if (!(typeof DoubaoConfig !== 'undefined' && DoubaoConfig.isEnabled())) return null;
 
   const tutorMode = typeof AppState !== 'undefined' && AppState.tutorMode;
   const qaMode = (typeof AppState !== 'undefined' && AppState.qaMode) || 'intro';
